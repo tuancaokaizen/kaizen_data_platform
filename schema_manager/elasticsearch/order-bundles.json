@@ -1,0 +1,63 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "order": {
+        "properties": {
+          "id": { "type": "keyword" },
+          "customerId": { "type": "keyword" },
+          "shopCode": { "type": "keyword" },
+          "transactionDate": { "type": "date" },
+          "totalBill": { "type": "integer" },
+          "totalDiscount": { "type": "integer" },
+          "totalPayment": { "type": "integer" },
+          "employeeSaleId": { "type": "keyword" },
+          "status": { "type": "keyword" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" },
+          "voucherSeriesCode": { "type": "keyword" }
+        }
+      },
+      "orderItems": {
+        "type": "nested",
+        "properties": {
+          "id": { "type": "keyword" },
+          "orderId": { "type": "keyword" },
+          "productId": { "type": "keyword" },
+          "quantity": { "type": "integer" },
+          "unitPrice": { "type": "integer" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      },
+      "returnRecord": {
+        "properties": {
+          "id": { "type": "keyword" },
+          "orderId": { "type": "keyword" },
+          "returnAmount": { "type": "integer" },
+          "createdDate": { "type": "date" },
+          "modifiedTimeMs": { "type": "long" }
+        }
+      },
+      "returnItems": {
+        "type": "nested",
+        "properties": {
+          "id": { "type": "keyword" },
+          "returnId": { "type": "keyword" },
+          "productId": { "type": "keyword" },
+          "quantity": { "type": "integer" },
+          "unitPrice": { "type": "integer" },
+          "orderItemId": { "type": "keyword" },
+          "orderId": { "type": "keyword" },
+          "totalAmount": { "type": "integer" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      }
+    }
+  }
+}

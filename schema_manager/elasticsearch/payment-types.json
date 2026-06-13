@@ -1,0 +1,15 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "type": { "type": "short" },
+      "name": { "type": "keyword" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}

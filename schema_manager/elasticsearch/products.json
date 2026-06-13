@@ -1,0 +1,22 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "keyword" },
+      "name": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "type": { "type": "keyword" },
+      "unit": { "type": "keyword" },
+      "stockPrice": { "type": "integer" },
+      "retailPrice": { "type": "integer" },
+      "taxRate": { "type": "integer" },
+      "isPromotion": { "type": "boolean" },
+      "status": { "type": "boolean" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}

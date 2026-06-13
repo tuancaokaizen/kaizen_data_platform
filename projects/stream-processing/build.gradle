@@ -1,0 +1,74 @@
+plugins {
+    id 'java'
+    id 'com.github.johnrengelman.shadow' version '7.1.2'
+}
+
+group = 'com.kaizen'
+version = '1.0-SNAPSHOT'
+
+java {
+    sourceCompatibility = '11'
+    targetCompatibility = '11'
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://repository.apache.org/content/repositories/snapshots/" }
+}
+
+ext {
+    flinkVersion = '1.17.2'
+}
+
+dependencies {
+    // ─── NHÓM 1: compileOnly – Flink cluster đã cung cấp sẵn ────────────────
+    compileOnly "org.apache.flink:flink-streaming-java:${flinkVersion}"
+    compileOnly "org.apache.flink:flink-clients:${flinkVersion}"
+    compileOnly "org.apache.flink:flink-connector-datagen:${flinkVersion}"
+
+    // ─── NHÓM 2: implementation – Đóng gói vào shadow JAR ───────────────────
+    // Kafka & JDBC Connectors
+    implementation "org.apache.flink:flink-connector-kafka:3.0.1-1.17"
+    implementation "org.apache.flink:flink-connector-jdbc:3.1.2-1.17"
+
+    // Elasticsearch 7
+    implementation "org.apache.flink:flink-connector-elasticsearch7:3.0.1-1.17"
+    implementation "org.elasticsearch:elasticsearch:7.10.2"
+    implementation "org.elasticsearch.client:elasticsearch-rest-high-level-client:7.10.2"
+
+    // Database Driver
+    implementation 'org.postgresql:postgresql:42.6.0'
+
+    // Config & JSON
+    implementation 'org.ini4j:ini4j:0.5.4'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.15.2'
+
+    // Logging
+    implementation 'org.slf4j:slf4j-api:1.7.36'
+    runtimeOnly  'org.apache.logging.log4j:log4j-slf4j2-impl:2.20.0'
+    runtimeOnly  'org.apache.logging.log4j:log4j-core:2.20.0'
+
+    // ─── NHÓM 3: Tooling ─────────────────────────────────────────────────────
+    compileOnly          'org.projectlombok:lombok:1.18.30'
+    annotationProcessor  'org.projectlombok:lombok:1.18.30'
+
+    testImplementation 'junit:junit:4.13.2'
+}
+
+// Đảm bảo toàn bộ resources được đóng gói vào root JAR
+processResources {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    from('src/main/resources') {
+        include '**'
+    }
+}
+
+shadowJar {
+    archiveFileName.set("kaizen-stream-processing-1.0-SNAPSHOT.jar")
+    archiveClassifier.set('')
+    mergeServiceFiles()
+    exclude 'META-INF/*.SF'
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
+}

@@ -1,0 +1,15 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "productId": { "type": "keyword" },
+      "indication": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "isPrescription": { "type": "boolean" },
+      "specialtyDisease": { "type": "keyword" }
+    }
+  }
+}

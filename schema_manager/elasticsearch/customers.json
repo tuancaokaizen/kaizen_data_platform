@@ -1,0 +1,20 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "keyword" },
+      "fullName": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "phone": { "type": "keyword" },
+      "wardId": { "type": "keyword" },
+      "address": { "type": "text" },
+      "yearOfBirth": { "type": "integer" },
+      "gender": { "type": "keyword" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}

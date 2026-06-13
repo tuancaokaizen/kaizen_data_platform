@@ -1,0 +1,55 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "code": { "type": "keyword" },
+      "name": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "startDate": { "type": "date" },
+      "endDate": { "type": "date" },
+      "status": { "type": "boolean" },
+      "type": { "type": "keyword" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" },
+      "vouchers": {
+        "type": "nested",
+        "properties": {
+          "code": { "type": "keyword" },
+          "name": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+          "voucherAmount": { "type": "integer" },
+          "minOrderValue": { "type": "integer" },
+          "startDate": { "type": "date" },
+          "endDate": { "type": "date" },
+          "issuedQuantity": { "type": "integer" },
+          "status": { "type": "boolean" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" },
+          "voucherSeries": {
+            "type": "nested",
+            "properties": {
+              "seriesCode": { "type": "keyword" },
+              "expiryDay": { "type": "integer" },
+              "status": { "type": "keyword" },
+              "createdDate": { "type": "date" },
+              "modifiedDate": { "type": "date" }
+            }
+          }
+        }
+      },
+      "gifts": {
+        "type": "nested",
+        "properties": {
+          "id": { "type": "keyword" },
+          "productId": { "type": "keyword" },
+          "promotionQuantity": { "type": "integer" },
+          "status": { "type": "boolean" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      }
+    }
+  }
+}

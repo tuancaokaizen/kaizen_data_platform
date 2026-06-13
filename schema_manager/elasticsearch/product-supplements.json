@@ -1,0 +1,14 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "productId": { "type": "keyword" },
+      "primaryFunction": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "brand": { "type": "keyword" }
+    }
+  }
+}

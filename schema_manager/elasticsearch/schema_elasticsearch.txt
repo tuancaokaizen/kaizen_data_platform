@@ -1,0 +1,411 @@
+# =========================================================
+# KỊCH BẢN TẠO INDEX TRONG ELASTICSEARCH (KIBANA DEV TOOLS)
+# Cấu hình: 2 Shards cho mỗi index
+# =========================================================
+
+# 1. Index: geography
+PUT /geography
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "keyword" },
+      "name": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "population": { "type": "integer" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}
+
+###
+
+# 2. Index: products
+PUT /products
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "keyword" },
+      "name": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "type": { "type": "keyword" },
+      "unit": { "type": "keyword" },
+      "stockPrice": { "type": "integer" },
+      "retailPrice": { "type": "integer" },
+      "taxRate": { "type": "integer" },
+      "isPromotion": { "type": "boolean" },
+      "status": { "type": "boolean" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}
+
+###
+
+# 3. Index: product-supplements
+PUT /product-supplements
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "productId": { "type": "keyword" },
+      "primaryFunction": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "brand": { "type": "keyword" }
+    }
+  }
+}
+
+###
+
+# 4. Index: product-medicines
+PUT /product-medicines
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "productId": { "type": "keyword" },
+      "indication": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "isPrescription": { "type": "boolean" },
+      "specialtyDisease": { "type": "keyword" }
+    }
+  }
+}
+
+###
+
+# 5. Index: shops
+PUT /shops
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "code": { "type": "keyword" },
+      "name": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "address": { "type": "text" },
+      "wardId": { "type": "keyword" },
+      "managerId": { "type": "keyword" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}
+
+###
+
+# 6. Index: employees
+PUT /employees
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "keyword" },
+      "name": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "degree": { "type": "keyword" },
+      "phone": { "type": "keyword" },
+      "address": { "type": "text" },
+      "status": { "type": "boolean" },
+      "shopCode": { "type": "keyword" },
+      "isManager": { "type": "boolean" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}
+
+###
+
+# 7. Index: employee-salaries
+PUT /employee-salaries
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "keyword" },
+      "employeeId": { "type": "keyword" },
+      "shopCode": { "type": "keyword" },
+      "salaryMonth": { "type": "date" },
+      "baseSalary": { "type": "long" },
+      "commissionRate": { "type": "integer" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}
+
+###
+
+# 8. Index: customers
+PUT /customers
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "keyword" },
+      "fullName": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "phone": { "type": "keyword" },
+      "wardId": { "type": "keyword" },
+      "address": { "type": "text" },
+      "yearOfBirth": { "type": "integer" },
+      "gender": { "type": "keyword" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}
+
+###
+
+# 9. Index: promotions (Consolidated Schema: nests Vouchers, VoucherSeries, and Gifts)
+PUT /promotions
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "code": { "type": "keyword" },
+      "name": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "startDate": { "type": "date" },
+      "endDate": { "type": "date" },
+      "status": { "type": "boolean" },
+      "type": { "type": "keyword" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" },
+      "vouchers": {
+        "type": "nested",
+        "properties": {
+          "code": { "type": "keyword" },
+          "name": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+          "voucherAmount": { "type": "integer" },
+          "minOrderValue": { "type": "integer" },
+          "startDate": { "type": "date" },
+          "endDate": { "type": "date" },
+          "issuedQuantity": { "type": "integer" },
+          "status": { "type": "boolean" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" },
+          "voucherSeries": {
+            "type": "nested",
+            "properties": {
+              "seriesCode": { "type": "keyword" },
+              "expiryDay": { "type": "integer" },
+              "status": { "type": "keyword" },
+              "createdDate": { "type": "date" },
+              "modifiedDate": { "type": "date" }
+            }
+          }
+        }
+      },
+      "gifts": {
+        "type": "nested",
+        "properties": {
+          "id": { "type": "keyword" },
+          "productId": { "type": "keyword" },
+          "promotionQuantity": { "type": "integer" },
+          "status": { "type": "boolean" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      }
+    }
+  }
+}
+
+###
+
+# 13. Index: payment-types
+PUT /payment-types
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "type": { "type": "short" },
+      "name": { "type": "keyword" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}
+
+###
+
+# 14. Index: payment-methods
+PUT /payment-methods
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "short" },
+      "name": { "type": "keyword" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}
+
+###
+
+# 15. Index: order-bundles
+PUT /order-bundles
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "order": {
+        "properties": {
+          "id": { "type": "keyword" },
+          "customerId": { "type": "keyword" },
+          "shopCode": { "type": "keyword" },
+          "transactionDate": { "type": "date" },
+          "totalBill": { "type": "integer" },
+          "totalDiscount": { "type": "integer" },
+          "totalPayment": { "type": "integer" },
+          "employeeSaleId": { "type": "keyword" },
+          "status": { "type": "keyword" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" },
+          "voucherSeriesCode": { "type": "keyword" }
+        }
+      },
+      "orderItems": {
+        "type": "nested",
+        "properties": {
+          "id": { "type": "keyword" },
+          "orderId": { "type": "keyword" },
+          "productId": { "type": "keyword" },
+          "quantity": { "type": "integer" },
+          "unitPrice": { "type": "integer" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      },
+      "returnRecord": {
+        "properties": {
+          "id": { "type": "keyword" },
+          "orderId": { "type": "keyword" },
+          "returnAmount": { "type": "integer" },
+          "createdDate": { "type": "date" },
+          "modifiedTimeMs": { "type": "long" }
+        }
+      },
+      "returnItems": {
+        "type": "nested",
+        "properties": {
+          "id": { "type": "keyword" },
+          "returnId": { "type": "keyword" },
+          "productId": { "type": "keyword" },
+          "quantity": { "type": "integer" },
+          "unitPrice": { "type": "integer" },
+          "orderItemId": { "type": "keyword" },
+          "orderId": { "type": "keyword" },
+          "totalAmount": { "type": "integer" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      }
+    }
+  }
+}
+
+###
+
+# 16. Index: payment-bundles
+PUT /payment-bundles
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "payment": {
+        "properties": {
+          "id": { "type": "keyword" },
+          "paymentType": { "type": "short" },
+          "status": { "type": "keyword" },
+          "totalPayment": { "type": "integer" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      },
+      "transactions": {
+        "type": "nested",
+        "properties": {
+          "id": { "type": "keyword" },
+          "paymentId": { "type": "keyword" },
+          "paymentMethodId": { "type": "short" },
+          "amount": { "type": "integer" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      },
+      "orderPayment": {
+        "properties": {
+          "id": { "type": "keyword" },
+          "paymentId": { "type": "keyword" },
+          "orderId": { "type": "keyword" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      },
+      "returnPayment": {
+        "properties": {
+          "id": { "type": "keyword" },
+          "paymentId": { "type": "keyword" },
+          "returnId": { "type": "keyword" },
+          "orderId": { "type": "keyword" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      }
+    }
+  }
+}
