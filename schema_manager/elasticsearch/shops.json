@@ -1,0 +1,18 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "code": { "type": "keyword" },
+      "name": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "address": { "type": "text" },
+      "wardId": { "type": "keyword" },
+      "managerId": { "type": "keyword" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}

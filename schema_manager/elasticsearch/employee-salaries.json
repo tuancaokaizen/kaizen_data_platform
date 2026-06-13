@@ -1,0 +1,19 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "keyword" },
+      "employeeId": { "type": "keyword" },
+      "shopCode": { "type": "keyword" },
+      "salaryMonth": { "type": "date" },
+      "baseSalary": { "type": "long" },
+      "commissionRate": { "type": "integer" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}

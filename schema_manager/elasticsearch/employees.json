@@ -1,0 +1,21 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "id": { "type": "keyword" },
+      "name": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+      "degree": { "type": "keyword" },
+      "phone": { "type": "keyword" },
+      "address": { "type": "text" },
+      "status": { "type": "boolean" },
+      "shopCode": { "type": "keyword" },
+      "isManager": { "type": "boolean" },
+      "createdDate": { "type": "date" },
+      "modifiedDate": { "type": "date" }
+    }
+  }
+}

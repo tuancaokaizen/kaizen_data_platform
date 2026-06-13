@@ -1,0 +1,31 @@
+plugins {
+    id 'scala'
+}
+
+group = 'com.kaizen'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.scala-lang:scala-library:2.12.18'
+    implementation 'org.apache.spark:spark-core_2.12:3.4.1'
+    implementation 'org.apache.spark:spark-sql_2.12:3.4.1'
+    implementation 'org.postgresql:postgresql:42.6.0'
+    implementation 'org.ini4j:ini4j:0.5.4'
+}
+
+task buildBatchJar(type: Jar) {
+    archiveClassifier = 'batch'
+    from sourceSets.main.output
+    from {
+        configurations.runtimeClasspath.filter { it.exists() }.collect { it.isDirectory() ? it : zipTree(it) }
+    } {
+        exclude "META-INF/*.SF"
+        exclude "META-INF/*.DSA"
+        exclude "META-INF/*.RSA"
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}

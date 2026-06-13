@@ -1,0 +1,51 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 2
+    }
+  },
+  "mappings": {
+    "properties": {
+      "payment": {
+        "properties": {
+          "id": { "type": "keyword" },
+          "paymentType": { "type": "short" },
+          "status": { "type": "keyword" },
+          "totalPayment": { "type": "integer" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      },
+      "transactions": {
+        "type": "nested",
+        "properties": {
+          "id": { "type": "keyword" },
+          "paymentId": { "type": "keyword" },
+          "paymentMethodId": { "type": "short" },
+          "amount": { "type": "integer" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      },
+      "orderPayment": {
+        "properties": {
+          "id": { "type": "keyword" },
+          "paymentId": { "type": "keyword" },
+          "orderId": { "type": "keyword" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      },
+      "returnPayment": {
+        "properties": {
+          "id": { "type": "keyword" },
+          "paymentId": { "type": "keyword" },
+          "returnId": { "type": "keyword" },
+          "orderId": { "type": "keyword" },
+          "createdDate": { "type": "date" },
+          "modifiedDate": { "type": "date" }
+        }
+      }
+    }
+  }
+}

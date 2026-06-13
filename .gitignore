@@ -1,0 +1,61 @@
+# Gradle / Build
+.gradle/
+**/build/
+**/.gradle/
+**/.gradle-home/
+**/gradle-home/
+**/gradle-tmp/
+
+# Scala / Metals / Bloop
+.bloop/
+**/.bloop/
+.metals/
+**/.metals/
+out/
+bin/
+**/bin/
+
+# IDEs / Editors
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+*.swp
+*~
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# MinIO Client & Local Cache
+.mc/
+**/.mc/
+.tmp_home/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+.venv/
+.pytest_cache/
+
+# Savepoints & Checkpoints
+.savepoints/
+**/.savepoints/
+
+# Kubernetes / Credentials / Local Configs
+*config.k3s-new
+**/config.k3s-new
+dags/config.k3s-new
+
+# Build Artifacts
+*.jar
+**/*.jar
+*.tar.gz
+*.zip
