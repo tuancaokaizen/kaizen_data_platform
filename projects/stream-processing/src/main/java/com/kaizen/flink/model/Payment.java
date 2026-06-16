@@ -12,7 +12,7 @@ import java.io.Serializable;
 @AllArgsConstructor
 public class Payment implements Serializable {
     private String id;          // PK
-    private short paymentType;  // FK → PaymentType.Type (1=cash,2=card,3=ewallet)
+    private short paymentType;  // FK → PaymentType.Type (1=Phiếu thu, 2=Phiếu chi)
     private String status;      // nullable: "SUCCESS" | "FAILED" | "PENDING"
     private int totalPayment;   // VND
     private long createdDate;

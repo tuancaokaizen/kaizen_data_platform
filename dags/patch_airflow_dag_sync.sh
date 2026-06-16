@@ -104,7 +104,7 @@ spec:
         command:
         - \"/bin/bash\"
         - \"-c\"
-        - \"if [ -f /opt/airflow/dags/requirements.txt ]; then pip install -r /opt/airflow/dags/requirements.txt; fi && pip install apache-airflow-providers-postgres==6.0.0 apache-airflow-providers-neo4j==3.7.0 && airflow scheduler\"
+        - \"if [ -f /opt/airflow/dags/requirements.txt ]; then pip install -r /opt/airflow/dags/requirements.txt; fi && pip install apache-airflow-providers-postgres==6.0.0 apache-airflow-providers-neo4j==3.7.0 apache-airflow-providers-apache-spark==4.11.0 && airflow scheduler\"
         volumeMounts:
         - name: dags
           mountPath: /opt/airflow/dags
@@ -182,7 +182,7 @@ spec:
         command:
         - \"/bin/bash\"
         - \"-c\"
-        - \"if [ -f /opt/airflow/dags/requirements.txt ]; then pip install -r /opt/airflow/dags/requirements.txt; fi && pip install apache-airflow-providers-postgres==6.0.0 apache-airflow-providers-neo4j==3.7.0 && airflow webserver\"
+        - \"if [ -f /opt/airflow/dags/requirements.txt ]; then pip install -r /opt/airflow/dags/requirements.txt; fi && pip install apache-airflow-providers-postgres==6.0.0 apache-airflow-providers-neo4j==3.7.0 apache-airflow-providers-apache-spark==4.11.0 && airflow webserver\"
         volumeMounts:
         - name: dags
           mountPath: /opt/airflow/dags

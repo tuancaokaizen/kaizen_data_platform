@@ -41,15 +41,17 @@ public class PaymentProducerJob {
                 int count = 0;
                 long windowStart = System.currentTimeMillis();
                 while (running) {
-                    PaymentBundle bundle = PaymentSimulator.generate();
-                    ctx.collect(JsonUtils.toJson(bundle));
-                    count++;
-                    if (count % 10 == 0) {
-                        long elapsed = System.currentTimeMillis() - windowStart;
-                        LOG.info("PaymentProducer: {} bundles in {}ms ({} bundle/s)",
-                                count, elapsed, count * 1000L / Math.max(1, elapsed));
-                        count = 0;
-                        windowStart = System.currentTimeMillis();
+                    PaymentBundle bundle = PaymentSimulator.generate(config);
+                    if (bundle != null) {
+                        ctx.collect(JsonUtils.toJson(bundle));
+                        count++;
+                        if (count % 10 == 0) {
+                            long elapsed = System.currentTimeMillis() - windowStart;
+                            LOG.info("PaymentProducer: {} bundles in {}ms ({} bundle/s)",
+                                    count, elapsed, count * 1000L / Math.max(1, elapsed));
+                            count = 0;
+                            windowStart = System.currentTimeMillis();
+                        }
                     }
                     Thread.sleep(emitMs);
                 }

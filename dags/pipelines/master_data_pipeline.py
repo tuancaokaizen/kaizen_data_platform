@@ -4,6 +4,7 @@ import os
 
 from airflow import DAG  # type: ignore
 from airflow.operators.python import PythonOperator  # type: ignore
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator  # type: ignore
 
 # Allow importing from jobs folder
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -28,4 +29,11 @@ with DAG(
         python_callable=generate_all_master_data
     )
 
-    generate_master_data_task
+    trigger_ingest = TriggerDagRunOperator(
+        task_id='trigger_master_data_ingest',
+        trigger_dag_id='spark_master_data_ingest_pipeline',
+        conf="{{ dag_run.conf }}",
+        wait_for_completion=False
+    )
+
+    generate_master_data_task >> trigger_ingest

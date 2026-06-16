@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS "order"."Return"
     "OrderId" text NOT NULL,
     "ReturnAmount" integer,
     "CreatedDate" timestamp(6) with time zone,
-    "ModifiedDate" time(6) without time zone,
+    "ModifiedDate" timestamp(6) with time zone,
     PRIMARY KEY ("Id", "OrderId")
 );
 

@@ -1,0 +1,135 @@
+# Table Ingestion Configurations
+# ── 1. Master Data (Full Load) ──────────────────────────────────────────
+geography:
+  source: 'public."Geography"'
+  load_type: 'full'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+shop:
+  source: 'shop."Shop"'
+  load_type: 'full'
+  join_key: 'Code'
+  watermark_col: 'ModifiedDate'
+
+employee:
+  source: 'shop."Employee"'
+  load_type: 'full'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+product:
+  source: 'product."Product"'
+  load_type: 'full'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+product_medicine:
+  source: 'product."ProductMedicine"'
+  load_type: 'full'
+  join_key: 'ProductId'
+  watermark_col: 'CreatedDate'
+
+product_supplement:
+  source: 'product."ProductSupplement"'
+  load_type: 'full'
+  join_key: 'ProductId'
+  watermark_col: 'CreatedDate'
+
+customer:
+  source: 'customer."Customer"'
+  load_type: 'full'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+payment_type:
+  source: 'payment."PaymentType"'
+  load_type: 'full'
+  join_key: 'Type'
+  watermark_col: 'ModifiedDate'
+
+payment_method:
+  source: 'payment."PaymentMethod"'
+  load_type: 'full'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+# ── 2. Transaction Data (Incremental Load) ──────────────────────────────
+order:
+  source: '"order"."Order"'
+  load_type: 'incremental'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+order_item:
+  source: '"order"."OrderItem"'
+  load_type: 'incremental'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+return:
+  source: '"order"."Return"'
+  load_type: 'incremental'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+return_item:
+  source: '"order"."ReturnItem"'
+  load_type: 'incremental'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+payment:
+  source: 'payment."Payment"'
+  load_type: 'incremental'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+transaction:
+  source: 'payment."Transaction"'
+  load_type: 'incremental'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+order_payment:
+  source: 'payment."OrderPayment"'
+  load_type: 'incremental'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+return_payment:
+  source: 'payment."ReturnPayment"'
+  load_type: 'incremental'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+# ── 3. Periodical / Promotion Data (Incremental Load) ───────────────────
+employee_salary:
+  source: 'shop."EmployeeSalary"'
+  load_type: 'incremental'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'
+
+promotion:
+  source: 'promotion."Promotion"'
+  load_type: 'incremental'
+  join_key: 'Code'
+  watermark_col: 'ModifiedDate'
+
+voucher:
+  source: 'promotion."Voucher"'
+  load_type: 'incremental'
+  join_key: 'Code'
+  watermark_col: 'ModifiedDate'
+
+voucher_series:
+  source: 'promotion."VoucherSeries"'
+  load_type: 'incremental'
+  join_key: 'SeriesCode'
+  watermark_col: 'ModifiedDate'
+
+gift:
+  source: 'promotion."Gift"'
+  load_type: 'incremental'
+  join_key: 'Id'
+  watermark_col: 'ModifiedDate'

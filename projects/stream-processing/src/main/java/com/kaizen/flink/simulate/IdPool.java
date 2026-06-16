@@ -15,6 +15,7 @@ public final class IdPool {
     // ── Master Data IDs (Loaded dynamically) ──────────────────────────────────
     public static List<String> GEOGRAPHY_IDS   = Collections.emptyList();
     public static List<String> PRODUCT_IDS     = Collections.emptyList();
+    public static List<ProductRef> PRODUCTS     = Collections.emptyList();
     public static List<String> SHOP_CODES      = Collections.emptyList();
     public static List<String> EMPLOYEE_IDS    = Collections.emptyList();
     public static List<String> CUSTOMER_IDS    = Collections.emptyList();
@@ -24,8 +25,47 @@ public final class IdPool {
     public static List<VoucherRef> VOUCHERS     = Collections.emptyList();
     public static List<PromotionRef> PROMOTIONS = Collections.emptyList();
     public static List<GiftRef> GIFTS           = Collections.emptyList();
+    
+    public static List<ReturnRef> RETURNS       = Collections.emptyList();
+    public static final java.util.Queue<ReturnRef> GENERATED_RETURNS = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    
+    // In-memory caches to reduce PostgreSQL connection and query overhead during stream generation
+    private static final java.util.Queue<ReturnRef> UNPAID_RETURNS_CACHE = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private static final java.util.Queue<UnpaidOrderRef> UNPAID_ORDERS_CACHE = new java.util.concurrent.ConcurrentLinkedQueue<>();
 
     // ── Reference classes for time constraints & values ─────────────────────
+    public static final class ReturnRef {
+        public final String returnId;
+        public final String orderId;
+        public final int returnAmount;
+
+        public ReturnRef(String returnId, String orderId, int returnAmount) {
+            this.returnId = returnId;
+            this.orderId = orderId;
+            this.returnAmount = returnAmount;
+        }
+    }
+
+    public static final class ProductRef {
+        public final String id;
+        public final int retailPrice;
+
+        public ProductRef(String id, int retailPrice) {
+            this.id = id;
+            this.retailPrice = retailPrice;
+        }
+    }
+
+    public static final class UnpaidOrderRef {
+        public final String orderId;
+        public final int totalPayment;
+
+        public UnpaidOrderRef(String orderId, int totalPayment) {
+            this.orderId = orderId;
+            this.totalPayment = totalPayment;
+        }
+    }
+
     public static final class VoucherRef {
         public final String code;
         public final long startDate;
@@ -71,12 +111,12 @@ public final class IdPool {
     }
 
     // ── Reference data (smallint keys cho PaymentType / PaymentMethod) ───────
-    /** 1=Tiền mặt, 2=Thẻ ngân hàng, 3=Ví điện tử */
-    public static final short[] PAYMENT_TYPE_IDS    = {1, 2, 3};
+    /** 1=Phiếu thu, 2=Phiếu chi */
+    public static final short[] PAYMENT_TYPE_IDS    = {1, 2};
     public static final short[] PAYMENT_METHOD_IDS  = {1, 2, 3};
 
     public static final String[] PAYMENT_TYPE_NAMES   =
-            {"Thanh toán tiền mặt", "Thanh toán thẻ", "Thanh toán ví điện tử"};
+            {"Phiếu thu", "Phiếu chi"};
     public static final String[] PAYMENT_METHOD_NAMES =
             {"Tiền mặt", "Thẻ ngân hàng", "Ví điện tử (MoMo/ZaloPay)"};
 
@@ -91,7 +131,22 @@ public final class IdPool {
 
         try (java.sql.Connection conn = com.kaizen.flink.utils.PostgresSink.getConnection(config)) {
             GEOGRAPHY_IDS   = queryIds(conn, "SELECT \"Id\" FROM public.\"Geography\"");
-            PRODUCT_IDS     = queryIds(conn, "SELECT \"Id\" FROM product.\"Product\" WHERE \"Status\"=true AND \"IsPromotion\"=false");
+            
+            // Load Products with prices
+            List<ProductRef> products = new ArrayList<>();
+            List<String> productIds = new ArrayList<>();
+            try (java.sql.Statement stmt = conn.createStatement();
+                 java.sql.ResultSet rs = stmt.executeQuery("SELECT \"Id\", \"RetailPrice\" FROM product.\"Product\" WHERE \"Status\"=true AND \"IsPromotion\"=false")) {
+                while (rs.next()) {
+                    String id = rs.getString(1);
+                    int price = rs.getInt(2);
+                    products.add(new ProductRef(id, price));
+                    productIds.add(id);
+                }
+            }
+            PRODUCTS = Collections.unmodifiableList(products);
+            PRODUCT_IDS = Collections.unmodifiableList(productIds);
+
             SHOP_CODES      = queryIds(conn, "SELECT \"Code\" FROM shop.\"Shop\"");
             EMPLOYEE_IDS    = queryIds(conn, "SELECT \"Id\" FROM shop.\"Employee\" WHERE \"Status\"=true");
             CUSTOMER_IDS    = queryIds(conn, "SELECT \"Id\" FROM customer.\"Customer\"");
@@ -142,6 +197,20 @@ public final class IdPool {
                 }
             }
             GIFTS = Collections.unmodifiableList(gifts);
+
+            // Load Returns
+            List<ReturnRef> returns = new ArrayList<>();
+            try (java.sql.Statement stmt = conn.createStatement();
+                 java.sql.ResultSet rs = stmt.executeQuery("SELECT \"Id\", \"OrderId\", \"ReturnAmount\" FROM \"order\".\"Return\" LIMIT 1000")) {
+                while (rs.next()) {
+                    returns.add(new ReturnRef(
+                        rs.getString(1),
+                        rs.getString(2),
+                        rs.getInt(3)
+                    ));
+                }
+            }
+            RETURNS = Collections.unmodifiableList(returns);
 
             if (GEOGRAPHY_IDS.isEmpty()) {
                 throw new IllegalStateException("public.\"Geography\" table is empty. Generate master data first!");
@@ -205,5 +274,115 @@ public final class IdPool {
 
     public static short pickShort(short[] arr) {
         return arr[ThreadLocalRandom.current().nextInt(arr.length)];
+    }
+
+    private static long lastReturnsReloadTime = 0;
+
+    public static synchronized void reloadReturnsIfNecessary(FlinkConfig config) {
+        long now = System.currentTimeMillis();
+        if (now - lastReturnsReloadTime < 10000L) {
+            return;
+        }
+        lastReturnsReloadTime = now;
+        try (java.sql.Connection conn = com.kaizen.flink.utils.PostgresSink.getConnection(config)) {
+            List<ReturnRef> returns = new ArrayList<>();
+            try (java.sql.Statement stmt = conn.createStatement();
+                 java.sql.ResultSet rs = stmt.executeQuery("SELECT \"Id\", \"OrderId\", \"ReturnAmount\" FROM \"order\".\"Return\" LIMIT 1000")) {
+                while (rs.next()) {
+                    returns.add(new ReturnRef(
+                        rs.getString(1),
+                        rs.getString(2),
+                        rs.getInt(3)
+                    ));
+                }
+            }
+            RETURNS = Collections.unmodifiableList(returns);
+        } catch (Exception e) {
+            System.err.println("Failed to reload returns from Postgres: " + e.getMessage());
+        }
+    }
+
+    private static long lastOrdersReloadTime = 0;
+
+    public static synchronized void reloadOrdersIfNecessary(FlinkConfig config) {
+        long now = System.currentTimeMillis();
+        if (now - lastOrdersReloadTime < 10000L) {
+            return;
+        }
+        lastOrdersReloadTime = now;
+        try (java.sql.Connection conn = com.kaizen.flink.utils.PostgresSink.getConnection(config)) {
+            ORDER_IDS = queryIds(conn, "SELECT \"Id\" FROM \"order\".\"Order\" LIMIT 5000");
+        } catch (Exception e) {
+            System.err.println("Failed to reload order IDs from Postgres: " + e.getMessage());
+        }
+    }
+
+    public static synchronized List<ReturnRef> fetchUnpaidReturns(FlinkConfig config) {
+        List<ReturnRef> list = new ArrayList<>();
+        if (!UNPAID_RETURNS_CACHE.isEmpty()) {
+            list.add(UNPAID_RETURNS_CACHE.poll());
+            return list;
+        }
+
+        String sql = "SELECT r.\"Id\", r.\"OrderId\", r.\"ReturnAmount\" " +
+                     "FROM \"order\".\"Return\" r " +
+                     "WHERE NOT EXISTS (" +
+                     "  SELECT 1 FROM payment.\"ReturnPayment\" rp " +
+                     "  JOIN payment.\"Payment\" p ON rp.\"PaymentId\" = p.\"Id\" " +
+                     "  WHERE rp.\"ReturnId\" = r.\"Id\" AND rp.\"OrderId\" = r.\"OrderId\" AND p.\"Status\" = 'SUCCESS'" +
+                     ") " +
+                     "LIMIT 50";
+        try (java.sql.Connection conn = com.kaizen.flink.utils.PostgresSink.getConnection(config);
+             java.sql.Statement stmt = conn.createStatement();
+             java.sql.ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                UNPAID_RETURNS_CACHE.add(new ReturnRef(
+                    rs.getString(1),
+                    rs.getString(2),
+                    rs.getInt(3)
+                ));
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to fetch unpaid returns: " + e.getMessage());
+        }
+
+        if (!UNPAID_RETURNS_CACHE.isEmpty()) {
+            list.add(UNPAID_RETURNS_CACHE.poll());
+        }
+        return list;
+    }
+
+    public static synchronized List<UnpaidOrderRef> fetchUnpaidOrders(FlinkConfig config) {
+        List<UnpaidOrderRef> list = new ArrayList<>();
+        if (!UNPAID_ORDERS_CACHE.isEmpty()) {
+            list.add(UNPAID_ORDERS_CACHE.poll());
+            return list;
+        }
+
+        String sql = "SELECT o.\"Id\", o.\"TotalPayment\" " +
+                     "FROM \"order\".\"Order\" o " +
+                     "WHERE NOT EXISTS (" +
+                     "  SELECT 1 FROM payment.\"OrderPayment\" op " +
+                     "  JOIN payment.\"Payment\" p ON op.\"PaymentId\" = p.\"Id\" " +
+                     "  WHERE op.\"OrderId\" = o.\"Id\" AND p.\"Status\" = 'SUCCESS'" +
+                     ") " +
+                     "LIMIT 50";
+        try (java.sql.Connection conn = com.kaizen.flink.utils.PostgresSink.getConnection(config);
+             java.sql.Statement stmt = conn.createStatement();
+             java.sql.ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                UNPAID_ORDERS_CACHE.add(new UnpaidOrderRef(
+                    rs.getString(1),
+                    rs.getInt(2)
+                ));
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to fetch unpaid orders: " + e.getMessage());
+        }
+
+        if (!UNPAID_ORDERS_CACHE.isEmpty()) {
+            list.add(UNPAID_ORDERS_CACHE.poll());
+        }
+        return list;
     }
 }
