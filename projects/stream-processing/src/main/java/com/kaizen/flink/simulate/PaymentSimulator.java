@@ -32,7 +32,7 @@ public final class PaymentSimulator {
             IdPool.ReturnRef returnRef = unpaidReturns.get(0);
             
             // ── HOÀN TIỀN TRẢ HÀNG (CHI) ──
-            String payId   = "PAY-REF-" + uid12();
+            String payId   = "SPAY-REF-" + uid12();
             short payType  = 2; // Phiếu chi
             // Hoàn tiền thì status mặc định luôn là SUCCESS (Giao dịch hoàn tất)
             String status  = "SUCCESS";
@@ -42,10 +42,10 @@ public final class PaymentSimulator {
             // ── Transactions (giao dịch hoàn tiền) ──
             List<PaymentTransaction> txs = new ArrayList<>();
             short method = IdPool.pickShort(IdPool.PAYMENT_METHOD_IDS);
-            txs.add(new PaymentTransaction("TX-" + uid12(), payId, method, total, now, now));
+            txs.add(new PaymentTransaction("STX-" + uid12(), payId, method, total, now, now));
 
             // ── ReturnPayment (Liên kết chi trả hoàn tiền -> Đơn trả) ──
-            ReturnPayment rp = new ReturnPayment("RP-" + uid12(), payId, returnRef.returnId, returnRef.orderId, now, now);
+            ReturnPayment rp = new ReturnPayment("SRP-" + uid12(), payId, returnRef.returnId, returnRef.orderId, now, now);
 
             // Hoàn tiền thì KHÔNG có OrderPayment (bán hàng)
             return new PaymentBundle(payment, txs, null, rp);
@@ -59,7 +59,7 @@ public final class PaymentSimulator {
             int total = orderRef.totalPayment;
 
             // ── THANH TOÁN MUA HÀNG (THU) ──
-            String payId   = "PAY-" + uid12();
+            String payId   = "SPAY-" + uid12();
             short payType  = 1; // Phiếu thu
             
             // Giả lập 90% thành công, 10% thất bại/chờ xử lý để mô phỏng thực tế.
@@ -84,15 +84,15 @@ public final class PaymentSimulator {
                 int part2 = total - part1;
                 short m1  = IdPool.pickShort(IdPool.PAYMENT_METHOD_IDS);
                 short m2  = (m1 == 1) ? (short) 2 : (short) 1;
-                txs.add(new PaymentTransaction("TX-" + uid12(), payId, m1, part1, now, now));
-                txs.add(new PaymentTransaction("TX-" + uid12(), payId, m2, part2, now, now));
+                txs.add(new PaymentTransaction("STX-" + uid12(), payId, m1, part1, now, now));
+                txs.add(new PaymentTransaction("STX-" + uid12(), payId, m2, part2, now, now));
             } else {
                 short method = IdPool.pickShort(IdPool.PAYMENT_METHOD_IDS);
-                txs.add(new PaymentTransaction("TX-" + uid12(), payId, method, total, now, now));
+                txs.add(new PaymentTransaction("STX-" + uid12(), payId, method, total, now, now));
             }
 
             // ── OrderPayment (Liên kết thanh toán mua hàng -> Đơn hàng) ──
-            OrderPayment op = new OrderPayment("OP-" + uid12(), payId, orderId, now, now);
+            OrderPayment op = new OrderPayment("SOP-" + uid12(), payId, orderId, now, now);
 
             // Thanh toán mua hàng mới thì chưa có ReturnPayment
             return new PaymentBundle(payment, txs, op, null);
