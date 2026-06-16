@@ -45,7 +45,14 @@ object PartitionRealignmentJob {
 
           // 2. Run Iceberg's rewrite_data_files procedure to rewrite historical data into partitions
           println(s"Invoking Iceberg rewrite_data_files procedure for $table to reorganize historical data...")
-          spark.sql(s"CALL nessie.system.rewrite_data_files(table => '$table')")
+          spark.sql(
+            s"""
+               |CALL nessie.system.rewrite_data_files(
+               |  table => '$table',
+               |  options => map('min-input-files', '1')
+               |)
+               |""".stripMargin
+          )
           println(s"✔ Completed realignment for table: $table")
         } else {
           println(s"Table $table does not exist. Skipping.")

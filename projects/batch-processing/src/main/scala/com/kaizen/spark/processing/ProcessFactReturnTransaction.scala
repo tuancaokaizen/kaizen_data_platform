@@ -39,13 +39,14 @@ object ProcessFactReturnTransaction {
           (col("CreatedDate") >= fromTs && col("CreatedDate") < toTs) ||
           (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs)
         )
+        .dropDuplicates("Id")
 
       if (returnFnd.isEmpty) {
         println("No returns found in the specified range. Skipping returns transformation.")
       } else {
         val returnItemFnd = spark.table("nessie.fnd.return_item")
         val filteredReturnItems = returnItemFnd.filter(col("UnitPrice") > 0)
-        val orderFnd = spark.table("nessie.fnd.order")
+        val orderFnd = spark.table("nessie.fnd.order").dropDuplicates("Id")
 
         // Transform and map to Fact schema
         val factReturnDf = filteredReturnItems
@@ -67,6 +68,7 @@ object ProcessFactReturnTransaction {
             filteredReturnItems("CreatedDate").as("CreatedDate"),
             filteredReturnItems("ModifiedDate").as("ModifiedDate")
           )
+          .dropDuplicates("TransactionId")
 
         // Write to Iceberg
         val targetExists = SparkIOUtils.tableExists(spark, targetTable)

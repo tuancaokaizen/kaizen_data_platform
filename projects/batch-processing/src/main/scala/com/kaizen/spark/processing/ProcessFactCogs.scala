@@ -39,19 +39,21 @@ object ProcessFactCogs {
           (col("TransactionDate") >= fromTs && col("TransactionDate") < toTs) ||
           (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs)
         )
+        .dropDuplicates("Id")
 
       val returnFnd = spark.table("nessie.fnd.return")
         .filter(
           (col("CreatedDate") >= fromTs && col("CreatedDate") < toTs) ||
           (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs)
         )
+        .dropDuplicates("Id")
 
       if (orderFnd.isEmpty && returnFnd.isEmpty) {
         println("No sales orders or returns found in the specified range. Skipping COGS transformation.")
       } else {
         val orderItemFnd = spark.table("nessie.fnd.order_item")
         val returnItemFnd = spark.table("nessie.fnd.return_item")
-        val productFnd = spark.table("nessie.fnd.product")
+        val productFnd = spark.table("nessie.fnd.product").dropDuplicates("Id")
 
         // 1. Sales COGS (exclude promotional products where UnitPrice = 0)
         val salesCogsDf = orderItemFnd
@@ -93,7 +95,7 @@ object ProcessFactCogs {
           )
 
         // Union datasets
-        val unionedDf = salesCogsDf.union(returnCogsDf)
+        val unionedDf = salesCogsDf.union(returnCogsDf).dropDuplicates("TransactionId")
 
         // Write to Iceberg Nessie
         val targetExists = SparkIOUtils.tableExists(spark, targetTable)

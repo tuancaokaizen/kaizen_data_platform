@@ -87,10 +87,15 @@ def run_clickhouse_setup(table_name, layer=None):
                 print(f"Executing query: {query}")
                 response = requests.post(url, params=params, data=query, timeout=30)
                 if response.status_code != 200:
-                    raise Exception(f"ClickHouse HTTP {response.status_code}: {response.text}")
+                    err_msg = response.text
+                    if "CANNOT_EXTRACT_TABLE_STRUCTURE" in err_msg or "Code: 636" in err_msg:
+                        print(f"WARNING: ClickHouse table '{table_name}' could not be created because no Parquet files exist in S3 (path might be empty). Skipping table creation.")
+                        return
+                    raise Exception(f"ClickHouse HTTP {response.status_code}: {err_msg}")
             print(f"Successfully created ClickHouse tables for '{table_name}' via {host}")
             return
         except Exception as e:
+            # If we returned early from inside the try block (e.g. on warning), we won't hit this
             last_err = e
             print(f"Failed to execute queries on ClickHouse host {host}: {e}")
 

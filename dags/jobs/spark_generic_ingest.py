@@ -69,12 +69,20 @@ def get_ingestion_task(table_key):
     watermark_template = f"{{{{ (dag_run.conf.get(\"{task_id}_watermarkColumn\") if dag_run.conf else None) or \"{config['watermark_col']}\" }}}}"
     join_key_template = f"{{{{ (dag_run.conf.get(\"{task_id}_joinKey\") if dag_run.conf else None) or \"{config['join_key']}\" }}}}"
     
-    # Jinja templates to support manual date range backfills defaulting to D-1 [yesterday, today)
-    from_date_tmpl = (
-        "{% if dag_run.conf and dag_run.conf.get('useWatermark') %}{% else %}"
-        "{{ (dag_run.conf.get('fromDate') if dag_run.conf else None) or (macros.ds_add(ds, -1) if dag_run.external_trigger else (data_interval_start | ds)) }}"
-        "{% endif %}"
-    )
+    # Jinja templates to support manual date range backfills defaulting to D-1 [yesterday, today) or start of month
+    range_type = config.get("range_type", "daily")
+    if range_type == "start_of_month":
+        from_date_tmpl = (
+            "{% if dag_run.conf and dag_run.conf.get('useWatermark') %}{% else %}"
+            "{{ (dag_run.conf.get('fromDate') if dag_run.conf else None) or (ds[0:7] ~ '-01') }}"
+            "{% endif %}"
+        )
+    else:
+        from_date_tmpl = (
+            "{% if dag_run.conf and dag_run.conf.get('useWatermark') %}{% else %}"
+            "{{ (dag_run.conf.get('fromDate') if dag_run.conf else None) or (macros.ds_add(ds, -1) if dag_run.external_trigger else (data_interval_start | ds)) }}"
+            "{% endif %}"
+        )
     to_date_tmpl = (
         "{% if dag_run.conf and dag_run.conf.get('useWatermark') %}{% else %}"
         "{{ (dag_run.conf.get('toDate') if dag_run.conf else None) or (ds if dag_run.external_trigger else (data_interval_end | ds)) }}"
@@ -104,7 +112,7 @@ def get_ingestion_task(table_key):
         "arguments": [full_command],
         "get_logs": True,
         "in_cluster": True,
-        "on_finish_action": "keep_pod",
+        "on_finish_action": "delete_succeeded_pod",
         "env_vars": {
             "SPARK_SUBMIT_OPTS": "-Divy.default.ivy.user.dir=/tmp/.ivy2 -Divy.home=/tmp/.ivy2"
         }
@@ -184,7 +192,7 @@ def get_transformer_task(task_id, transformer_class):
         "arguments": [full_command],
         "get_logs": True,
         "in_cluster": True,
-        "on_finish_action": "keep_pod",
+        "on_finish_action": "delete_succeeded_pod",
         "env_vars": {
             "SPARK_SUBMIT_OPTS": "-Divy.default.ivy.user.dir=/tmp/.ivy2 -Divy.home=/tmp/.ivy2"
         }

@@ -109,27 +109,32 @@ employee_salary:
   load_type: 'incremental'
   join_key: 'Id'
   watermark_col: 'ModifiedDate'
+  range_type: 'start_of_month'
 
 promotion:
   source: 'promotion."Promotion"'
   load_type: 'incremental'
   join_key: 'Code'
   watermark_col: 'ModifiedDate'
+  range_type: 'start_of_month'
 
 voucher:
   source: 'promotion."Voucher"'
   load_type: 'incremental'
   join_key: 'Code'
   watermark_col: 'ModifiedDate'
+  range_type: 'start_of_month'
 
 voucher_series:
   source: 'promotion."VoucherSeries"'
   load_type: 'incremental'
   join_key: 'SeriesCode'
   watermark_col: 'ModifiedDate'
+  range_type: 'start_of_month'
 
 gift:
   source: 'promotion."Gift"'
   load_type: 'incremental'
   join_key: 'Id'
   watermark_col: 'ModifiedDate'
+  range_type: 'start_of_month'

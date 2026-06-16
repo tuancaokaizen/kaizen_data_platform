@@ -39,12 +39,14 @@ object ProcessFactPromotionCost {
           (col("TransactionDate") >= fromTs && col("TransactionDate") < toTs) ||
           (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs)
         )
+        .dropDuplicates("Id")
 
       val returnFnd = spark.table("nessie.fnd.return")
         .filter(
           (col("CreatedDate") >= fromTs && col("CreatedDate") < toTs) ||
           (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs)
         )
+        .dropDuplicates("Id")
 
       if (orderFnd.isEmpty && returnFnd.isEmpty) {
         println("No sales orders or returns found in the specified range. Skipping promotion cost transformation.")
@@ -172,6 +174,7 @@ object ProcessFactPromotionCost {
           .union(returnVouchersDf)
           .union(salesGiftsDf)
           .union(returnGiftsDf)
+          .dropDuplicates("TransactionId")
 
         // Write to Iceberg Nessie
         val targetExists = SparkIOUtils.tableExists(spark, targetTable)

@@ -131,6 +131,15 @@ object SparkIOUtils {
       .format("iceberg")
       .mode(mode)
       .saveAsTable(table)
+
+    if (mode == "overwrite") {
+      try {
+        println(s"Expiring old snapshots for $table to prevent duplicate S3 file reads...")
+        spark.sql(s"CALL nessie.system.expire_snapshots(table => '$table', retain_last => 1)")
+      } catch {
+        case e: Exception => println(s"Warning: Could not expire snapshots for $table: ${e.getMessage}")
+      }
+    }
   }
 
   /**
@@ -189,6 +198,13 @@ object SparkIOUtils {
            |""".stripMargin
       println(s"Executing Iceberg MERGE INTO: $targetTable using join condition: $joinCondition")
       spark.sql(sqlText)
+
+      try {
+        println(s"Expiring old snapshots for $targetTable to prevent duplicate S3 file reads...")
+        spark.sql(s"CALL nessie.system.expire_snapshots(table => '$targetTable', retain_last => 1)")
+      } catch {
+        case e: Exception => println(s"Warning: Could not expire snapshots for $targetTable: ${e.getMessage}")
+      }
     } finally {
       spark.catalog.dropTempView(tempViewName)
     }

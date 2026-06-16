@@ -39,6 +39,7 @@ object ProcessFactSalesTransaction {
           (col("TransactionDate") >= fromTs && col("TransactionDate") < toTs) ||
           (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs)
         )
+        .dropDuplicates("Id")
 
       if (orderFnd.isEmpty) {
         println("No sales orders found in the specified range. Skipping sales transformation.")
@@ -71,6 +72,7 @@ object ProcessFactSalesTransaction {
             filteredOrderItems("CreatedDate").as("CreatedDate"),
             filteredOrderItems("ModifiedDate").as("ModifiedDate")
           )
+          .dropDuplicates("TransactionId")
 
         // Write to Iceberg
         val targetExists = SparkIOUtils.tableExists(spark, targetTable)
