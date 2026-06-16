@@ -39,25 +39,76 @@ def run_clickhouse_setup(table_name, layer=None):
         "password": password
     }
 
+    def resolve_iceberg_path(lyr, tbl):
+        import boto3
+        from botocore.client import Config
+        try:
+            s3 = boto3.client(
+                's3',
+                endpoint_url=minio_endpoint,
+                aws_access_key_id=minio_user,
+                aws_secret_access_key=minio_pass,
+                config=Config(signature_version='s3v4'),
+                verify=False
+            )
+            bucket_name = 'iceberg-data'
+            prefix = f"{lyr}/{tbl}_"
+            
+            response = s3.list_objects_v2(
+                Bucket=bucket_name,
+                Prefix=prefix,
+                Delimiter='/'
+            )
+            prefixes = response.get('CommonPrefixes', [])
+            if prefixes:
+                folder_path = prefixes[0]['Prefix'].rstrip('/')
+                resolved = f"{minio_endpoint}/{bucket_name}/{folder_path}"
+                print(f"Resolved Iceberg path for {lyr}.{tbl} to: {resolved}")
+                return resolved
+            else:
+                print(f"WARNING: No Iceberg folder found for prefix '{prefix}' in MinIO. Falling back to S3 wildcard.")
+                return None
+        except Exception as e:
+            print(f"WARNING: Error resolving Iceberg path via boto3: {e}. Falling back to S3 wildcard.")
+            return None
+
     if layer == "dw":
-        sql = f"""
-        CREATE DATABASE IF NOT EXISTS dw;
-
-        DROP TABLE IF EXISTS dw.{table_name};
-        CREATE TABLE dw.{table_name}
-        ENGINE = S3(
-            '{minio_endpoint}/iceberg-data/dw/{table_name}_*/data/*.parquet',
-            '{minio_user}',
-            '{minio_pass}',
-            'Parquet'
-        );
-        """
+        resolved_path = resolve_iceberg_path('dw', table_name)
+        if resolved_path:
+            sql = f"""
+            CREATE DATABASE IF NOT EXISTS dw;
+            DROP TABLE IF EXISTS dw.{table_name};
+            CREATE TABLE dw.{table_name}
+            ENGINE = Iceberg(
+                '{resolved_path}',
+                '{minio_user}',
+                '{minio_pass}'
+            );
+            """
+        else:
+            sql = f"""
+            CREATE DATABASE IF NOT EXISTS dw;
+            DROP TABLE IF EXISTS dw.{table_name};
+            CREATE TABLE dw.{table_name}
+            ENGINE = S3(
+                '{minio_endpoint}/iceberg-data/dw/{table_name}_*/data/*.parquet',
+                '{minio_user}',
+                '{minio_pass}',
+                'Parquet'
+            );
+            """
     else:
-        sql = f"""
-        CREATE DATABASE IF NOT EXISTS stg;
-        CREATE DATABASE IF NOT EXISTS fnd;
-
-        DROP TABLE IF EXISTS stg.{table_name};
+        resolved_stg = resolve_iceberg_path('stg', table_name)
+        resolved_fnd = resolve_iceberg_path('fnd', table_name)
+        
+        stg_sql = f"""
+        CREATE TABLE stg.{table_name}
+        ENGINE = Iceberg(
+            '{resolved_stg}',
+            '{minio_user}',
+            '{minio_pass}'
+        );
+        """ if resolved_stg else f"""
         CREATE TABLE stg.{table_name}
         ENGINE = S3(
             '{minio_endpoint}/iceberg-data/stg/{table_name}_*/data/*.parquet',
@@ -65,8 +116,16 @@ def run_clickhouse_setup(table_name, layer=None):
             '{minio_pass}',
             'Parquet'
         );
+        """
 
-        DROP TABLE IF EXISTS fnd.{table_name};
+        fnd_sql = f"""
+        CREATE TABLE fnd.{table_name}
+        ENGINE = Iceberg(
+            '{resolved_fnd}',
+            '{minio_user}',
+            '{minio_pass}'
+        );
+        """ if resolved_fnd else f"""
         CREATE TABLE fnd.{table_name}
         ENGINE = S3(
             '{minio_endpoint}/iceberg-data/fnd/{table_name}_*/data/*.parquet',
@@ -74,6 +133,17 @@ def run_clickhouse_setup(table_name, layer=None):
             '{minio_pass}',
             'Parquet'
         );
+        """
+
+        sql = f"""
+        CREATE DATABASE IF NOT EXISTS stg;
+        CREATE DATABASE IF NOT EXISTS fnd;
+
+        DROP TABLE IF EXISTS stg.{table_name};
+        {stg_sql}
+
+        DROP TABLE IF EXISTS fnd.{table_name};
+        {fnd_sql}
         """
 
     queries = [q.strip() for q in sql.split(';') if q.strip()]

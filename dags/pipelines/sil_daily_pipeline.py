@@ -12,14 +12,14 @@ from airflow.models.param import Param
 default_args = {
     'owner': 'kaizen',
     'depends_on_past': False,
-    'start_date': datetime(2026, 6, 11),
+    'start_date': datetime(2026, 6, 16),
 }
 
 with DAG(
     'sil_daily_pipeline',
     default_args=default_args,
-    description='Daily Pipeline running sequentially at 12:30 PM (Ingest -> Transform)',
-    schedule_interval='30 12 * * *',  # Runs daily at 12:30 PM
+    description='Daily Pipeline running sequentially at 12:30 AM (Ingest -> Transform)',
+    schedule_interval='30 0 * * *',  # Runs daily at 12:30 AM
     catchup=False,
     params={
         "fromDate": Param(None, type=["null", "string"], description="Start date (YYYY-MM-DD) for ingestion & transform. Defaults to D-1 if blank."),
@@ -32,7 +32,7 @@ with DAG(
     trigger_master_ingest = TriggerDagRunOperator(
         task_id='trigger_master_ingest',
         trigger_dag_id='spark_master_data_ingest_pipeline',
-        conf="{{ dag_run.conf }}",
+        conf="{{ (dag_run.conf if dag_run.conf is not none else {}) | tojson }}",
         wait_for_completion=True,
         poke_interval=30
     )
@@ -41,7 +41,7 @@ with DAG(
     trigger_transaction_ingest = TriggerDagRunOperator(
         task_id='trigger_transaction_ingest',
         trigger_dag_id='spark_transaction_data_ingest_pipeline',
-        conf="{{ dag_run.conf }}",
+        conf="{{ (dag_run.conf if dag_run.conf is not none else {}) | tojson }}",
         wait_for_completion=True,
         poke_interval=30
     )
@@ -50,7 +50,7 @@ with DAG(
     trigger_transform = TriggerDagRunOperator(
         task_id='trigger_transform',
         trigger_dag_id='spark_dw_transform_pipeline',
-        conf="{{ dag_run.conf }}",
+        conf="{{ (dag_run.conf if dag_run.conf is not none else {}) | tojson }}",
         wait_for_completion=True,
         poke_interval=30
     )

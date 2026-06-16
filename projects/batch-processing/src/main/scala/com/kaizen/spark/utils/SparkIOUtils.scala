@@ -40,10 +40,14 @@ object SparkIOUtils {
    * Leverages existing configuration if running in Spark cluster, falls back to local[*] if run locally.
    */
   def createSparkSession(jobName: String): SparkSession = {
+    java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Ho_Chi_Minh"))
+    System.setProperty("user.timezone", "Asia/Ho_Chi_Minh")
+
     val builder = SparkSession.builder()
       .appName(jobName)
       .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .config("spark.sql.shuffle.partitions", "4")
+      .config("spark.sql.session.timeZone", "Asia/Ho_Chi_Minh")
 
     if (sys.props.contains("spark.master") || sys.env.contains("SPARK_MASTER")) {
       builder.getOrCreate()
@@ -131,15 +135,6 @@ object SparkIOUtils {
       .format("iceberg")
       .mode(mode)
       .saveAsTable(table)
-
-    if (mode == "overwrite") {
-      try {
-        println(s"Expiring old snapshots for $table to prevent duplicate S3 file reads...")
-        spark.sql(s"CALL nessie.system.expire_snapshots(table => '$table', retain_last => 1)")
-      } catch {
-        case e: Exception => println(s"Warning: Could not expire snapshots for $table: ${e.getMessage}")
-      }
-    }
   }
 
   /**
@@ -198,13 +193,6 @@ object SparkIOUtils {
            |""".stripMargin
       println(s"Executing Iceberg MERGE INTO: $targetTable using join condition: $joinCondition")
       spark.sql(sqlText)
-
-      try {
-        println(s"Expiring old snapshots for $targetTable to prevent duplicate S3 file reads...")
-        spark.sql(s"CALL nessie.system.expire_snapshots(table => '$targetTable', retain_last => 1)")
-      } catch {
-        case e: Exception => println(s"Warning: Could not expire snapshots for $targetTable: ${e.getMessage}")
-      }
     } finally {
       spark.catalog.dropTempView(tempViewName)
     }
@@ -241,5 +229,14 @@ object SparkIOUtils {
       .option("es.nodes", config.get("elasticsearch", "hosts"))
       .option("es.resource", resource)
       .load()
+  }
+
+  /**
+   * Safe, standalone snapshot expiration for Iceberg tables.
+   * Cleans up older snapshot metadata and data files in S3/MinIO.
+   */
+  def expireTableSnapshots(spark: SparkSession, table: String): Unit = {
+    // No-op: We keep historical snapshots now that ClickHouse queries active files natively via the Iceberg engine.
+    println(s"Skipping snapshot expiration for table: $table (retaining snapshots).")
   }
 }

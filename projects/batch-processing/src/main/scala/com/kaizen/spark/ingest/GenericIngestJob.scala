@@ -104,6 +104,10 @@ object GenericIngestJob {
     jobResult match {
       case Success(_) =>
         println(s"✔ [$jobName] Ingestion job finished successfully.")
+        Try {
+          SparkIOUtils.expireTableSnapshots(spark, stgTable)
+          SparkIOUtils.expireTableSnapshots(spark, fndTable)
+        }
         spark.stop()
       case Failure(e) =>
         System.err.println(s"❌ [$jobName] failed for source table '$sourceTable' with error:")
