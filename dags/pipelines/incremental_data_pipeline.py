@@ -4,6 +4,7 @@ import os
 
 from airflow import DAG  # type: ignore
 from airflow.operators.python import PythonOperator  # type: ignore
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator  # type: ignore
 
 # Allow importing from jobs folder
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -19,7 +20,7 @@ with DAG(
     'incremental_data_generation_pipeline',
     default_args=default_args,
     description='Pipeline to periodically generate incremental Employee Salary and Promotion data',
-    schedule_interval='@daily',  # Runs daily
+    schedule_interval='@monthly',  # Runs monthly on the 1st of the month
     catchup=False,
 ) as dag:
 
@@ -28,4 +29,11 @@ with DAG(
         python_callable=generate_incremental_data
     )
 
-    generate_incremental_data_task
+    trigger_sil = TriggerDagRunOperator(
+        task_id='trigger_sil',
+        trigger_dag_id='sil_daily_pipeline',
+        conf="{{ dag_run.conf }}",
+        wait_for_completion=False
+    )
+
+    generate_incremental_data_task >> trigger_sil

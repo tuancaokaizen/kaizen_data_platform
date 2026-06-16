@@ -9,8 +9,7 @@ from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperato
 
 # Allow importing configs from jobs folder
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from jobs.spark_cleansing import get_pod_operator_config as cleansing_config
-from jobs.spark_analytics import get_pod_operator_config as analytics_config
+from jobs.spark_generic_ingest import get_transformer_task
 
 default_args = {
     'owner': 'kaizen',
@@ -21,14 +20,16 @@ default_args = {
 }
 
 with DAG(
-    'batch_spark_pipeline',
+    'spark_dw_clear_nessie_pipeline',
     default_args=default_args,
-    description='Spark Batch Processing Cleansing and Aggregator Pipeline',
-    schedule_interval='@daily',
-    catchup=False,
+    description='Manually triggered DAG to drop all Nessie tables (STG, FND, DW) using ClearNessieTablesJob',
+    schedule_interval=None,  # Triggered manually only
+    catchup=False
 ) as dag:
 
-    cleansing_task = KubernetesPodOperator(**cleansing_config())
-    analytics_task = KubernetesPodOperator(**analytics_config())
-
-    cleansing_task >> analytics_task
+    clear_nessie_tables = KubernetesPodOperator(
+        **get_transformer_task(
+            task_id="clear_nessie_tables",
+            transformer_class="com.kaizen.spark.utility.ClearNessieTablesJob"
+        )
+    )

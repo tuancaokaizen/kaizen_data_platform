@@ -12,62 +12,97 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Sinh PaymentBundle: Payment → 1-2 Transactions → OrderPayment → (20%) ReturnPayment.
- * Simulate các phương thức thanh toán kết hợp (tiền mặt + ví điện tử).
+ * Sinh PaymentBundle: 
+ * - Thu (Receipt/OrderPayment): Thanh toán tiền mua hàng. Status có thể là SUCCESS, PENDING, FAILED.
+ * - Chi (Refund/ReturnPayment): Hoàn tiền cho đơn hàng trả lại. Chỉ tạo khi có Return thực tế. Status luôn là SUCCESS.
  */
 public final class PaymentSimulator {
 
-    private static final String[] STATUSES = {"SUCCESS", "SUCCESS", "SUCCESS", "PENDING", "FAILED"};
+    private static final String[] PURCHASE_STATUSES = {"SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS", "SUCCESS", "PENDING", "FAILED"};
 
     private PaymentSimulator() {}
 
-    public static PaymentBundle generate() {
+    public static PaymentBundle generate(com.kaizen.flink.config.FlinkConfig config) {
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         long now = System.currentTimeMillis();
 
-        // ── Payment ───────────────────────────────────────────────────────────
-        String payId   = "PAY-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        short payType  = IdPool.pickShort(IdPool.PAYMENT_TYPE_IDS);
-        String status  = STATUSES[rnd.nextInt(STATUSES.length)];
-        int total      = rnd.nextInt(50_000, 5_000_000);
-        Payment payment = new Payment(payId, payType, status, total, now, now);
+        // 1. Ưu tiên xử lý các đơn trả hàng chưa có phiếu chi hoàn tiền thành công (Chi)
+        List<IdPool.ReturnRef> unpaidReturns = IdPool.fetchUnpaidReturns(config);
+        if (!unpaidReturns.isEmpty()) {
+            IdPool.ReturnRef returnRef = unpaidReturns.get(0);
+            
+            // ── HOÀN TIỀN TRẢ HÀNG (CHI) ──
+            String payId   = "PAY-REF-" + uid12();
+            short payType  = 2; // Phiếu chi
+            // Hoàn tiền thì status mặc định luôn là SUCCESS (Giao dịch hoàn tất)
+            String status  = "SUCCESS";
+            int total      = returnRef.returnAmount;
+            Payment payment = new Payment(payId, payType, status, total, now, now);
 
-        // ── Transactions (thanh toán có thể chia nhiều phương thức) ──────────
-        List<PaymentTransaction> txs = new ArrayList<>();
-        boolean splitPayment = rnd.nextInt(5) == 0; // 20% thanh toán 2 phương thức
-        if (splitPayment) {
-            int part1 = (int) (total * rnd.nextDouble(0.3, 0.7));
-            int part2 = total - part1;
-            short m1  = IdPool.pickShort(IdPool.PAYMENT_METHOD_IDS);
-            short m2  = (m1 == 1) ? (short) 2 : (short) 1; // khác phương thức
-            txs.add(new PaymentTransaction("TX-" + uid(), payId, m1, part1, now, now));
-            txs.add(new PaymentTransaction("TX-" + uid(), payId, m2, part2, now, now));
-        } else {
+            // ── Transactions (giao dịch hoàn tiền) ──
+            List<PaymentTransaction> txs = new ArrayList<>();
             short method = IdPool.pickShort(IdPool.PAYMENT_METHOD_IDS);
-            txs.add(new PaymentTransaction("TX-" + uid(), payId, method, total, now, now));
+            txs.add(new PaymentTransaction("TX-" + uid12(), payId, method, total, now, now));
+
+            // ── ReturnPayment (Liên kết chi trả hoàn tiền -> Đơn trả) ──
+            ReturnPayment rp = new ReturnPayment("RP-" + uid12(), payId, returnRef.returnId, returnRef.orderId, now, now);
+
+            // Hoàn tiền thì KHÔNG có OrderPayment (bán hàng)
+            return new PaymentBundle(payment, txs, null, rp);
         }
 
-        // ── OrderPayment (liên kết payment → order) ───────────────────────────
-        // Sử dụng order ID từ Postgres nếu đã có, fallback sang sinh ngẫu nhiên nếu trống
-        String fakeOrderId;
-        if (!IdPool.ORDER_IDS.isEmpty()) {
-            fakeOrderId = IdPool.pick(IdPool.ORDER_IDS);
-        } else {
-            fakeOrderId = "ORD-" + String.format("%08d", rnd.nextInt(100_000_000));
-        }
-        OrderPayment op = new OrderPayment("OP-" + uid(), payId, fakeOrderId, now, now);
+        // 2. Tiếp theo xử lý các đơn hàng chưa có thanh toán thành công (Thu)
+        List<IdPool.UnpaidOrderRef> unpaidOrders = IdPool.fetchUnpaidOrders(config);
+        if (!unpaidOrders.isEmpty()) {
+            IdPool.UnpaidOrderRef orderRef = unpaidOrders.get(0);
+            String orderId = orderRef.orderId;
+            int total = orderRef.totalPayment;
 
-        // ── ReturnPayment (20% xác suất – hoàn tiền cho đơn hàng trả lại) ────
-        ReturnPayment rp = null;
-        if (rnd.nextInt(5) == 0) {
-            String retId = "RET-" + uid();
-            rp = new ReturnPayment("RP-" + uid(), payId, retId, fakeOrderId, now, now);
+            // ── THANH TOÁN MUA HÀNG (THU) ──
+            String payId   = "PAY-" + uid12();
+            short payType  = 1; // Phiếu thu
+            
+            // Giả lập 90% thành công, 10% thất bại/chờ xử lý để mô phỏng thực tế.
+            // Nếu FAILED/PENDING, đơn hàng vẫn nằm trong tập "chưa thanh toán" và sẽ được thanh toán lại ở các vòng sau.
+            String status;
+            double randVal = rnd.nextDouble();
+            if (randVal < 0.90) {
+                status = "SUCCESS";
+            } else if (randVal < 0.95) {
+                status = "FAILED";
+            } else {
+                status = "PENDING";
+            }
+
+            Payment payment = new Payment(payId, payType, status, total, now, now);
+
+            // ── Transactions ──
+            List<PaymentTransaction> txs = new ArrayList<>();
+            boolean splitPayment = rnd.nextInt(5) == 0; // 20% thanh toán 2 phương thức kết hợp
+            if (splitPayment) {
+                int part1 = (int) (total * rnd.nextDouble(0.3, 0.7));
+                int part2 = total - part1;
+                short m1  = IdPool.pickShort(IdPool.PAYMENT_METHOD_IDS);
+                short m2  = (m1 == 1) ? (short) 2 : (short) 1;
+                txs.add(new PaymentTransaction("TX-" + uid12(), payId, m1, part1, now, now));
+                txs.add(new PaymentTransaction("TX-" + uid12(), payId, m2, part2, now, now));
+            } else {
+                short method = IdPool.pickShort(IdPool.PAYMENT_METHOD_IDS);
+                txs.add(new PaymentTransaction("TX-" + uid12(), payId, method, total, now, now));
+            }
+
+            // ── OrderPayment (Liên kết thanh toán mua hàng -> Đơn hàng) ──
+            OrderPayment op = new OrderPayment("OP-" + uid12(), payId, orderId, now, now);
+
+            // Thanh toán mua hàng mới thì chưa có ReturnPayment
+            return new PaymentBundle(payment, txs, op, null);
         }
 
-        return new PaymentBundle(payment, txs, op, rp);
+        // 3. Nếu tất cả đơn hàng & trả hàng đã có thanh toán thành công, tạm thời không sinh thêm
+        return null;
     }
 
-    private static String uid() {
-        return UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    private static String uid12() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
     }
 }

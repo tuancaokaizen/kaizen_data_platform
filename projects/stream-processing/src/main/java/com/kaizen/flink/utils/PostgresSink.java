@@ -111,11 +111,7 @@ public class PostgresSink {
                 stmt.setString(2, r.getOrderId());
                 stmt.setObject(3, r.getReturnAmount(), Types.INTEGER);
                 stmt.setTimestamp(4, tsNull(r.getCreatedDate()));
-                if (r.getModifiedTimeMs() != null) {
-                    stmt.setTime(5, new Time(r.getModifiedTimeMs() % 86_400_000L));
-                } else {
-                    stmt.setNull(5, Types.TIME);
-                }
+                stmt.setTimestamp(5, tsNull(r.getModifiedTimeMs()));
             },
             execOpts(), connOpts(cfg));
     }

@@ -4,6 +4,7 @@ import com.kaizen.flink.model.*;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -21,14 +22,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * 4. RETURN (7-day window):
  *    - 25% xác suất có return sau khi đơn COMPLETED.
- *    - Return date phải trong vòng 7 ngày kể từ ngày mua (transactionDate).
- *    - Có thể trả FULL (tất cả items) hoặc PARTIAL (1..N items được chọn ngẫu nhiên).
- *    - Mỗi item có thể trả PARTIAL quantity (1..max qty).
+ *    - Return được giả lập trễ (gửi sự kiện trả hàng kèm đầy đủ thông tin bán hàng sau sự kiện bán hàng 15 giây).
  */
 public final class OrderSimulator {
 
-    private static final long SEVEN_DAYS_MS      = 7L * 24 * 3600 * 1000;
-    private static final long THIRTY_DAYS_MS     = 30L * 24 * 3600 * 1000;
     private static final int  VOUCHER_THRESHOLD  = 10;      // đơn hàng cần để nhận voucher
     private static final int  RETURN_PROBABILITY = 4;       // 1/4 = 25%
 
@@ -40,32 +37,64 @@ public final class OrderSimulator {
     private static final ConcurrentHashMap<String, String> PENDING_VOUCHER =
             new ConcurrentHashMap<>();
 
+    // Cấu trúc lưu trữ đơn hàng sẽ bị trả trong tương lai
+    private static final class PendingReturn {
+        final Order order;
+        final List<OrderItem> items;
+        final Return returnRecord;
+        final List<ReturnItem> returnItems;
+        final long scheduledTime;
+
+        PendingReturn(Order order, List<OrderItem> items, Return returnRecord, List<ReturnItem> returnItems, long scheduledTime) {
+            this.order = order;
+            this.items = items;
+            this.returnRecord = returnRecord;
+            this.returnItems = returnItems;
+            this.scheduledTime = scheduledTime;
+        }
+    }
+
+    private static final Queue<PendingReturn> PENDING_RETURNS = new ConcurrentLinkedQueue<>();
+
     private OrderSimulator() {}
 
     public static OrderBundle generate() {
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         long now = System.currentTimeMillis();
 
-        // Đơn hàng xảy ra trong quá khứ (1 phút → 30 ngày trước)
-        // để có window cho return (return phải ≤ now)
-        long orderDate = now - rnd.nextLong(60_000L, THIRTY_DAYS_MS);
+        // 1. Kiểm tra xem có đơn hàng nào chờ trả hàng đã đến giờ phát sự kiện không
+        PendingReturn readyReturn = null;
+        for (PendingReturn pr : PENDING_RETURNS) {
+            if (now >= pr.scheduledTime) {
+                readyReturn = pr;
+                break;
+            }
+        }
+
+        if (readyReturn != null) {
+            PENDING_RETURNS.remove(readyReturn);
+            
+            // Đưa mã return thực tế vào hàng chờ động để PaymentSimulator kết nối thanh toán (hoàn tiền)
+            IdPool.GENERATED_RETURNS.add(new IdPool.ReturnRef(
+                readyReturn.returnRecord.getId(),
+                readyReturn.order.getId(),
+                readyReturn.returnRecord.getReturnAmount() != null ? readyReturn.returnRecord.getReturnAmount() : 0
+            ));
+            if (IdPool.GENERATED_RETURNS.size() > 1000) {
+                IdPool.GENERATED_RETURNS.poll();
+            }
+
+            // Trả về gói dữ liệu chứa cả thông tin bán hàng gốc và thông tin trả hàng đầy đủ
+            return new OrderBundle(readyReturn.order, readyReturn.items, readyReturn.returnRecord, readyReturn.returnItems);
+        }
+
+        // 2. Nếu không có đơn nào đến giờ trả, sinh một đơn hàng mới (Realtime)
+        long orderDate = now - rnd.nextLong(1000L, 5000L);
 
         // ── Customer + Voucher logic ──────────────────────────────────────────
         String customerId  = IdPool.pickPareto(IdPool.CUSTOMER_IDS);
         int orderCount     = ORDER_COUNT.computeIfAbsent(customerId, k -> new AtomicInteger(0))
                                         .incrementAndGet();
-
-        // Lấy voucher đang chờ của customer này
-        String pendingVoucherCode = PENDING_VOUCHER.get(customerId);
-        IdPool.VoucherRef appliedVoucher = null;
-        if (pendingVoucherCode != null) {
-            for (IdPool.VoucherRef v : IdPool.VOUCHERS) {
-                if (v.code.equals(pendingVoucherCode)) {
-                    appliedVoucher = v;
-                    break;
-                }
-            }
-        }
 
         // Sau mỗi 10 đơn → cấp voucher mới thích hợp (phải hoạt động tại orderDate) cho lần sau
         if (orderCount % VOUCHER_THRESHOLD == 0) {
@@ -82,18 +111,18 @@ public final class OrderSimulator {
         }
 
         // ── OrderItems (1-5 sản phẩm) ────────────────────────────────────────
-        String orderId = "ORD-" + uuid8();
+        String orderId = "ORD-" + uuid12();
         int itemCount  = rnd.nextInt(1, 6);
         List<OrderItem> items = new ArrayList<>(itemCount);
         int totalBill = 0;
 
         for (int i = 0; i < itemCount; i++) {
-            String itemId = "OI-" + uuid8();
-            String prodId = IdPool.pick(IdPool.PRODUCT_IDS);
+            String itemId = "OI-" + uuid12();
+            IdPool.ProductRef prod = IdPool.PRODUCTS.get(rnd.nextInt(IdPool.PRODUCTS.size()));
             int qty       = rnd.nextInt(1, 10);
-            int unitPrice = rnd.nextInt(5_000, 500_000);
+            int unitPrice = prod.retailPrice;
             totalBill    += qty * unitPrice;
-            items.add(new OrderItem(itemId, orderId, prodId, qty, unitPrice, orderDate, orderDate));
+            items.add(new OrderItem(itemId, orderId, prod.id, qty, unitPrice, orderDate, orderDate));
         }
 
         // ── Gift Promotion Logic (Xoay tua quà tặng trong thời gian hiệu lực) ──
@@ -108,93 +137,126 @@ public final class OrderSimulator {
             }
         }
         if (!applicableGifts.isEmpty()) {
-            // Chọn ngẫu nhiên quà tặng từ các chương trình quà tặng đang hiệu lực
             IdPool.GiftRef chosenGift = applicableGifts.get(rnd.nextInt(applicableGifts.size()));
-            String giftItemId = "OI-" + uuid8();
-            // Thêm sản phẩm tặng với UnitPrice = 0
+            String giftItemId = "OI-" + uuid12();
             items.add(new OrderItem(giftItemId, orderId, chosenGift.productId, 1, 0, orderDate, orderDate));
         }
 
-        // ── Discount: voucher (cần ràng buộc hạn dùng + min order value) ─────
+        // ── Discount: voucher ────────────────────────────────────────────────
+        // Lấy voucher đang chờ của customer này hoặc áp dụng ngẫu nhiên 30%
+        String pendingVoucherCode = PENDING_VOUCHER.get(customerId);
+        IdPool.VoucherRef appliedVoucher = null;
+        if (pendingVoucherCode != null) {
+            for (IdPool.VoucherRef v : IdPool.VOUCHERS) {
+                if (v.code.equals(pendingVoucherCode)) {
+                    appliedVoucher = v;
+                    break;
+                }
+            }
+        } else {
+            // Nếu không có voucher pending, cho 30% cơ hội áp dụng trực tiếp 1 voucher đang hoạt động thỏa mãn minOrderValue
+            if (rnd.nextDouble() < 0.3) {
+                List<IdPool.VoucherRef> activeVouchers = new ArrayList<>();
+                for (IdPool.VoucherRef v : IdPool.VOUCHERS) {
+                    if (v.startDate <= orderDate && orderDate <= v.endDate && totalBill >= v.minOrderValue) {
+                        activeVouchers.add(v);
+                    }
+                }
+                if (!activeVouchers.isEmpty()) {
+                    appliedVoucher = activeVouchers.get(rnd.nextInt(activeVouchers.size()));
+                }
+            }
+        }
+
         int voucherDiscount = 0;
         String appliedVoucherSeriesCode = null;
         if (appliedVoucher != null) {
             if (orderDate > appliedVoucher.endDate) {
-                // Voucher đã hết hạn, xóa khỏi danh sách chờ
                 PENDING_VOUCHER.remove(customerId);
             } else if (orderDate >= appliedVoucher.startDate && totalBill >= appliedVoucher.minOrderValue) {
-                // Voucher hợp lệ và đạt giá trị đơn hàng tối thiểu
                 voucherDiscount = appliedVoucher.amount;
-                // Phát sinh VoucherSeriesCode (từ 1 đến 50) dựa trên Voucher Code của promotion đang áp dụng
                 appliedVoucherSeriesCode = "SR_" + appliedVoucher.code + "_" + String.format("%04d", rnd.nextInt(1, 51));
-                PENDING_VOUCHER.remove(customerId); // Sử dụng thành công
+                PENDING_VOUCHER.remove(customerId);
             }
         }
         
-        int normalDiscount  = (int) (totalBill * rnd.nextDouble(0, 0.05));
-        int totalDiscount   = voucherDiscount + normalDiscount;
+        int totalDiscount   = voucherDiscount;
         int totalPayment    = Math.max(0, totalBill - totalDiscount);
 
-        String status       = "Completed";
-        long modifiedDate   = orderDate;
         String shopCode     = IdPool.pickPareto(IdPool.SHOP_CODES);
         String empId        = IdPool.pick(IdPool.EMPLOYEE_IDS);
 
-        // ── Return: 25% xác suất, chỉ với đơn Completed, trong vòng 7 ngày ───────
-        Return returnRecord  = null;
-        List<ReturnItem> returnItems = null;
+        // ── Quyết định xem đơn này có bị trả lại sau này hay không (25% xác suất) ──
+        boolean willBeReturned = rnd.nextInt(RETURN_PROBABILITY) == 0;
 
-        if (rnd.nextInt(RETURN_PROBABILITY) == 0) {
-            long timeSinceOrder = now - orderDate;  // ms đã qua từ ngày mua
-            long maxReturnDelay = Math.min(SEVEN_DAYS_MS, timeSinceOrder);
+        if (willBeReturned) {
+            // Lọc danh sách sản phẩm có thể trả (có giá trị > 0) để tránh trả quà tặng 0đ
+            List<OrderItem> returnableItems = new ArrayList<>();
+            for (OrderItem item : items) {
+                if (item.getUnitPrice() != null && item.getUnitPrice() > 0) {
+                    returnableItems.add(item);
+                }
+            }
 
-            if (maxReturnDelay > 60_000) { // cần ít nhất 1 phút để có return hợp lệ
-                long returnDate = orderDate + rnd.nextLong(60_000L, maxReturnDelay);
-                String retId    = "RET-" + uuid8();
-
-                // Chọn FULL hoặc PARTIAL
+            if (!returnableItems.isEmpty()) {
                 boolean fullReturn = rnd.nextBoolean();
-                int numItemsToReturn = fullReturn ? items.size() : rnd.nextInt(1, items.size() + 1);
+                int numItemsToReturn = fullReturn ? returnableItems.size() : rnd.nextInt(1, returnableItems.size() + 1);
 
-                // Shuffle để lấy ngẫu nhiên subset
-                List<OrderItem> shuffled = new ArrayList<>(items);
+                List<OrderItem> shuffled = new ArrayList<>(returnableItems);
                 Collections.shuffle(shuffled, new Random(rnd.nextLong()));
                 List<OrderItem> selectedItems = shuffled.subList(0, numItemsToReturn);
 
                 int returnAmount = 0;
-                returnItems = new ArrayList<>();
+                List<ReturnItem> returnItems = new ArrayList<>();
+                long returnDate = orderDate + rnd.nextLong(1000L, 5000L); // ngày trả cách ngày bán 1-5 giây
+                String retId = "RET-" + uuid12();
+
+                boolean isZeroReturn = totalPayment <= totalDiscount;
+                double discountRatio = (double) totalDiscount / totalBill;
 
                 for (OrderItem src : selectedItems) {
                     int maxQty   = src.getQuantity() != null ? src.getQuantity() : 1;
-                    int retQty   = fullReturn ? maxQty : rnd.nextInt(1, maxQty + 1); // partial qty
-                    int retPrice = src.getUnitPrice() != null ? src.getUnitPrice() : 0;
-                    int itemAmt  = retQty * retPrice;
+                    int retQty   = fullReturn ? maxQty : rnd.nextInt(1, maxQty + 1);
+                    int salePrice = src.getUnitPrice() != null ? src.getUnitPrice() : 0;
+                    
+                    int itemAmt;
+                    if (isZeroReturn) {
+                        itemAmt = 0;
+                    } else {
+                        int discountedPrice = (int) Math.max(0, salePrice - (salePrice * discountRatio));
+                        itemAmt = retQty * discountedPrice;
+                    }
                     returnAmount += itemAmt;
 
                     returnItems.add(new ReturnItem(
-                            "RI-" + uuid8(), retId, src.getProductId(),
-                            retQty, retPrice, src.getId(), orderId, itemAmt,
+                            "RI-" + uuid12(), retId, src.getProductId(),
+                            retQty, salePrice, src.getId(), orderId, itemAmt,
                             returnDate, returnDate));
                 }
 
-                returnRecord = new Return(retId, orderId, returnAmount, returnDate, returnDate);
-                modifiedDate = returnDate;
-                if (fullReturn) {
-                    status = "Returned";
-                } else {
-                    status = "Completed";
-                }
+                Return returnRecord = new Return(retId, orderId, returnAmount, returnDate, returnDate);
+                String finalStatus = fullReturn ? "Returned" : "Completed";
+
+                // Tạo đối tượng Order cập nhật với trạng thái khi trả hàng và modifiedDate mới
+                Order returnedOrder = new Order(orderId, customerId, shopCode, orderDate,
+                        totalBill, totalDiscount, totalPayment, empId, finalStatus,
+                        appliedVoucherSeriesCode, orderDate, returnDate);
+
+                // Lưu vào hàng chờ để phát sự kiện trả hàng (mang theo data bán hàng gốc) sau 15 giây
+                PENDING_RETURNS.add(new PendingReturn(returnedOrder, items, returnRecord, returnItems, now + 15000L));
             }
         }
 
-        Order order = new Order(orderId, customerId, shopCode, orderDate,
-                totalBill, totalDiscount, totalPayment, empId, status,
-                appliedVoucherSeriesCode, orderDate, modifiedDate);
+        // Tạo đơn hàng bán hàng ban đầu với trạng thái Completed
+        Order initialOrder = new Order(orderId, customerId, shopCode, orderDate,
+                totalBill, totalDiscount, totalPayment, empId, "Completed",
+                appliedVoucherSeriesCode, orderDate, orderDate);
 
-        return new OrderBundle(order, items, returnRecord, returnItems);
+        // Trả về gói chỉ chứa đơn hàng bán hàng ban đầu (chưa có Return)
+        return new OrderBundle(initialOrder, items, null, null);
     }
 
-    private static String uuid8() {
-        return UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    private static String uuid12() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
     }
 }

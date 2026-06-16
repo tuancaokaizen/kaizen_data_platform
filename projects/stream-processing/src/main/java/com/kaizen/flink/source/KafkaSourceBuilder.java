@@ -24,7 +24,7 @@ public class KafkaSourceBuilder {
                 .setBootstrapServers(config.get("kafka", "bootstrap_servers"))
                 .setTopics(topic)
                 .setGroupId(groupId)
-                .setStartingOffsets(OffsetsInitializer.earliest())
+                .setStartingOffsets(OffsetsInitializer.latest())
                 .setValueOnlyDeserializer(new SimpleStringSchema())
                 .build();
     }

@@ -59,3 +59,6 @@ dags/config.k3s-new
 **/*.jar
 *.tar.gz
 *.zip
+
+# Local check and setup scripts at root level
+/*.sh

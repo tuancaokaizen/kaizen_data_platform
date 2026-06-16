@@ -703,9 +703,8 @@ def generate_all_master_data():
     # 8. Payment Master Data (PaymentType and PaymentMethod)
     print("Generating Payment Master Data (PaymentType & PaymentMethod)...")
     payment_type_docs = [
-        {"type": 1, "name": "Thanh toán tiền mặt", "createdDate": now_ms, "modifiedDate": now_ms},
-        {"type": 2, "name": "Thanh toán thẻ", "createdDate": now_ms, "modifiedDate": now_ms},
-        {"type": 3, "name": "Thanh toán ví điện tử", "createdDate": now_ms, "modifiedDate": now_ms}
+        {"type": 1, "name": "Phiếu thu", "createdDate": now_ms, "modifiedDate": now_ms},
+        {"type": 2, "name": "Phiếu chi", "createdDate": now_ms, "modifiedDate": now_ms}
     ]
     payment_method_docs = [
         {"id": 1, "name": "Tiền mặt", "createdDate": now_ms, "modifiedDate": now_ms},

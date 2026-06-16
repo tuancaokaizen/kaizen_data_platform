@@ -189,11 +189,7 @@ public class KaizenConsumerJob {
                 ps.setString(2, r.getOrderId());
                 ps.setObject(3, r.getReturnAmount(), Types.INTEGER);
                 ps.setTimestamp(4, r.getCreatedDate() != null ? new Timestamp(r.getCreatedDate()) : null);
-                if (r.getModifiedTimeMs() != null) {
-                    ps.setTime(5, new Time(r.getModifiedTimeMs() % 86_400_000L));
-                } else {
-                    ps.setNull(5, Types.TIME);
-                }
+                ps.setTimestamp(5, r.getModifiedTimeMs() != null ? new Timestamp(r.getModifiedTimeMs()) : null);
                 ps.executeUpdate();
             }
         }
@@ -242,6 +238,28 @@ public class KaizenConsumerJob {
         public void invoke(PaymentBundle bundle, Context ctx) throws Exception {
             try {
                 ensureConnected();
+
+                // Skip processing the payment bundle if the referenced order or return does not exist yet.
+                // This prevents writing temporary stubs/placeholders with "Pending" status and respects FK constraints.
+                if (bundle.getOrderPayment() != null) {
+                    String orderId = bundle.getOrderPayment().getOrderId();
+                    if (!orderExists(orderId)) {
+                        LOG.warn("Skipping PaymentBundle {} because Order {} does not exist in DB yet.",
+                                bundle.getPayment().getId(), orderId);
+                        return;
+                    }
+                }
+
+                if (bundle.getReturnPayment() != null) {
+                    String returnId = bundle.getReturnPayment().getReturnId();
+                    String orderId = bundle.getReturnPayment().getOrderId();
+                    if (!returnExists(returnId, orderId)) {
+                        LOG.warn("Skipping PaymentBundle {} because Return {} / Order {} does not exist in DB yet.",
+                                bundle.getPayment().getId(), returnId, orderId);
+                        return;
+                    }
+                }
+
                 upsertPayment(bundle.getPayment());
                 List<PaymentTransaction> txs = bundle.getTransactions();
                 if (txs != null) {
@@ -273,13 +291,36 @@ public class KaizenConsumerJob {
             }
         }
 
+        private boolean orderExists(String orderId) throws SQLException {
+            try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM \"order\".\"Order\" WHERE \"Id\" = ?")) {
+                ps.setString(1, orderId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next();
+                }
+            }
+        }
+
+        private boolean returnExists(String returnId, String orderId) throws SQLException {
+            try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM \"order\".\"Return\" WHERE \"Id\" = ? AND \"OrderId\" = ?")) {
+                ps.setString(1, returnId);
+                ps.setString(2, orderId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next();
+                }
+            }
+        }
+
         private void upsertPayment(com.kaizen.flink.model.Payment p) throws SQLException {
+            short pType = p.getPaymentType();
+            if (pType != 1 && pType != 2) {
+                pType = 1; // Fallback to 1 (Phiếu thu)
+            }
             try (PreparedStatement ps = conn.prepareStatement(
                 "INSERT INTO payment.\"Payment\" (\"Id\",\"PaymentType\",\"Status\",\"TotalPayment\",\"CreatedDate\",\"ModifiedDate\") " +
                 "VALUES (?,?,?,?,?,?) " +
                 "ON CONFLICT (\"Id\") DO UPDATE SET \"Status\"=EXCLUDED.\"Status\", \"ModifiedDate\"=EXCLUDED.\"ModifiedDate\"")) {
                 ps.setString(1, p.getId());
-                ps.setShort(2, p.getPaymentType());
+                ps.setShort(2, pType);
                 ps.setObject(3, p.getStatus(), Types.VARCHAR);
                 ps.setInt(4, p.getTotalPayment());
                 ps.setTimestamp(5, new Timestamp(p.getCreatedDate()));
@@ -303,45 +344,8 @@ public class KaizenConsumerJob {
             }
         }
 
-        private void ensureOrderStubExists(String orderId, Timestamp timestamp) throws SQLException {
-            String stubCustomer = com.kaizen.flink.simulate.IdPool.CUSTOMER_IDS.isEmpty() ? "STUB_CUSTOMER" : com.kaizen.flink.simulate.IdPool.CUSTOMER_IDS.get(0);
-            String stubEmployee = com.kaizen.flink.simulate.IdPool.EMPLOYEE_IDS.isEmpty() ? "STUB_EMPLOYEE" : com.kaizen.flink.simulate.IdPool.EMPLOYEE_IDS.get(0);
-            String stubShop = com.kaizen.flink.simulate.IdPool.SHOP_CODES.isEmpty() ? "STUB_SHOP" : com.kaizen.flink.simulate.IdPool.SHOP_CODES.get(0);
-
-            try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO \"order\".\"Order\" " +
-                "(\"Id\", \"CustomerId\", \"ShopCode\", \"TransactionDate\", \"TotalBill\", \"TotalDiscount\", \"TotalPayment\", \"EmployeeSaleId\", \"Status\", \"CreatedDate\", \"ModifiedDate\") " +
-                "VALUES (?, ?, ?, ?, 0, 0, 0, ?, 'PENDING_ORDER_DATA', ?, ?) " +
-                "ON CONFLICT (\"Id\") DO NOTHING")) {
-                ps.setString(1, orderId);
-                ps.setString(2, stubCustomer);
-                ps.setString(3, stubShop);
-                ps.setTimestamp(4, timestamp);
-                ps.setString(5, stubEmployee);
-                ps.setTimestamp(6, timestamp);
-                ps.setTimestamp(7, timestamp);
-                ps.executeUpdate();
-            }
-        }
-
-        private void ensureReturnStubExists(String returnId, String orderId, Timestamp timestamp) throws SQLException {
-            ensureOrderStubExists(orderId, timestamp);
-            try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO \"order\".\"Return\" (\"Id\", \"OrderId\", \"ReturnAmount\", \"CreatedDate\", \"ModifiedDate\") " +
-                "VALUES (?, ?, 0, ?, ?) " +
-                "ON CONFLICT (\"Id\", \"OrderId\") DO NOTHING")) {
-                ps.setString(1, returnId);
-                ps.setString(2, orderId);
-                ps.setTimestamp(3, timestamp);
-                ps.setTimestamp(4, timestamp);
-                ps.executeUpdate();
-            }
-        }
-
         private void upsertOrderPayment(com.kaizen.flink.model.OrderPayment op) throws SQLException {
             Timestamp ts = new Timestamp(op.getCreatedDate());
-            ensureOrderStubExists(op.getOrderId(), ts);
-            
             try (PreparedStatement ps = conn.prepareStatement(
                 "INSERT INTO payment.\"OrderPayment\" (\"Id\",\"PaymentId\",\"OrderId\",\"CreatedDate\",\"ModifiedDate\") " +
                 "VALUES (?,?,?,?,?) " +
@@ -357,8 +361,6 @@ public class KaizenConsumerJob {
 
         private void upsertReturnPayment(com.kaizen.flink.model.ReturnPayment rp) throws SQLException {
             Timestamp ts = new Timestamp(rp.getCreatedDate());
-            ensureReturnStubExists(rp.getReturnId(), rp.getOrderId(), ts);
-            
             try (PreparedStatement ps = conn.prepareStatement(
                 "INSERT INTO payment.\"ReturnPayment\" (\"Id\",\"PaymentId\",\"ReturnId\",\"OrderId\",\"CreatedDate\",\"ModifiedDate\") " +
                 "VALUES (?,?,?,?,?,?) " +
