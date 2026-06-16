@@ -196,6 +196,10 @@ object ProcessFactPromotionCost {
     jobResult match {
       case Success(_) =>
         println(s"✔ [$jobName] completed successfully.")
+        Try {
+          SparkIOUtils.expireTableSnapshots(spark, "nessie.stg.fact_promotion_cost")
+          SparkIOUtils.expireTableSnapshots(spark, "nessie.dw.fact_promotion_cost")
+        }
         spark.stop()
       case Failure(e) =>
         System.err.println(s"❌ [$jobName] failed with error:")

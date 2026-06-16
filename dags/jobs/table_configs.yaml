@@ -103,38 +103,33 @@ return_payment:
   join_key: 'Id'
   watermark_col: 'ModifiedDate'
 
-# ── 3. Periodical / Promotion Data (Incremental Load) ───────────────────
+# ── 3. Periodical / Promotion Data (Full Load) ────────────────────────
 employee_salary:
   source: 'shop."EmployeeSalary"'
-  load_type: 'incremental'
+  load_type: 'full'
   join_key: 'Id'
   watermark_col: 'ModifiedDate'
-  range_type: 'start_of_month'
 
 promotion:
   source: 'promotion."Promotion"'
-  load_type: 'incremental'
+  load_type: 'full'
   join_key: 'Code'
   watermark_col: 'ModifiedDate'
-  range_type: 'start_of_month'
 
 voucher:
   source: 'promotion."Voucher"'
-  load_type: 'incremental'
+  load_type: 'full'
   join_key: 'Code'
   watermark_col: 'ModifiedDate'
-  range_type: 'start_of_month'
 
 voucher_series:
   source: 'promotion."VoucherSeries"'
-  load_type: 'incremental'
+  load_type: 'full'
   join_key: 'SeriesCode'
   watermark_col: 'ModifiedDate'
-  range_type: 'start_of_month'
 
 gift:
   source: 'promotion."Gift"'
-  load_type: 'incremental'
+  load_type: 'full'
   join_key: 'Id'
   watermark_col: 'ModifiedDate'
-  range_type: 'start_of_month'

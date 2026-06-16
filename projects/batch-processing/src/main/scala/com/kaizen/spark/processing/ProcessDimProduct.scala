@@ -63,6 +63,10 @@ object ProcessDimProduct {
     jobResult match {
       case Success(_) =>
         println(s"✔ [$jobName] completed successfully.")
+        Try {
+          SparkIOUtils.expireTableSnapshots(spark, "nessie.stg.dim_product")
+          SparkIOUtils.expireTableSnapshots(spark, "nessie.dw.dim_product")
+        }
         spark.stop()
       case Failure(e) =>
         System.err.println(s"❌ [$jobName] failed with error:")

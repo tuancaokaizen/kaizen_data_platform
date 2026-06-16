@@ -16,9 +16,6 @@ import com.kaizen.spark.utils.SparkIOUtils
 object BatchTransactionSimulatorJob {
 
   case class ProductRef(id: String, retailPrice: Int)
-  case class VoucherRef(code: String, startDate: Long, endDate: Long, amount: Int, minOrderValue: Int)
-  case class PromotionRef(code: String, promoType: String, startDate: Long, endDate: Long)
-  case class GiftRef(id: String, productId: String, promotionCode: String, quantity: Int)
 
   case class OrderItemLocal(
     id: String,
@@ -114,39 +111,6 @@ object BatchTransactionSimulatorJob {
       prodRs.close()
       prodStmt.close()
 
-      var vouchers = List.empty[VoucherRef]
-      val vStmt = conn.createStatement()
-      val vRs = vStmt.executeQuery("SELECT \"Code\", \"StartDate\", \"EndDate\", \"VoucherAmount\", \"MinOrderValue\" FROM promotion.\"Voucher\" WHERE \"Status\"=true")
-      while (vRs.next()) {
-        vouchers = VoucherRef(
-          vRs.getString(1),
-          vRs.getTimestamp(2).getTime,
-          vRs.getTimestamp(3).getTime,
-          vRs.getInt(4),
-          vRs.getInt(5)
-        ) :: vouchers
-      }
-      vRs.close()
-      vStmt.close()
-
-      var promotions = List.empty[PromotionRef]
-      val pStmt = conn.createStatement()
-      val pRs = pStmt.executeQuery("SELECT \"Code\", \"Type\", \"StartDate\", \"EndDate\" FROM promotion.\"Promotion\" WHERE \"Status\"=true")
-      while (pRs.next()) {
-        promotions = PromotionRef(pRs.getString(1), pRs.getString(2), pRs.getTimestamp(3).getTime, pRs.getTimestamp(4).getTime) :: promotions
-      }
-      pRs.close()
-      pStmt.close()
-
-      var gifts = List.empty[GiftRef]
-      val gStmt = conn.createStatement()
-      val gRs = gStmt.executeQuery("SELECT \"Id\", \"ProductId\", \"PromotionCode\", \"PromotionQuantity\" FROM promotion.\"Gift\" WHERE \"Status\"=true")
-      while (gRs.next()) {
-        gifts = GiftRef(gRs.getString(1), gRs.getString(2), gRs.getString(3), gRs.getInt(4)) :: gifts
-      }
-      gRs.close()
-      gStmt.close()
-
       println(s"Master data loaded. Shops: ${shopCodes.size}, Products: ${products.size}, Customers: ${customerIds.size}, Employees: ${employeeIds.size}")
 
       if (customerIds.isEmpty || shopCodes.isEmpty || employeeIds.isEmpty || products.isEmpty) {
@@ -219,48 +183,9 @@ object BatchTransactionSimulatorJob {
           items = OrderItemLocal(itemId, orderId, prod.id, qty, unitPrice, orderDate, orderDate) :: items
         }
 
-        // Gift promotion logic
-        var applicableGifts = List.empty[GiftRef]
-        for (p <- promotions) {
-          if (p.promoType == "GIFT" && p.startDate <= orderDate && orderDate <= p.endDate) {
-            for (g <- gifts) {
-              if (g.promotionCode == p.code) {
-                applicableGifts = g :: applicableGifts
-              }
-            }
-          }
-        }
-        if (applicableGifts.nonEmpty) {
-          val chosenGift = pick(applicableGifts)
-          val giftItemId = "BOI-" + uuid12()
-          items = OrderItemLocal(giftItemId, orderId, chosenGift.productId, 1, 0, orderDate, orderDate) :: items
-        }
-
-        // Voucher logic
-        var appliedVoucher: Option[VoucherRef] = None
-        if (rnd.nextDouble() < 0.3) {
-          var activeVouchers = List.empty[VoucherRef]
-          for (v <- vouchers) {
-            if (v.startDate <= orderDate && orderDate <= v.endDate && totalBill >= v.minOrderValue) {
-              activeVouchers = v :: activeVouchers
-            }
-          }
-          if (activeVouchers.nonEmpty) {
-            appliedVoucher = Some(pick(activeVouchers))
-          }
-        }
-
-        var voucherDiscount = 0
-        var appliedVoucherSeriesCode: String = null
-        appliedVoucher.foreach { v =>
-          if (totalBill >= v.minOrderValue) {
-            voucherDiscount = v.amount
-            appliedVoucherSeriesCode = s"SR_${v.code}_${String.format("%04d", Integer.valueOf(rnd.nextInt(50) + 1))}"
-          }
-        }
-
-        val totalDiscount = voucherDiscount
-        val totalPayment = Math.max(0, totalBill - totalDiscount)
+        val totalDiscount = 0
+        val totalPayment = totalBill
+        val appliedVoucherSeriesCode: String = null
 
         val shopCode = pickPareto(shopCodes)
         val empId = pick(employeeIds)

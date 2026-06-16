@@ -58,7 +58,7 @@ object IcebergMaintenanceJob {
             case e: Exception => println(s"❌ Compaction failed for $table: ${e.getMessage}")
           }
 
-          // 2. Expire Snapshots (Retain the last 5 snapshots, expire ones older than 7 days)
+          // 2. Expire Snapshots (Retain last 5 snapshots, expire ones older than 7 days)
           try {
             println(s"Expiring old snapshots for $table...")
             val olderThanMs = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L) // 7 days ago
@@ -131,13 +131,15 @@ object IcebergMaintenanceJob {
           println(s"==================================================")
           println(s"Starting Staging Maintenance for table: $table")
 
-          // Expire old snapshots (Retain only the last 1 snapshot for staging)
+          // Expire old snapshots (Retain only the last 1 snapshot older than 1 day for staging)
           try {
             println(s"Expiring old snapshots for $table...")
+            val olderThanMs = System.currentTimeMillis() - (24 * 60 * 60 * 1000L) // 1 day ago
             spark.sql(
               s"""
                  |CALL nessie.system.expire_snapshots(
                  |  table => '$table',
+                 |  older_than => TIMESTAMP_MILLIS($olderThanMs),
                  |  retain_last => 1
                  |)
                  |""".stripMargin
