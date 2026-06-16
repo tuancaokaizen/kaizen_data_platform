@@ -111,13 +111,13 @@ public final class OrderSimulator {
         }
 
         // ── OrderItems (1-5 sản phẩm) ────────────────────────────────────────
-        String orderId = "ORD-" + uuid12();
+        String orderId = "SORD-" + uuid12();
         int itemCount  = rnd.nextInt(1, 6);
         List<OrderItem> items = new ArrayList<>(itemCount);
         int totalBill = 0;
 
         for (int i = 0; i < itemCount; i++) {
-            String itemId = "OI-" + uuid12();
+            String itemId = "SOI-" + uuid12();
             IdPool.ProductRef prod = IdPool.PRODUCTS.get(rnd.nextInt(IdPool.PRODUCTS.size()));
             int qty       = rnd.nextInt(1, 10);
             int unitPrice = prod.retailPrice;
@@ -138,7 +138,7 @@ public final class OrderSimulator {
         }
         if (!applicableGifts.isEmpty()) {
             IdPool.GiftRef chosenGift = applicableGifts.get(rnd.nextInt(applicableGifts.size()));
-            String giftItemId = "OI-" + uuid12();
+            String giftItemId = "SOI-" + uuid12();
             items.add(new OrderItem(giftItemId, orderId, chosenGift.productId, 1, 0, orderDate, orderDate));
         }
 
@@ -209,7 +209,7 @@ public final class OrderSimulator {
                 int returnAmount = 0;
                 List<ReturnItem> returnItems = new ArrayList<>();
                 long returnDate = orderDate + rnd.nextLong(1000L, 5000L); // ngày trả cách ngày bán 1-5 giây
-                String retId = "RET-" + uuid12();
+                String retId = "SRET-" + uuid12();
 
                 boolean isZeroReturn = totalPayment <= totalDiscount;
                 double discountRatio = (double) totalDiscount / totalBill;
@@ -229,7 +229,7 @@ public final class OrderSimulator {
                     returnAmount += itemAmt;
 
                     returnItems.add(new ReturnItem(
-                            "RI-" + uuid12(), retId, src.getProductId(),
+                            "SRI-" + uuid12(), retId, src.getProductId(),
                             retQty, salePrice, src.getId(), orderId, itemAmt,
                             returnDate, returnDate));
                 }
