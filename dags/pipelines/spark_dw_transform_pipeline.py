@@ -13,7 +13,13 @@ from airflow.models.param import Param
 
 # Allow importing configs from jobs folder
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from jobs.spark_generic_ingest import get_transformer_task, get_clickhouse_dw_task
+from jobs.spark_generic_ingest import (
+    get_transformer_task,
+    get_clickhouse_dw_task,
+    get_clickhouse_serving_task,
+    get_clickhouse_report_task,
+    get_push_serving_task
+)
 
 default_args = {
     'owner': 'kaizen',
@@ -135,7 +141,30 @@ with DAG(
     )
     ch_fact_cogs_transaction = PythonOperator(**get_clickhouse_dw_task("fact_cogs_transaction"))
 
-    # Execute Dimensions sequentially, then Facts sequentially
+    # 10. Transform Financial Report in Serving Layer
+    transform_serving_financial_report = KubernetesPodOperator(
+        **get_transformer_task(
+            task_id="transform_serving_financial_report",
+            transformer_class="com.kaizen.spark.processing.ProcessSrvFinancialReport"
+        )
+    )
+    ch_financial_serving = PythonOperator(**get_clickhouse_serving_task("financial_report"))
+    ch_financial_report = PythonOperator(**get_clickhouse_report_task("financial_report"))
+
+    # 11. Transform Fund Report in Serving Layer
+    transform_serving_fund_report = KubernetesPodOperator(
+        **get_transformer_task(
+            task_id="transform_serving_fund_report",
+            transformer_class="com.kaizen.spark.processing.ProcessSrvFundReport"
+        )
+    )
+    ch_fund_serving = PythonOperator(**get_clickhouse_serving_task("fund_report"))
+    ch_fund_report = PythonOperator(**get_clickhouse_report_task("fund_report"))
+
+    # 12. Push Serving Reports (1-month) to ClickHouse Hot Layer
+    push_serving_to_clickhouse = KubernetesPodOperator(**get_push_serving_task())
+
+    # Execute Dimensions sequentially, then Facts sequentially, and finally Serving Reports sequentially
     (
         transform_dim_product >> ch_dim_product >>
         transform_dim_customer >> ch_dim_customer >>
@@ -147,5 +176,8 @@ with DAG(
         transform_return_transactions >> ch_fact_return_transaction >>
         transform_payment_transactions >> ch_fact_payment_transaction >>
         transform_promotion_cost >> ch_fact_promotion_cost >>
-        transform_cogs >> ch_fact_cogs_transaction
+        transform_cogs >> ch_fact_cogs_transaction >>
+        transform_serving_financial_report >> ch_financial_serving >> ch_financial_report >>
+        transform_serving_fund_report >> ch_fund_serving >> ch_fund_report >>
+        push_serving_to_clickhouse
     )

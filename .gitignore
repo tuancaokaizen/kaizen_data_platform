@@ -62,3 +62,4 @@ dags/config.k3s-new
 
 # Local check and setup scripts at root level
 /*.sh
+/.scalafmt.conf

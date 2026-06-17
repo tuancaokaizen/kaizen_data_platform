@@ -19,7 +19,10 @@ spark_conf = {
     "spark.executor.memory": "1g",
     "spark.executor.cores": "1",
     "spark.cores.max": "2",
-    "spark.driver.memory": "1g"
+    "spark.driver.memory": "1g",
+    "spark.sql.session.timeZone": "Asia/Ho_Chi_Minh",
+    "spark.driver.extraJavaOptions": "-Duser.timezone=Asia/Ho_Chi_Minh",
+    "spark.executor.extraJavaOptions": "-Duser.timezone=Asia/Ho_Chi_Minh"
 }
 
 import yaml
@@ -141,6 +144,70 @@ def get_clickhouse_dw_task(table_name):
         "python_callable": run_clickhouse_setup,
         "op_kwargs": {"table_name": table_name, "layer": "dw"},
         "retries": 0
+    }
+
+def get_clickhouse_serving_task(table_name):
+    """
+    Generates ClickHouse integration PythonOperator configuration dynamically for serving layer.
+    """
+    return {
+        "task_id": f"create_clickhouse_serving_{table_name}",
+        "python_callable": run_clickhouse_setup,
+        "op_kwargs": {"table_name": table_name, "layer": "serving"},
+        "retries": 0
+    }
+
+def get_clickhouse_report_task(table_name):
+    """
+    Generates ClickHouse integration PythonOperator configuration dynamically for report layer.
+    """
+    return {
+        "task_id": f"create_clickhouse_report_{table_name}",
+        "python_callable": run_clickhouse_setup,
+        "op_kwargs": {"table_name": table_name, "layer": "report"},
+        "retries": 0
+    }
+
+def get_push_serving_task():
+    """
+    Generates KubernetesPodOperator configuration dictionary dynamically
+    for PushServingToClickHouseJob.
+    """
+    task_id = "push_serving_to_clickhouse"
+    java_class = 'com.kaizen.spark.push.PushServingToClickHouseJob'
+
+    # Build the spark-submit command manually
+    spark_cmd = (
+        f"/opt/spark/bin/spark-submit "
+        f"--master 'spark://kaizen-spark-master.compute.svc.cluster.local:7077' "
+        f"--class '{java_class}' "
+    )
+    
+    # Add spark configurations as --conf flags
+    for key, val in spark_conf.items():
+        spark_cmd += f"--conf '{key}={val}' "
+        
+    # Dynamically set the driver host to the pod IP address so executors can connect back
+    spark_cmd += "--conf spark.driver.host=$(hostname -i) "
+    
+    spark_cmd += "'/tmp/kaizen-batch-processing.jar'"
+    
+    download_cmd = "curl -s -f -o /tmp/kaizen-batch-processing.jar http://minio.storage.svc.cluster.local:9000/spark/jobs/kaizen-batch-processing.jar"
+    full_command = f"{download_cmd} && {spark_cmd}"
+
+    return {
+        "task_id": task_id,
+        "name": task_id.replace("_", "-"),
+        "namespace": "orchestrator",
+        "image": "apache/spark:3.4.1",
+        "cmds": ["/bin/sh", "-c"],
+        "arguments": [full_command],
+        "get_logs": True,
+        "in_cluster": True,
+        "on_finish_action": "delete_succeeded_pod",
+        "env_vars": {
+            "SPARK_SUBMIT_OPTS": "-Divy.default.ivy.user.dir=/tmp/.ivy2 -Divy.home=/tmp/.ivy2"
+        }
     }
 
 def get_transformer_task(task_id, transformer_class):

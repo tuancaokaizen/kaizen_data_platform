@@ -72,13 +72,56 @@ def run_clickhouse_setup(table_name, layer=None):
             print(f"WARNING: Error resolving Iceberg path via boto3: {e}. Falling back to S3 wildcard.")
             return None
 
-    if layer == "dw":
-        resolved_path = resolve_iceberg_path('dw', table_name)
+    if layer == "report":
+        db_name = "report"
+        schema_paths = [
+            os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'schema_manager', 'clickhouse', 'schema_clickhouse.sql')),
+            '/opt/airflow/schema_manager/clickhouse/schema_clickhouse.sql',
+            '/opt/airflow/dags/schema_manager/clickhouse/schema_clickhouse.sql'
+        ]
+        
+        schema_sql_path = None
+        for path in schema_paths:
+            if os.path.exists(path):
+                schema_sql_path = path
+                break
+                
+        if not schema_sql_path:
+            raise FileNotFoundError("schema_clickhouse.sql not found in search paths")
+            
+        with open(schema_sql_path, 'r', encoding='utf-8') as sf:
+            content = sf.read()
+            
+        # Parse statements to find the specific CREATE TABLE statement
+        raw_statements = content.split(';')
+        statements_to_run = [f"CREATE DATABASE IF NOT EXISTS {db_name}"]
+        
+        target_marker = f"{db_name}.{table_name}"
+        found_table = False
+        for stmt in raw_statements:
+            stmt_clean = stmt.strip()
+            if not stmt_clean:
+                continue
+            # Remove comments for matching check
+            lines = [line for line in stmt_clean.split('\n') if not line.strip().startswith('--')]
+            stmt_no_comments = '\n'.join(lines)
+            if "CREATE TABLE" in stmt_no_comments and target_marker in stmt_no_comments:
+                statements_to_run.append(stmt_clean)
+                found_table = True
+                break
+                
+        if not found_table:
+            raise ValueError(f"Could not find CREATE TABLE statement for {target_marker} in schema_clickhouse.sql")
+            
+        sql = ';\n'.join(statements_to_run)
+    elif layer == "dw" or layer == "serving":
+        db_name = layer
+        resolved_path = resolve_iceberg_path(db_name, table_name)
         if resolved_path:
             sql = f"""
-            CREATE DATABASE IF NOT EXISTS dw;
-            DROP TABLE IF EXISTS dw.{table_name};
-            CREATE TABLE dw.{table_name}
+            CREATE DATABASE IF NOT EXISTS {db_name};
+            DROP TABLE IF EXISTS {db_name}.{table_name};
+            CREATE TABLE {db_name}.{table_name}
             ENGINE = Iceberg(
                 '{resolved_path}',
                 '{minio_user}',
@@ -87,11 +130,11 @@ def run_clickhouse_setup(table_name, layer=None):
             """
         else:
             sql = f"""
-            CREATE DATABASE IF NOT EXISTS dw;
-            DROP TABLE IF EXISTS dw.{table_name};
-            CREATE TABLE dw.{table_name}
+            CREATE DATABASE IF NOT EXISTS {db_name};
+            DROP TABLE IF EXISTS {db_name}.{table_name};
+            CREATE TABLE {db_name}.{table_name}
             ENGINE = S3(
-                '{minio_endpoint}/iceberg-data/dw/{table_name}_*/data/*.parquet',
+                '{minio_endpoint}/iceberg-data/{db_name}/{table_name}_*/data/*.parquet',
                 '{minio_user}',
                 '{minio_pass}',
                 'Parquet'

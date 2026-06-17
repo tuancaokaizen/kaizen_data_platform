@@ -4,6 +4,7 @@ import os
 
 # pyrefly: ignore [missing-import]
 from airflow import DAG
+# pyrefly: ignore [missing-import]
 from airflow.models.param import Param
 # pyrefly: ignore [missing-import]
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
