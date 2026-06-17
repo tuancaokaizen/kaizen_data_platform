@@ -19,6 +19,8 @@ object IcebergMaintenanceJob {
         "nessie.dw.fact_sales_transaction",
         "nessie.dw.fact_return_transaction",
         "nessie.dw.fact_payment_transaction",
+        "nessie.dw.fact_promotion_cost",
+        "nessie.dw.fact_cogs_transaction",
         // DW Dims
         "nessie.dw.dim_product",
         "nessie.dw.dim_customer",
@@ -26,6 +28,9 @@ object IcebergMaintenanceJob {
         "nessie.dw.dim_employee",
         "nessie.dw.dim_promotion",
         "nessie.dw.dim_voucher",
+        // Serving Reports
+        "nessie.serving.financial_report",
+        "nessie.serving.fund_report",
         // FND Incremental tables
         "nessie.fnd.order",
         "nessie.fnd.order_item",
@@ -123,7 +128,12 @@ object IcebergMaintenanceJob {
         "nessie.stg.dim_voucher",
         "nessie.stg.fact_sales_transaction",
         "nessie.stg.fact_return_transaction",
-        "nessie.stg.fact_payment_transaction"
+        "nessie.stg.fact_payment_transaction",
+        "nessie.stg.fact_promotion_cost",
+        "nessie.stg.fact_cogs_transaction",
+        // Serving Reports Staging Tables
+        "nessie.stg.financial_report",
+        "nessie.stg.fund_report"
       )
 
       stgTables.foreach { table =>
