@@ -1,53 +1,83 @@
-# Report Dashboard — local dev only (data from K3s ClickHouse)
+# Report Dashboard — local UI, data từ ClickHouse trên K3s
 
-## Quick start
-
-```bash
-export K3S_CONF="$HOME/.kube/config.k3s-new"   # optional if default kubeconfig works
-
-cd projects
-./run_local.sh
-```
-
-Open **http://localhost:8092** — báo cáo tài chính + báo cáo quỹ.
-
-`run_local.sh` tự làm:
-1. Port-forward ClickHouse K3s → `localhost:9000` / `8123`
-2. Build + chạy Go API → `:8090`
-3. Chạy Vite dev server → `:8092`
-
-Ctrl+C dừng toàn bộ.
-
-## Prerequisites
-
-- `kubectl` + kubeconfig trỏ cluster K3s (data pipeline đã chạy, ClickHouse có view `report.*`)
-- Go 1.22+
-- Node.js 18+ (`brew install node`)
-
-## Layout
-
-```
-projects/
-├── run_local.sh          # ← entry point
-├── backend/              # Go API → ClickHouse
-└── frontend/             # React + Vite + Ant Design
-```
-
-## Chạy riêng từng phần
+## Quick start (bạn — có kubectl)
 
 ```bash
-# Backend only (cần port-forward ClickHouse trước)
-kubectl port-forward -n databases svc/clickhouse-service 9000:9000
-cd backend && cp .env.example .env && ./deploy_backend.sh run
-
-# Frontend only (cần backend :8090)
-cd frontend && cp .env.example .env && ./deploy_frontend.sh run
+cd projects && ./run_local.sh
 ```
+
+→ http://localhost:8092
+
+---
+
+## Đồng nghiệp — chỉ cần Tailscale (không kubectl, không forward tay)
+
+### Bạn setup 1 lần (admin, máy chạy K3s)
+
+1. **Cài Tailscale** trên node K3s và join tailnet:
+   ```bash
+   tailscale up
+   tailscale ip -4                    # ví dụ 100.64.0.5
+   tailscale status --json | head     # hoặc bật MagicDNS trong admin console
+   ```
+
+2. **ClickHouse phải lộ qua NodePort** trên IP Tailscale (mặc định K3s bind all interfaces):
+   ```bash
+   kubectl get svc -n databases | grep -i clickhouse
+   # Cần service kiểu NodePort, ví dụ clickhouse-shared → port 30900
+   ```
+
+3. **Test từ máy khác trong tailnet** (hoặc điện thoại bật Tailscale):
+   ```bash
+   nc -zv 100.64.0.5 30900
+   # hoặc: nc -zv k3s-node.your-tailnet.ts.net 30900
+   ```
+
+4. **Gửi team** (Slack, không cần kubeconfig):
+   - `CLICKHOUSE_HOST` = `100.104.250.97` (K3s master Tailscale)
+   - `CLICKHOUSE_PORT` = `30900` (`clickhouse-shared` NodePort)
+   - Đã có sẵn trong `backend/.env.tailscale.example`
+
+### Đồng nghiệp (mỗi người)
+
+1. Cài **Tailscale** + login **cùng tailnet**
+2. Cài **Go**, **Node.js** (`brew install go node`)
+3. Clone repo:
+   ```bash
+   cd projects/backend
+   cp .env.tailscale.example .env
+   cd ..
+   ./run_local.sh
+   ```
+4. Mở http://localhost:8092
+
+`run_local.sh` **không** chạy kubectl — nối thẳng ClickHouse qua Tailscale.
+
+### Sơ đồ
+
+```
+[Đồng nghiệp Mac]                    [Tailscale tailnet]              [Máy K3s]
+  run_local.sh  ──► backend :8090  ──► 100.x.x.x:30900  ──►  NodePort  ──► ClickHouse pod
+  frontend :8092
+```
+
+---
+
+## Các cách kết nối ClickHouse (chọn 1)
+
+| Cách | Ai dùng | `backend/.env` |
+|------|---------|----------------|
+| **Tailscale** | Đồng nghiệp remote | `.env.tailscale.example` → `.env` |
+| **kubectl forward** | Dev có kubeconfig | mặc định `localhost:9000`, `./run_local.sh` tự forward |
+| **LAN NodePort** | Cùng WiFi, không TS | `SKIP_K8S_FORWARD=1`, `HOST=<LAN-IP>`, `PORT=30900` |
+
+---
 
 ## Ports
 
-| Service    | Port |
-|-------------|------|
-| Frontend UI | 8092 |
-| Backend API | 8090 |
-| ClickHouse  | 9000 (native), 8123 (HTTP) |
+| Service | Port |
+|---------|------|
+| Frontend | 8092 |
+| Backend | 8090 |
+| ClickHouse (forward local) | 9000 |
+| ClickHouse (Tailscale NodePort) | **30900** |

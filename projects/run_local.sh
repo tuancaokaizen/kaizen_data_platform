@@ -65,17 +65,65 @@ ensure_env() {
     [ -f "$FRONTEND_DIR/.env" ] || cp "$FRONTEND_DIR/.env.example" "$FRONTEND_DIR/.env"
 }
 
+# Connect ClickHouse: auto port-forward OR direct host from .env / Kết nối CH: tự forward hoặc host trực tiếp
+setup_clickhouse() {
+    set -a
+    # shellcheck disable=SC1091
+    source "$BACKEND_DIR/.env"
+    set +a
+
+    local ch_host="${CLICKHOUSE_HOST:-localhost}"
+    local ch_port="${CLICKHOUSE_PORT:-9000}"
+
+    # Direct mode: colleague uses NodePort / VPN IP — set in backend/.env
+    # Chế độ trực tiếp: đồng nghiệp dùng NodePort hoặc IP cluster, không cần kubectl forward
+    if [ "${SKIP_K8S_FORWARD:-0}" = "1" ] || [ "$ch_host" != "localhost" ]; then
+        echo "✔ ClickHouse direct: $ch_host:$ch_port (Tailscale / NodePort — no kubectl)"
+        if ! nc -z -w 3 "$ch_host" "$ch_port" 2>/dev/null; then
+            echo "❌ Cannot reach $ch_host:$ch_port"
+            echo "   → Vào Tailscale cùng tailnet với máy K3s?"
+            echo "   → Kiểm tra backend/.env (xem .env.tailscale.example)"
+            exit 1
+        fi
+        echo "✔ ClickHouse reachable"
+        export CLICKHOUSE_HOST="$ch_host"
+        export CLICKHOUSE_PORT="$ch_port"
+        return
+    fi
+
+    if ! command -v kubectl >/dev/null; then
+        echo "❌ kubectl not found."
+        echo "   Tailscale only: cp backend/.env.tailscale.example backend/.env"
+        echo "   Then edit CLICKHOUSE_HOST and run ./run_local.sh again"
+        exit 1
+    fi
+
+    port_forward "ClickHouse native" "databases" "clickhouse-service" 9000
+    port_forward "ClickHouse HTTP"  "databases" "clickhouse-service" 8123
+    export CLICKHOUSE_HOST=localhost
+    export CLICKHOUSE_PORT=9000
+}
+
 start_backend() {
     echo "=== Backend :8090 ==="
     free_port 8090
     (cd "$BACKEND_DIR" && ./deploy_backend.sh build >/dev/null)
     (
+        # Keep CH host/port from setup_clickhouse — .env must not override forward/Tailscale
+        # Giữ host/port từ setup_clickhouse — không để .env ghi đè sau port-forward
+        local saved_ch_host="${CLICKHOUSE_HOST:-}"
+        local saved_ch_port="${CLICKHOUSE_PORT:-}"
         set -a
         # shellcheck disable=SC1091
         source "$BACKEND_DIR/.env"
         set +a
-        export CLICKHOUSE_HOST=localhost
-        export CLICKHOUSE_PORT=9000
+        if [ -n "$saved_ch_host" ]; then
+            export CLICKHOUSE_HOST="$saved_ch_host"
+            export CLICKHOUSE_PORT="$saved_ch_port"
+        else
+            export CLICKHOUSE_HOST="${CLICKHOUSE_HOST:-localhost}"
+            export CLICKHOUSE_PORT="${CLICKHOUSE_PORT:-9000}"
+        fi
         exec "$BIN_FILE"
     ) &
     BACKEND_PID=$!
@@ -97,13 +145,11 @@ start_frontend() {
 }
 
 main() {
-    command -v kubectl >/dev/null || { echo "❌ kubectl required"; exit 1; }
     command -v npm >/dev/null || { echo "❌ npm required (brew install node)"; exit 1; }
 
     echo "=== Kaizen Report (local UI, K3s data) ==="
     ensure_env
-    port_forward "ClickHouse native" "databases" "clickhouse-service" 9000
-    port_forward "ClickHouse HTTP"  "databases" "clickhouse-service" 8123
+    setup_clickhouse
     start_backend
     start_frontend
 }
