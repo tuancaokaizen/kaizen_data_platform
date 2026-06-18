@@ -32,7 +32,7 @@ object PartitionRealignmentJob {
         if (SparkIOUtils.tableExists(spark, table)) {
           println(s"--------------------------------------------------")
           println(s"Realignment started for table: $table")
-          
+
           // 1. Alter table to evolve partitioning schema (non-blocking metadata change)
           try {
             println(s"Adding partition field '$partitionExpr' to $table...")
@@ -40,11 +40,15 @@ object PartitionRealignmentJob {
             println(s"Successfully altered partition schema for $table.")
           } catch {
             case e: Exception =>
-              println(s"Partition field might already exist or table alter failed: ${e.getMessage}")
+              println(
+                s"Partition field might already exist or table alter failed: ${e.getMessage}"
+              )
           }
 
           // 2. Run Iceberg's rewrite_data_files procedure to rewrite historical data into partitions
-          println(s"Invoking Iceberg rewrite_data_files procedure for $table to reorganize historical data...")
+          println(
+            s"Invoking Iceberg rewrite_data_files procedure for $table to reorganize historical data..."
+          )
           spark.sql(
             s"""
                |CALL nessie.system.rewrite_data_files(

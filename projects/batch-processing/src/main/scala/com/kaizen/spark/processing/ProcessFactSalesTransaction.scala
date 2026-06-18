@@ -21,8 +21,12 @@ object ProcessFactSalesTransaction {
     val spark = SparkIOUtils.createSparkSession(jobName)
     val config = new SparkConfig()
 
-    val fromTs = formatTimestamp(fromDate.getOrElse("1970-01-01"), isEndOfDay = false)
-    val toTs = formatTimestamp(toDate.getOrElse(java.time.LocalDate.now().plusDays(1).toString), isEndOfDay = false)
+    val fromTs =
+      formatTimestamp(fromDate.getOrElse("1970-01-01"), isEndOfDay = false)
+    val toTs = formatTimestamp(
+      toDate.getOrElse(java.time.LocalDate.now().plusDays(1).toString),
+      isEndOfDay = false
+    )
 
     val jobResult = Try {
       SparkIOUtils.ensureNamespaceExists(spark, "nessie.stg")
@@ -34,27 +38,38 @@ object ProcessFactSalesTransaction {
       println(s"Running Sales Fact Transformation for range: $fromTs to $toTs")
 
       // Load foundation data
-      val orderFnd = spark.table("nessie.fnd.order")
+      val orderFnd = spark
+        .table("nessie.fnd.order")
         .filter(
           (col("TransactionDate") >= fromTs && col("TransactionDate") < toTs) ||
-          (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs)
+            (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs)
         )
         .dropDuplicates("Id")
 
       if (orderFnd.isEmpty) {
-        println("No sales orders found in the specified range. Skipping sales transformation.")
+        println(
+          "No sales orders found in the specified range. Skipping sales transformation."
+        )
       } else {
         val orderItemFnd = spark.table("nessie.fnd.order_item")
         val filteredOrderItems = orderItemFnd.filter(col("UnitPrice") > 0)
 
         val discountRatio = coalesce(
-          when(orderFnd("TotalBill") > 0, orderFnd("TotalDiscount").cast("double") / orderFnd("TotalBill").cast("double")),
+          when(
+            orderFnd("TotalBill") > 0,
+            orderFnd("TotalDiscount").cast("double") / orderFnd("TotalBill")
+              .cast("double")
+          ),
           lit(0.0)
         )
 
         // Transform and map to Fact schema
         val factSalesDf = filteredOrderItems
-          .join(orderFnd, filteredOrderItems("OrderId") === orderFnd("Id"), "inner")
+          .join(
+            orderFnd,
+            filteredOrderItems("OrderId") === orderFnd("Id"),
+            "inner"
+          )
           .select(
             filteredOrderItems("Id").as("TransactionId"),
             filteredOrderItems("OrderId").as("OrderId"),
@@ -66,8 +81,12 @@ object ProcessFactSalesTransaction {
             orderFnd("VoucherSeriesCode").as("VoucherSeriesCode"),
             filteredOrderItems("Quantity").as("Quantity"),
             filteredOrderItems("UnitPrice").as("UnitPrice"),
-            round((filteredOrderItems("Quantity") * filteredOrderItems("UnitPrice")).cast("double") * (lit(1.0) - discountRatio))
-              .cast("integer").as("TotalAmount"),
+            round(
+              (filteredOrderItems("Quantity") * filteredOrderItems("UnitPrice"))
+                .cast("double") * (lit(1.0) - discountRatio)
+            )
+              .cast("integer")
+              .as("TotalAmount"),
             orderFnd("TransactionDate").as("TransactionDate"),
             filteredOrderItems("CreatedDate").as("CreatedDate"),
             filteredOrderItems("ModifiedDate").as("ModifiedDate")
@@ -77,7 +96,9 @@ object ProcessFactSalesTransaction {
         // Write to Iceberg
         val targetExists = SparkIOUtils.tableExists(spark, targetTable)
         if (!targetExists) {
-          println(s"Target table '$targetTable' does not exist. Initializing table...")
+          println(
+            s"Target table '$targetTable' does not exist. Initializing table..."
+          )
           SparkIOUtils.writeToIceberg(spark, factSalesDf, stgTable, "overwrite")
           val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
           SparkIOUtils.writeToIceberg(spark, stgDf, targetTable, "overwrite")
@@ -85,7 +106,12 @@ object ProcessFactSalesTransaction {
           println(s"Merging sales items into target table '$targetTable'...")
           SparkIOUtils.writeToIceberg(spark, factSalesDf, stgTable, "overwrite")
           val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
-          SparkIOUtils.mergeIcebergTable(spark, stgDf, targetTable, Seq("TransactionId"))
+          SparkIOUtils.mergeIcebergTable(
+            spark,
+            stgDf,
+            targetTable,
+            Seq("TransactionId")
+          )
         }
         println(s"✔ Sales Fact Transformation completed for: $targetTable")
       }
@@ -95,8 +121,14 @@ object ProcessFactSalesTransaction {
       case Success(_) =>
         println(s"✔ [$jobName] completed successfully.")
         Try {
-          SparkIOUtils.expireTableSnapshots(spark, "nessie.stg.fact_sales_transaction")
-          SparkIOUtils.expireTableSnapshots(spark, "nessie.dw.fact_sales_transaction")
+          SparkIOUtils.expireTableSnapshots(
+            spark,
+            "nessie.stg.fact_sales_transaction"
+          )
+          SparkIOUtils.expireTableSnapshots(
+            spark,
+            "nessie.dw.fact_sales_transaction"
+          )
         }
         spark.stop()
       case Failure(e) =>

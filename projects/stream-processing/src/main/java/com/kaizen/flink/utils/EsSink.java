@@ -12,9 +12,12 @@ import java.net.URI;
 
 public class EsSink {
 
-    protected EsSink() {}
+    protected EsSink() {
+    }
 
-    /** Dành cho producer jobs: model T → JsonUtils.toJson(T) → ES */
+    /**
+     * Dành cho producer jobs: model T → JsonUtils.toJson(T) → ES
+     */
     public static <T> ElasticsearchSink<T> build(FlinkConfig config, String indexName) {
         Elasticsearch7SinkBuilder<T> builder = new Elasticsearch7SinkBuilder<T>()
                 .setHosts(parseHost(config))
@@ -25,7 +28,9 @@ public class EsSink {
         return builder.build();
     }
 
-    /** Dành cho consumer jobs: String JSON (từ Kafka) → ES trực tiếp (không double-serialize) */
+    /**
+     * Dành cho consumer jobs: String JSON (từ Kafka) → ES trực tiếp (không double-serialize)
+     */
     public static ElasticsearchSink<String> buildStringIndexSink(FlinkConfig config, String indexName) {
         Elasticsearch7SinkBuilder<String> builder = new Elasticsearch7SinkBuilder<String>()
                 .setHosts(parseHost(config))

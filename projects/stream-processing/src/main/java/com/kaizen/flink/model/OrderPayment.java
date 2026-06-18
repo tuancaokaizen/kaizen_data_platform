@@ -6,7 +6,9 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 
-/** Ánh xạ bảng payment."OrderPayment" – liên kết Payment ↔ Order */
+/**
+ * Ánh xạ bảng payment."OrderPayment" – liên kết Payment ↔ Order
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

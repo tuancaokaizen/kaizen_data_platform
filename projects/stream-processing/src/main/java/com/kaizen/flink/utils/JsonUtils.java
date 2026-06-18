@@ -18,7 +18,6 @@ public class JsonUtils {
     }
 
 
-
     public static <T> T fromJson(String json, Class<T> clazz) {
         try {
             return MAPPER.readValue(json, clazz);

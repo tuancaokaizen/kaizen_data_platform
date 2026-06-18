@@ -6,7 +6,9 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 
-/** Ánh xạ bảng shop."Shop" */
+/**
+ * Ánh xạ bảng shop."Shop"
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

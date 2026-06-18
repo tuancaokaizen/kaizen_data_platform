@@ -16,13 +16,12 @@ default_args = {
 }
 
 with DAG(
-    'master_data_generation_pipeline',
-    default_args=default_args,
-    description='Pipeline to generate master data once and sync to Postgres/ES',
-    schedule_interval=None,  # Manual trigger
-    catchup=False,
+        'master_data_generation_pipeline',
+        default_args=default_args,
+        description='Pipeline to generate master data once and sync to Postgres/ES',
+        schedule_interval=None,  # Manual trigger
+        catchup=False,
 ) as dag:
-
     generate_master_data_task = PythonOperator(
         task_id='generate_master_data',
         python_callable=generate_all_master_data

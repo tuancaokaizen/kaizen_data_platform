@@ -24,18 +24,20 @@ default_args = {
 }
 
 with DAG(
-    'spark_transaction_data_ingest_pipeline',
-    default_args=default_args,
-    description='Spark Batch PostgreSQL Transaction & Periodical Data Ingestion to Iceberg (Incremental Load)',
-    schedule_interval=None,  # Triggered manually or by the generation pipeline
-    catchup=False,
-    params={
-        "fromDate": Param(None, type=["null", "string"], description="Start date (YYYY-MM-DD) for range ingestion. Defaults to D-1 if left blank."),
-        "toDate": Param(None, type=["null", "string"], description="End date (YYYY-MM-DD) for range ingestion. Defaults to today (D) if left blank."),
-        "useWatermark": Param(False, type="boolean", description="Whether to ignore date range and use target table watermark.")
-    }
+        'spark_transaction_data_ingest_pipeline',
+        default_args=default_args,
+        description='Spark Batch PostgreSQL Transaction & Periodical Data Ingestion to Iceberg (Incremental Load)',
+        schedule_interval=None,  # Triggered manually or by the generation pipeline
+        catchup=False,
+        params={
+            "fromDate": Param(None, type=["null", "string"],
+                              description="Start date (YYYY-MM-DD) for range ingestion. Defaults to D-1 if left blank."),
+            "toDate": Param(None, type=["null", "string"],
+                            description="End date (YYYY-MM-DD) for range ingestion. Defaults to today (D) if left blank."),
+            "useWatermark": Param(False, type="boolean",
+                                  description="Whether to ignore date range and use target table watermark.")
+        }
 ) as dag:
-
     # 1. Order Ingestion
     ingest_order = KubernetesPodOperator(**get_ingestion_task("order"))
     ch_order = PythonOperator(**get_clickhouse_task("order"))
@@ -90,17 +92,17 @@ with DAG(
 
     # Run tasks sequentially to fit within cluster resources
     (
-        ingest_order >> ch_order >> 
-        ingest_order_item >> ch_order_item >> 
-        ingest_return >> ch_return >> 
-        ingest_return_item >> ch_return_item >> 
-        ingest_payment >> ch_payment >> 
-        ingest_transaction >> ch_transaction >> 
-        ingest_order_payment >> ch_order_payment >> 
-        ingest_return_payment >> ch_return_payment >> 
-        ingest_employee_salary >> ch_employee_salary >> 
-        ingest_promotion >> ch_promotion >> 
-        ingest_voucher >> ch_voucher >> 
-        ingest_voucher_series >> ch_voucher_series >> 
-        ingest_gift >> ch_gift
+            ingest_order >> ch_order >>
+            ingest_order_item >> ch_order_item >>
+            ingest_return >> ch_return >>
+            ingest_return_item >> ch_return_item >>
+            ingest_payment >> ch_payment >>
+            ingest_transaction >> ch_transaction >>
+            ingest_order_payment >> ch_order_payment >>
+            ingest_return_payment >> ch_return_payment >>
+            ingest_employee_salary >> ch_employee_salary >>
+            ingest_promotion >> ch_promotion >>
+            ingest_voucher >> ch_voucher >>
+            ingest_voucher_series >> ch_voucher_series >>
+            ingest_gift >> ch_gift
     )

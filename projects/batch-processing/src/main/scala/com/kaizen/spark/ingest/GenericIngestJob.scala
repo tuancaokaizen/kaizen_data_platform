@@ -9,8 +9,14 @@ object GenericIngestJob {
 
   def main(args: Array[String]): Unit = {
     val parsedArgs = SparkIOUtils.parseArgs(args)
-    val sourceTable = parsedArgs.getOrElse("sourceTable", throw new IllegalArgumentException("Missing parameter --sourceTable"))
-    val targetTable = parsedArgs.getOrElse("targetTable", throw new IllegalArgumentException("Missing parameter --targetTable"))
+    val sourceTable = parsedArgs.getOrElse(
+      "sourceTable",
+      throw new IllegalArgumentException("Missing parameter --sourceTable")
+    )
+    val targetTable = parsedArgs.getOrElse(
+      "targetTable",
+      throw new IllegalArgumentException("Missing parameter --targetTable")
+    )
     val loadType = parsedArgs.getOrElse("loadType", "full").toLowerCase
     val watermarkColumn = parsedArgs.get("watermarkColumn")
     val joinKey = parsedArgs.get("joinKey")
@@ -36,10 +42,14 @@ object GenericIngestJob {
       loadType match {
         case "incremental" =>
           val watermarkCol = watermarkColumn.getOrElse(
-            throw new IllegalArgumentException("Watermark column is required for incremental load")
+            throw new IllegalArgumentException(
+              "Watermark column is required for incremental load"
+            )
           )
           val keysStr = joinKey.getOrElse(
-            throw new IllegalArgumentException("Join key is required for incremental load")
+            throw new IllegalArgumentException(
+              "Join key is required for incremental load"
+            )
           )
           val joinKeys = keysStr.split(",").map(_.trim).toSeq
 
@@ -51,53 +61,125 @@ object GenericIngestJob {
             val toDate = toDateOpt.getOrElse(java.time.LocalDate.now().toString)
             val formattedFrom = formatTimestamp(fromDate, isEndOfDay = false)
             val formattedTo = formatTimestamp(toDate, isEndOfDay = false)
-            println(s"[$jobName] Manual date range specified. Ingesting from $formattedFrom to $formattedTo...")
-            val rangeDf = SparkIOUtils.readFromPostgres(spark, sourceTable, config, Some(watermarkCol), Some(formattedFrom), Some(formattedTo))
+            println(
+              s"[$jobName] Manual date range specified. Ingesting from $formattedFrom to $formattedTo..."
+            )
+            val rangeDf = SparkIOUtils.readFromPostgres(
+              spark,
+              sourceTable,
+              config,
+              Some(watermarkCol),
+              Some(formattedFrom),
+              Some(formattedTo)
+            )
 
             if (rangeDf.isEmpty) {
-              println(s"✔ [$jobName] No data found in PostgreSQL in range $formattedFrom to $formattedTo. Exiting.")
+              println(
+                s"✔ [$jobName] No data found in PostgreSQL in range $formattedFrom to $formattedTo. Exiting."
+              )
             } else {
               val targetExists = SparkIOUtils.tableExists(spark, fndTable)
               if (!targetExists) {
-                println(s"[$jobName] Target table '$fndTable' does not exist. Initializing table with range data...")
-                SparkIOUtils.writeToIceberg(spark, rangeDf, stgTable, "overwrite")
+                println(
+                  s"[$jobName] Target table '$fndTable' does not exist. Initializing table with range data..."
+                )
+                SparkIOUtils.writeToIceberg(
+                  spark,
+                  rangeDf,
+                  stgTable,
+                  "overwrite"
+                )
                 val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
                 SparkIOUtils.writeToIceberg(spark, stgDf, fndTable, "overwrite")
               } else {
-                writeStagingAndMerge(spark, rangeDf, stgTable, fndTable, joinKeys)
+                writeStagingAndMerge(
+                  spark,
+                  rangeDf,
+                  stgTable,
+                  fndTable,
+                  joinKeys
+                )
               }
-              println(s"✔ [$jobName] Incremental load for range $formattedFrom to $formattedTo completed successfully.")
+              println(
+                s"✔ [$jobName] Incremental load for range $formattedFrom to $formattedTo completed successfully."
+              )
             }
           } else {
             val targetExists = SparkIOUtils.tableExists(spark, fndTable)
             if (targetExists) {
-              println(s"[$jobName] Target table '$fndTable' exists. Checking max watermark...")
-              val maxWatermarkOpt = SparkIOUtils.getMaxWatermark(spark, fndTable, watermarkCol)
+              println(
+                s"[$jobName] Target table '$fndTable' exists. Checking max watermark..."
+              )
+              val maxWatermarkOpt =
+                SparkIOUtils.getMaxWatermark(spark, fndTable, watermarkCol)
 
               maxWatermarkOpt match {
                 case Some(maxTs) =>
-                  println(s"[$jobName] Found max watermark: $maxTs. Reading incremental data from PostgreSQL...")
-                  val incrementalDf = SparkIOUtils.readFromPostgres(spark, sourceTable, config, Some(watermarkCol), Some(maxTs))
-                  
+                  println(
+                    s"[$jobName] Found max watermark: $maxTs. Reading incremental data from PostgreSQL..."
+                  )
+                  val incrementalDf = SparkIOUtils.readFromPostgres(
+                    spark,
+                    sourceTable,
+                    config,
+                    Some(watermarkCol),
+                    Some(maxTs)
+                  )
+
                   if (incrementalDf.isEmpty) {
-                    println(s"✔ [$jobName] No new data found in PostgreSQL since watermark $maxTs. Exiting.")
+                    println(
+                      s"✔ [$jobName] No new data found in PostgreSQL since watermark $maxTs. Exiting."
+                    )
                   } else {
-                    writeStagingAndMerge(spark, incrementalDf, stgTable, fndTable, joinKeys)
-                    println(s"✔ [$jobName] Incremental load completed successfully. Merged new rows into $fndTable")
+                    writeStagingAndMerge(
+                      spark,
+                      incrementalDf,
+                      stgTable,
+                      fndTable,
+                      joinKeys
+                    )
+                    println(
+                      s"✔ [$jobName] Incremental load completed successfully. Merged new rows into $fndTable"
+                    )
                   }
                 case None =>
-                  println(s"[$jobName] Max watermark not found in '$fndTable' (empty table). Executing full load initialization...")
-                  executeFullLoad(spark, config, sourceTable, stgTable, fndTable, jobName)
+                  println(
+                    s"[$jobName] Max watermark not found in '$fndTable' (empty table). Executing full load initialization..."
+                  )
+                  executeFullLoad(
+                    spark,
+                    config,
+                    sourceTable,
+                    stgTable,
+                    fndTable,
+                    jobName
+                  )
               }
             } else {
-              println(s"[$jobName] Target table '$fndTable' does not exist. Initializing table via full load...")
-              executeFullLoad(spark, config, sourceTable, stgTable, fndTable, jobName)
+              println(
+                s"[$jobName] Target table '$fndTable' does not exist. Initializing table via full load..."
+              )
+              executeFullLoad(
+                spark,
+                config,
+                sourceTable,
+                stgTable,
+                fndTable,
+                jobName
+              )
             }
           }
 
         case "full" | _ =>
           println(s"[$jobName] Executing full load ingestion...")
-          executeFullLoad(spark, config, sourceTable, stgTable, fndTable, jobName)
+          executeFullLoad(
+            spark,
+            config,
+            sourceTable,
+            stgTable,
+            fndTable,
+            jobName
+          )
       }
     }
 
@@ -110,7 +192,9 @@ object GenericIngestJob {
         }
         spark.stop()
       case Failure(e) =>
-        System.err.println(s"❌ [$jobName] failed for source table '$sourceTable' with error:")
+        System.err.println(
+          s"❌ [$jobName] failed for source table '$sourceTable' with error:"
+        )
         e.printStackTrace()
         spark.stop()
         throw e
@@ -135,7 +219,8 @@ object GenericIngestJob {
       jobName: String
   ): Unit = {
     println(s"[$jobName] Reading full table '$sourceTable' from PostgreSQL...")
-    val df = SparkIOUtils.readFromPostgres(spark, sourceTable, config, None, None)
+    val df =
+      SparkIOUtils.readFromPostgres(spark, sourceTable, config, None, None)
 
     println(s"[$jobName] Writing to Iceberg Nessie staging table: $stgTable")
     SparkIOUtils.writeToIceberg(spark, df, stgTable, "overwrite")
@@ -146,7 +231,9 @@ object GenericIngestJob {
     println(s"[$jobName] Writing to Iceberg Nessie foundation table: $fndTable")
     SparkIOUtils.writeToIceberg(spark, stgDf, fndTable, "overwrite")
 
-    println(s"✔ [$jobName] Full load completed successfully. Tables ingested: $stgTable -> $fndTable")
+    println(
+      s"✔ [$jobName] Full load completed successfully. Tables ingested: $stgTable -> $fndTable"
+    )
   }
 
   private def writeStagingAndMerge(

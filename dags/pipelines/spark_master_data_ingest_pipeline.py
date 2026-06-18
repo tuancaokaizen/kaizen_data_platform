@@ -22,13 +22,12 @@ default_args = {
 }
 
 with DAG(
-    'spark_master_data_ingest_pipeline',
-    default_args=default_args,
-    description='Spark Batch PostgreSQL Master Data Ingestion to Iceberg Nessie Catalog (Full Load)',
-    schedule_interval=None,  # Manually triggered or triggered from generation pipeline
-    catchup=False,
+        'spark_master_data_ingest_pipeline',
+        default_args=default_args,
+        description='Spark Batch PostgreSQL Master Data Ingestion to Iceberg Nessie Catalog (Full Load)',
+        schedule_interval=None,  # Manually triggered or triggered from generation pipeline
+        catchup=False,
 ) as dag:
-
     # 1. Geography Ingestion and mapping
     ingest_geography = KubernetesPodOperator(**get_ingestion_task("geography"))
     ch_geography = PythonOperator(**get_clickhouse_task("geography"))
@@ -67,13 +66,13 @@ with DAG(
 
     # Run tasks sequentially to fit within cluster resources
     (
-        ingest_geography >> ch_geography >> 
-        ingest_product >> ch_product >> 
-        ingest_product_medicine >> ch_product_medicine >> 
-        ingest_product_supplement >> ch_product_supplement >> 
-        ingest_shop >> ch_shop >> 
-        ingest_employee >> ch_employee >> 
-        ingest_customer >> ch_customer >> 
-        ingest_payment_type >> ch_payment_type >> 
-        ingest_payment_method >> ch_payment_method
+            ingest_geography >> ch_geography >>
+            ingest_product >> ch_product >>
+            ingest_product_medicine >> ch_product_medicine >>
+            ingest_product_supplement >> ch_product_supplement >>
+            ingest_shop >> ch_shop >>
+            ingest_employee >> ch_employee >>
+            ingest_customer >> ch_customer >>
+            ingest_payment_type >> ch_payment_type >>
+            ingest_payment_method >> ch_payment_method
     )

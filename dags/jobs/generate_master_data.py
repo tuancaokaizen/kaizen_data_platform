@@ -13,7 +13,6 @@ import psycopg2  # type: ignore
 from psycopg2.extras import execute_batch  # type: ignore
 import requests  # type: ignore
 
-
 # ── Parse config.ini ────────────────────────────────────────────────────────
 config_paths = [
     os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'config.ini')),
@@ -46,7 +45,7 @@ es_hosts = os.environ.get('ELASTICSEARCH_HOSTS', config.get('elasticsearch', 'ho
 raw_data = """1Đặc khu Côn Đảo2Phường An Đông3Phường An Hội Đông4Phường An Hội Tây5Phường An Khánh6Phường An Lạc7Phường An Nhơn8Phường An Phú9Phường An Phú Đông10Phường Bà Rịa11Phường Bàn Cờ12Phường Bảy Hiền13Phường Bến Cát14Phường Bến Thành15Phường Bình Cơ16Phường Bình Dương17Phường Bình Đông18Phường Bình Hòa19Phường Bình Hưng Hòa20Phường Bình Lợi Trung21Phường Bình Phú22Phường Bình Quới23Phường Bình Tân24Phường Bình Tây25Phường Bình Thạnh26Phường Bình Thới27Phường Bình Tiên28Phường Bình Trị Đông29Phường Bình Trưng30Phường Cát Lái31Phường Cầu Kiệu32Phường Cầu Ông Lãnh33Phường Chánh Hiệp34Phường Chánh Hưng35Phường Chánh Phú Hòa36Phường Chợ Lớn37Phường Chợ Quán38Phường Dĩ An39Phường Diên Hồng40Phường Đông Hòa41Phường Đông Hưng Thuận42Phường Đức Nhuận43Phường Gia Định44Phường Gò Vấp45Phường Hạnh Thông46Phường Hiệp Bình47Phường Hòa Bình48Phường Hòa Hưng49Phường Hòa Lợi50Phường Khánh Hội51Phường Lái Thiêu52Phường Linh Xuân53Phường Long Bình54Phường Long Hương55Phường Long Nguyên56Phường Long Phước57Phường Long Trường58Phường Minh Phụng59Phường Nhiêu Lộc60Phường Phú An61Phường Phú Định62Phường Phú Lâm63Phường Phú Lợi64Phường Phú Mỹ65Phường Phú Nhuận66Phường Phú Thạnh67Phường Phú Thọ68Phường Phú Thọ Hòa69Phường Phú Thuận70Phường Phước Long71Phường Phước Thắng72Phường Rạch Dừa73Phường Sài Gòn74Phường Tam Bình75Phường Tam Long76Phường Tam Thắng77Phường Tăng Nhơn Phú78Phường Tân Bình79Phường Tân Định80Phường Tân Đông Hiệp81Phường Tân Hải82Phường Tân Hiệp83Phường Tân Hòa84Phường Tân Hưng85Phường Tân Khánh86Phường Tân Mỹ87Phường Tân Phú88Phường Tân Phước89Phường Tân Sơn90Phường Tân Sơn Hòa91Phường Tân Sơn Nhất92Phường Tân Sơn Nhì93Phường Tân Tạo94Phường Tân Thành95Phường Tân Thới Hiệp96Phường Tân Thuận97Phường Tân Uyên98Phường Tây Nam99Phường Tây Thạnh100Phường Thạnh Mỹ Tây101Phường Thông Tây Hội102Phường Thới An103Phường Thới Hòa104Phường Thủ Dầu Một105Phường Thủ Đức106Phường Thuận An107Phường Thuận Giao108Phường Trung Mỹ Tây109Phường Vĩnh Hội110Phường Vĩnh Tân111Phường Vũng Tàu112Phường Vườn Lài113Phường Xóm Chiếu114Phường Xuân Hòa115Xã An Long116Xã An Nhơn Tây117Xã An Thới Đông118Xã Bà Điểm119Xã Bàu Bàng120Xã Bàu Lâm121Xã Bắc Tân Uyên122Xã Bình Chánh123Xã Bình Châu124Xã Bình Giã125Xã Bình Hưng126Xã Bình Khánh127Xã Bình Lợi128Xã Bình Mỹ129Xã Cần Giờ130Xã Châu Đức131Xã Châu Pha132Xã Củ Chi133Xã Dầu Tiếng134Xã Đất Đỏ135Xã Đông Thạnh136Xã Hiệp Phước137Xã Hòa Hiệp138Xã Hòa Hội139Xã Hóc Môn140Xã Hồ Tràm141Xã Hưng Long142Xã Kim Long143Xã Long Điền144Xã Long Hải145Xã Long Hòa146Xã Long Sơn147Xã Minh Thạnh148Xã Ngãi Giao149Xã Nghĩa Thành150Xã Nhà Bè151Xã Nhuận Đức152Xã Phú Giáo153Xã Phú Hòa Đông154Xã Phước Hải155Xã Phước Hòa156Xã Phước Thành157Xã Tân An Hội158Xã Tân Nhựt159Xã Tân Vĩnh Lộc160Xã Thái Mỹ161Xã Thanh An162Xã Thạnh An163Xã Thường Tân164Xã Trừ Văn Thố165Xã Vĩnh Lộc166Xã Xuân Sơn167Xã Xuân Thới Sơn168Xã Xuyên Mộc"""
 
 ward_list = [w.strip() for w in re.findall(r'[^\d]+', raw_data) if w.strip()]
-ward_ids = [f"W{str(i+1).zfill(3)}" for i in range(len(ward_list))]
+ward_ids = [f"W{str(i + 1).zfill(3)}" for i in range(len(ward_list))]
 ward_map = dict(zip(ward_ids, ward_list))
 
 # ── Supplement lists ────────────────────────────────────────────────────────
@@ -80,6 +79,7 @@ DEGREES = ["Trung cấp", "Đại học", "Cao đẳng", "Sau đại học"]
 # ── Faker Initialization ───────────────────────────────────────────────────
 fake = Faker('vi_VN')
 
+
 def clean_phone(raw_phone):
     raw_p = re.sub(r'\D', '', raw_phone)
     if raw_p.startswith('84'):
@@ -88,12 +88,14 @@ def clean_phone(raw_phone):
         return '0' + raw_p
     else:
         return raw_p
+
+
 def bulk_send_to_es(es_hosts, index_name, docs, batch_size=1000):
     if not docs:
         return
     url = f"{es_hosts.rstrip('/')}/{index_name}/_bulk"
     headers = {"Content-Type": "application/x-ndjson"}
-    
+
     payload_lines = []
     for doc in docs:
         doc_id = None
@@ -137,10 +139,10 @@ def bulk_send_to_es(es_hosts, index_name, docs, batch_size=1000):
             action = {"index": {"_id": str(doc_id)}}
         else:
             action = {"index": {}}
-            
+
         payload_lines.append(json.dumps(action))
         payload_lines.append(json.dumps(processed_doc))
-        
+
         if len(payload_lines) >= batch_size * 2:
             payload = "\n".join(payload_lines) + "\n"
             try:
@@ -150,7 +152,7 @@ def bulk_send_to_es(es_hosts, index_name, docs, batch_size=1000):
                 print(f"Error bulk indexing to ES index {index_name}: {e}")
                 raise e
             payload_lines = []
-            
+
     if payload_lines:
         payload = "\n".join(payload_lines) + "\n"
         try:
@@ -161,8 +163,10 @@ def bulk_send_to_es(es_hosts, index_name, docs, batch_size=1000):
             print(f"Error bulk indexing to ES index {index_name}: {e}")
             raise e
 
+
 def init_es_indices(es_hosts):
-    mappings_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'schema_manager', 'elasticsearch'))
+    mappings_dir = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), '..', '..', 'schema_manager', 'elasticsearch'))
     if not os.path.exists(mappings_dir):
         # Fallback path for Airflow scheduler container context
         mappings_dir = '/opt/airflow/dags/schema_manager/elasticsearch'
@@ -172,18 +176,18 @@ def init_es_indices(es_hosts):
 
     indices = [
         "geography", "products", "product-medicines", "product-supplements",
-        "shops", "employees", "employee-salaries", 
+        "shops", "employees", "employee-salaries",
         "customers", "promotions", "payment-types", "payment-methods",
         "order-bundles", "payment-bundles"
     ]
-    
+
     for idx in indices:
         mapping_file = os.path.join(mappings_dir, f"{idx}.json")
         if os.path.exists(mapping_file):
             try:
                 with open(mapping_file, 'r', encoding='utf-8') as f:
                     mapping_data = json.load(f)
-                
+
                 check_url = f"{es_hosts.rstrip('/')}/{idx}"
                 r = requests.get(check_url)
                 if r.status_code == 404:
@@ -197,6 +201,7 @@ def init_es_indices(es_hosts):
                 print(f"Error initializing ES index {idx}: {e}")
         else:
             print(f"WARNING: Mapping file {mapping_file} not found.")
+
 
 def generate_all_master_data():
     # ── Initialize ES Indices with correct mappings ──────────────────────────
@@ -222,13 +227,13 @@ def generate_all_master_data():
             "createdDate": now_ms,
             "modifiedDate": now_ms
         })
-    
+
     # Save to PostgreSQL
     cur.executemany("""
-        INSERT INTO public."Geography" ("Id", "Name", "Population", "CreatedDate", "ModifiedDate")
-        VALUES (%(id)s, %(name)s, %(population)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("Id") DO UPDATE SET "Name" = EXCLUDED."Name", "Population" = EXCLUDED."Population", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in geography_docs])
+                    INSERT INTO public."Geography" ("Id", "Name", "Population", "CreatedDate", "ModifiedDate")
+                    VALUES (%(id)s, %(name)s, %(population)s, %(createdDate)s, %(modifiedDate)s) ON CONFLICT ("Id") DO
+                    UPDATE SET "Name" = EXCLUDED."Name", "Population" = EXCLUDED."Population", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in geography_docs])
     conn.commit()
 
     # Publish to ES
@@ -308,7 +313,7 @@ def generate_all_master_data():
         unit = random.choice(["Hộp", "Viên"])
         name = f"[Quà Tặng] {func} {brand} {random.choice(['10 viên', '20 viên', 'vỉ thử'])}"
         stock = random.randint(2000, 20000)
-        retail = 0 
+        retail = 0
         tax = 0
         product_docs.append({
             "id": prod_id,
@@ -331,23 +336,26 @@ def generate_all_master_data():
 
     # Save to PostgreSQL
     cur.executemany("""
-        INSERT INTO product."Product" ("Id", "Name", "Type", "Unit", "StockPrice", "RetailPrice", "TaxRate", "IsPromotion", "Status", "CreatedDate", "ModifiedDate")
-        VALUES (%(id)s, %(name)s, %(type)s, %(unit)s, %(stockPrice)s, %(retailPrice)s, %(taxRate)s, %(isPromotion)s, %(status)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("Id") DO UPDATE SET "Name" = EXCLUDED."Name", "StockPrice" = EXCLUDED."StockPrice", "RetailPrice" = EXCLUDED."RetailPrice", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in product_docs])
-    
+                    INSERT INTO product."Product" ("Id", "Name", "Type", "Unit", "StockPrice", "RetailPrice", "TaxRate",
+                                                   "IsPromotion", "Status", "CreatedDate", "ModifiedDate")
+                    VALUES (%(id)s, %(name)s, %(type)s, %(unit)s, %(stockPrice)s, %(retailPrice)s, %(taxRate)s,
+                            %(isPromotion)s, %(status)s, %(createdDate)s, %(modifiedDate)s) ON CONFLICT ("Id") DO
+                    UPDATE SET "Name" = EXCLUDED."Name", "StockPrice" = EXCLUDED."StockPrice", "RetailPrice" = EXCLUDED."RetailPrice", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in product_docs])
+
     cur.executemany("""
-        INSERT INTO product."ProductMedicine" ("ProductId", "Indication", "IsPrescription", "SpecialtyDisease")
-        VALUES (%(productId)s, %(indication)s, %(isPrescription)s, %(specialtyDisease)s)
-        ON CONFLICT ("ProductId") DO UPDATE SET "Indication" = EXCLUDED."Indication", "IsPrescription" = EXCLUDED."IsPrescription", "SpecialtyDisease" = EXCLUDED."SpecialtyDisease"
-    """, medicine_sub_docs)
-    
+                    INSERT INTO product."ProductMedicine" ("ProductId", "Indication", "IsPrescription", "SpecialtyDisease")
+                    VALUES (%(productId)s, %(indication)s, %(isPrescription)s,
+                            %(specialtyDisease)s) ON CONFLICT ("ProductId") DO
+                    UPDATE SET "Indication" = EXCLUDED."Indication", "IsPrescription" = EXCLUDED."IsPrescription", "SpecialtyDisease" = EXCLUDED."SpecialtyDisease"
+                    """, medicine_sub_docs)
+
     cur.executemany("""
-        INSERT INTO product."ProductSupplement" ("ProductId", "PrimaryFunction", "Brand")
-        VALUES (%(productId)s, %(primaryFunction)s, %(brand)s)
-        ON CONFLICT ("ProductId") DO UPDATE SET "PrimaryFunction" = EXCLUDED."PrimaryFunction", "Brand" = EXCLUDED."Brand"
-    """, supplement_sub_docs)
-    
+                    INSERT INTO product."ProductSupplement" ("ProductId", "PrimaryFunction", "Brand")
+                    VALUES (%(productId)s, %(primaryFunction)s, %(brand)s) ON CONFLICT ("ProductId") DO
+                    UPDATE SET "PrimaryFunction" = EXCLUDED."PrimaryFunction", "Brand" = EXCLUDED."Brand"
+                    """, supplement_sub_docs)
+
     conn.commit()
 
     # Publish to ES
@@ -376,21 +384,23 @@ def generate_all_master_data():
 
     # Save to PostgreSQL (with ManagerId = None initially)
     cur.executemany("""
-        INSERT INTO shop."Shop" ("Code", "Name", "Address", "WardId", "ManagerId", "CreatedDate", "ModifiedDate")
-        VALUES (%(code)s, %(name)s, %(address)s, %(wardId)s, %(managerId)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("Code") DO UPDATE SET "Name" = EXCLUDED."Name", "Address" = EXCLUDED."Address", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in shop_docs])
+                    INSERT INTO shop."Shop" ("Code", "Name", "Address", "WardId", "ManagerId", "CreatedDate",
+                                             "ModifiedDate")
+                    VALUES (%(code)s, %(name)s, %(address)s, %(wardId)s, %(managerId)s, %(createdDate)s,
+                            %(modifiedDate)s) ON CONFLICT ("Code") DO
+                    UPDATE SET "Name" = EXCLUDED."Name", "Address" = EXCLUDED."Address", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in shop_docs])
     conn.commit()
 
     # 4. Employees (1000 employees total, 20 per shop)
     print("Generating Employees (1000 employees)...")
     employee_docs = []
-    shop_managers = {} # shop_code -> manager_emp_id
+    shop_managers = {}  # shop_code -> manager_emp_id
 
     emp_counter = 1
     for shop in shop_docs:
         shop_code = shop["code"]
-        
+
         # 1 Manager
         manager_id = f"EMP{str(emp_counter).zfill(4)}"
         gender = random.choice(['Nam', 'Nữ'])
@@ -398,7 +408,7 @@ def generate_all_master_data():
             manager_name = fake.name_male() if gender == 'Nam' else fake.name_female()
         except AttributeError:
             manager_name = fake.name()
-        
+
         employee_docs.append({
             "id": manager_id,
             "name": manager_name,
@@ -439,10 +449,12 @@ def generate_all_master_data():
 
     # Save to PostgreSQL
     cur.executemany("""
-        INSERT INTO shop."Employee" ("Id", "Name", "Degree", "Phone", "Address", "Status", "ShopCode", "IsManager", "CreatedDate", "ModifiedDate")
-        VALUES (%(id)s, %(name)s, %(degree)s, %(phone)s, %(address)s, %(status)s, %(shopCode)s, %(isManager)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("Id") DO UPDATE SET "Name" = EXCLUDED."Name", "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in employee_docs])
+                    INSERT INTO shop."Employee" ("Id", "Name", "Degree", "Phone", "Address", "Status", "ShopCode",
+                                                 "IsManager", "CreatedDate", "ModifiedDate")
+                    VALUES (%(id)s, %(name)s, %(degree)s, %(phone)s, %(address)s, %(status)s, %(shopCode)s,
+                            %(isManager)s, %(createdDate)s, %(modifiedDate)s) ON CONFLICT ("Id") DO
+                    UPDATE SET "Name" = EXCLUDED."Name", "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in employee_docs])
     conn.commit()
 
     # Publish Employees to ES
@@ -457,19 +469,19 @@ def generate_all_master_data():
         emp_id = emp["id"]
         shop_code = emp["shopCode"]
         is_manager = emp["isManager"]
-        
+
         # Mức lương cơ sở: Manager: 20M-30M, Employee: 7M-15M
         if is_manager:
             base_salary = random.randint(20, 30) * 1000000
             commission_rate = None
         else:
             base_salary = random.randint(7, 15) * 1000000
-            commission_rate = random.randint(1, 5) # 1% - 5% hoa hồng
-            
+            commission_rate = random.randint(1, 5)  # 1% - 5% hoa hồng
+
         for month_dt in months:
             month_str = month_dt.strftime("%Y%m")
             sal_id = f"SAL_{emp_id}_{month_str}"
-            
+
             salary_docs.append({
                 "id": sal_id,
                 "employeeId": emp_id,
@@ -480,15 +492,19 @@ def generate_all_master_data():
                 "createdDate": now_ms,
                 "modifiedDate": now_ms
             })
-            
+
     # Lưu EmployeeSalary vào Postgres
     cur.executemany("""
-        INSERT INTO shop."EmployeeSalary" ("Id", "EmployeeId", "ShopCode", "SalaryMonth", "BaseSalary", "CommissionRate", "CreatedDate", "ModifiedDate")
-        VALUES (%(id)s, %(employeeId)s, %(shopCode)s, %(salaryMonth)s, %(baseSalary)s, %(commissionRate)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("Id") DO UPDATE SET "BaseSalary" = EXCLUDED."BaseSalary", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "salaryMonth": doc["salaryMonth"], "createdDate": now_dt, "modifiedDate": now_dt} for doc in salary_docs])
+                    INSERT INTO shop."EmployeeSalary" ("Id", "EmployeeId", "ShopCode", "SalaryMonth", "BaseSalary",
+                                                       "CommissionRate", "CreatedDate", "ModifiedDate")
+                    VALUES (%(id)s, %(employeeId)s, %(shopCode)s, %(salaryMonth)s, %(baseSalary)s, %(commissionRate)s,
+                            %(createdDate)s, %(modifiedDate)s) ON CONFLICT ("Id") DO
+                    UPDATE SET "BaseSalary" = EXCLUDED."BaseSalary", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """,
+                    [{**doc, "salaryMonth": doc["salaryMonth"], "createdDate": now_dt, "modifiedDate": now_dt} for doc
+                     in salary_docs])
     conn.commit()
-    
+
     # Publish Employee Salaries to ES
     bulk_send_to_es(es_hosts, "employee-salaries", salary_docs)
 
@@ -501,8 +517,11 @@ def generate_all_master_data():
 
     # Save updates to PostgreSQL
     cur.executemany("""
-        UPDATE shop."Shop" SET "ManagerId" = %(managerId)s, "ModifiedDate" = %(modifiedDate)s WHERE "Code" = %(code)s
-    """, [{**doc, "modifiedDate": now_dt} for doc in shop_docs])
+                    UPDATE shop."Shop"
+                    SET "ManagerId"    = %(managerId)s,
+                        "ModifiedDate" = %(modifiedDate)s
+                    WHERE "Code" = %(code)s
+                    """, [{**doc, "modifiedDate": now_dt} for doc in shop_docs])
     conn.commit()
 
     # Publish updated shops to ES
@@ -539,7 +558,7 @@ def generate_all_master_data():
         w_id = random.choice(ward_ids)
         addr = random.choice(pool_addresses)
         yob = random.randint(1950, 2008)
-        
+
         customer_doc = {
             "id": cust_id,
             "fullName": name,
@@ -552,14 +571,16 @@ def generate_all_master_data():
             "modifiedDate": now_ms
         }
         customer_batch.append(customer_doc)
-        
+
         if len(customer_batch) >= 10000:
             # Save to PostgreSQL
             cur.executemany("""
-                INSERT INTO customer."Customer" ("Id", "FullName", "Phone", "WardId", "Address", "YearOfBirth", "Gender", "CreatedDate", "ModifiedDate")
-                VALUES (%(id)s, %(fullName)s, %(phone)s, %(wardId)s, %(address)s, %(yearOfBirth)s, %(gender)s, %(createdDate)s, %(modifiedDate)s)
-                ON CONFLICT ("Id") DO UPDATE SET "FullName" = EXCLUDED."FullName", "Phone" = EXCLUDED."Phone", "ModifiedDate" = EXCLUDED."ModifiedDate"
-            """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in customer_batch])
+                            INSERT INTO customer."Customer" ("Id", "FullName", "Phone", "WardId", "Address",
+                                                             "YearOfBirth", "Gender", "CreatedDate", "ModifiedDate")
+                            VALUES (%(id)s, %(fullName)s, %(phone)s, %(wardId)s, %(address)s, %(yearOfBirth)s,
+                                    %(gender)s, %(createdDate)s, %(modifiedDate)s) ON CONFLICT ("Id") DO
+                            UPDATE SET "FullName" = EXCLUDED."FullName", "Phone" = EXCLUDED."Phone", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                            """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in customer_batch])
             conn.commit()
 
             # Publish to ES
@@ -570,10 +591,12 @@ def generate_all_master_data():
 
     if customer_batch:
         cur.executemany("""
-            INSERT INTO customer."Customer" ("Id", "FullName", "Phone", "WardId", "Address", "YearOfBirth", "Gender", "CreatedDate", "ModifiedDate")
-            VALUES (%(id)s, %(fullName)s, %(phone)s, %(wardId)s, %(address)s, %(yearOfBirth)s, %(gender)s, %(createdDate)s, %(modifiedDate)s)
-            ON CONFLICT ("Id") DO UPDATE SET "FullName" = EXCLUDED."FullName", "Phone" = EXCLUDED."Phone", "ModifiedDate" = EXCLUDED."ModifiedDate"
-        """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in customer_batch])
+                        INSERT INTO customer."Customer" ("Id", "FullName", "Phone", "WardId", "Address", "YearOfBirth",
+                                                         "Gender", "CreatedDate", "ModifiedDate")
+                        VALUES (%(id)s, %(fullName)s, %(phone)s, %(wardId)s, %(address)s, %(yearOfBirth)s, %(gender)s,
+                                %(createdDate)s, %(modifiedDate)s) ON CONFLICT ("Id") DO
+                        UPDATE SET "FullName" = EXCLUDED."FullName", "Phone" = EXCLUDED."Phone", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                        """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in customer_batch])
         conn.commit()
 
         # Publish to ES
@@ -607,17 +630,17 @@ def generate_all_master_data():
             "createdDate": now_ms,
             "modifiedDate": now_ms
         })
-        
+
         # 6 vouchers per promotion
         amounts = [20000, 50000, 100000]
         min_vals = [100000, 200000, 500000]
         for v_idx in range(1, 7):
-            v_code = f"VCH{str((i-1)*6 + v_idx).zfill(4)}"
+            v_code = f"VCH{str((i - 1) * 6 + v_idx).zfill(4)}"
             amt = random.choice(amounts)
             min_val = random.choice(min_vals)
             voucher_docs.append({
                 "code": v_code,
-                "name": f"Voucher giảm {amt//1000}k đơn từ {min_val//1000}k",
+                "name": f"Voucher giảm {amt // 1000}k đơn từ {min_val // 1000}k",
                 "promotionCode": promo_code,
                 "voucherAmount": amt,
                 "minOrderValue": min_val,
@@ -632,7 +655,7 @@ def generate_all_master_data():
     # 10 Gift-based promotions (11-20)
     for i in range(11, 21):
         promo_code = f"PROMO{str(i).zfill(4)}"
-        promo_name = f"Chương trình quà tặng tri ân {i-10}"
+        promo_name = f"Chương trình quà tặng tri ân {i - 10}"
         promotion_docs.append({
             "code": promo_code,
             "name": promo_name,
@@ -643,10 +666,10 @@ def generate_all_master_data():
             "createdDate": now_ms,
             "modifiedDate": now_ms
         })
-        
+
         # 2 gifts per promotion
         for g_idx in range(1, 3):
-            gift_id = f"GIFT{str((i-11)*2 + g_idx).zfill(4)}"
+            gift_id = f"GIFT{str((i - 11) * 2 + g_idx).zfill(4)}"
             prod_id = random.choice(gift_prod_ids)
             gift_docs.append({
                 "id": gift_id,
@@ -660,17 +683,27 @@ def generate_all_master_data():
 
     # Save Promotions to PostgreSQL
     cur.executemany("""
-        INSERT INTO promotion."Promotion" ("Code", "Name", "StartDate", "EndDate", "Status", "Type", "CreatedDate", "ModifiedDate")
-        VALUES (%(code)s, %(name)s, %(startDate)s, %(endDate)s, %(status)s, %(type)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("Code") DO UPDATE SET "Name" = EXCLUDED."Name", "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "startDate": datetime.fromtimestamp(doc["startDate"] / 1000.0), "endDate": datetime.fromtimestamp(doc["endDate"] / 1000.0), "createdDate": now_dt, "modifiedDate": now_dt} for doc in promotion_docs])
-    
+                    INSERT INTO promotion."Promotion" ("Code", "Name", "StartDate", "EndDate", "Status", "Type",
+                                                       "CreatedDate", "ModifiedDate")
+                    VALUES (%(code)s, %(name)s, %(startDate)s, %(endDate)s, %(status)s, %(type)s, %(createdDate)s,
+                            %(modifiedDate)s) ON CONFLICT ("Code") DO
+                    UPDATE SET "Name" = EXCLUDED."Name", "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "startDate": datetime.fromtimestamp(doc["startDate"] / 1000.0),
+                           "endDate": datetime.fromtimestamp(doc["endDate"] / 1000.0), "createdDate": now_dt,
+                           "modifiedDate": now_dt} for doc in promotion_docs])
+
     # Save Vouchers to PostgreSQL
     cur.executemany("""
-        INSERT INTO promotion."Voucher" ("Code", "Name", "PromotionCode", "VoucherAmount", "MinOrderValue", "StartDate", "EndDate", "IssuedQuantity", "Status", "CreatedDate", "ModifiedDate")
-        VALUES (%(code)s, %(name)s, %(promotionCode)s, %(voucherAmount)s, %(minOrderValue)s, %(startDate)s, %(endDate)s, %(issuedQuantity)s, %(status)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("Code") DO UPDATE SET "Name" = EXCLUDED."Name", "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "startDate": datetime.fromtimestamp(doc["startDate"] / 1000.0), "endDate": datetime.fromtimestamp(doc["endDate"] / 1000.0), "createdDate": now_dt, "modifiedDate": now_dt} for doc in voucher_docs])
+                    INSERT INTO promotion."Voucher" ("Code", "Name", "PromotionCode", "VoucherAmount", "MinOrderValue",
+                                                     "StartDate", "EndDate", "IssuedQuantity", "Status", "CreatedDate",
+                                                     "ModifiedDate")
+                    VALUES (%(code)s, %(name)s, %(promotionCode)s, %(voucherAmount)s, %(minOrderValue)s, %(startDate)s,
+                            %(endDate)s, %(issuedQuantity)s, %(status)s, %(createdDate)s,
+                            %(modifiedDate)s) ON CONFLICT ("Code") DO
+                    UPDATE SET "Name" = EXCLUDED."Name", "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "startDate": datetime.fromtimestamp(doc["startDate"] / 1000.0),
+                           "endDate": datetime.fromtimestamp(doc["endDate"] / 1000.0), "createdDate": now_dt,
+                           "modifiedDate": now_dt} for doc in voucher_docs])
 
     # Generate VoucherSeries
     print(f"Generating Voucher Series (50 series per voucher, total {len(voucher_docs) * 50} series)...")
@@ -689,17 +722,21 @@ def generate_all_master_data():
 
     # Save VoucherSeries to PostgreSQL
     cur.executemany("""
-        INSERT INTO promotion."VoucherSeries" ("SeriesCode", "VoucherCode", "ExpiryDay", "Status", "CreatedDate", "ModifiedDate")
-        VALUES (%(seriesCode)s, %(voucherCode)s, %(expiryDay)s, %(status)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("SeriesCode") DO UPDATE SET "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in voucher_series_docs])
+                    INSERT INTO promotion."VoucherSeries" ("SeriesCode", "VoucherCode", "ExpiryDay", "Status",
+                                                           "CreatedDate", "ModifiedDate")
+                    VALUES (%(seriesCode)s, %(voucherCode)s, %(expiryDay)s, %(status)s, %(createdDate)s,
+                            %(modifiedDate)s) ON CONFLICT ("SeriesCode") DO
+                    UPDATE SET "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in voucher_series_docs])
 
     # Save Gifts to PostgreSQL
     cur.executemany("""
-        INSERT INTO promotion."Gift" ("Id", "ProductId", "PromotionCode", "PromotionQuantity", "Status", "CreatedDate", "ModifiedDate")
-        VALUES (%(id)s, %(productId)s, %(promotionCode)s, %(promotionQuantity)s, %(status)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("Id") DO UPDATE SET "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in gift_docs])
+                    INSERT INTO promotion."Gift" ("Id", "ProductId", "PromotionCode", "PromotionQuantity", "Status",
+                                                  "CreatedDate", "ModifiedDate")
+                    VALUES (%(id)s, %(productId)s, %(promotionCode)s, %(promotionQuantity)s, %(status)s,
+                            %(createdDate)s, %(modifiedDate)s) ON CONFLICT ("Id") DO
+                    UPDATE SET "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in gift_docs])
     # 8. Payment Master Data (PaymentType and PaymentMethod)
     print("Generating Payment Master Data (PaymentType & PaymentMethod)...")
     payment_type_docs = [
@@ -714,17 +751,17 @@ def generate_all_master_data():
 
     # Save to PostgreSQL
     cur.executemany("""
-        INSERT INTO payment."PaymentType" ("Type", "Name", "CreatedDate", "ModifiedDate")
-        VALUES (%(type)s, %(name)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("Type") DO UPDATE SET "Name" = EXCLUDED."Name", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in payment_type_docs])
+                    INSERT INTO payment."PaymentType" ("Type", "Name", "CreatedDate", "ModifiedDate")
+                    VALUES (%(type)s, %(name)s, %(createdDate)s, %(modifiedDate)s) ON CONFLICT ("Type") DO
+                    UPDATE SET "Name" = EXCLUDED."Name", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in payment_type_docs])
 
     cur.executemany("""
-        INSERT INTO payment."PaymentMethod" ("Id", "Name", "CreatedDate", "ModifiedDate")
-        VALUES (%(id)s, %(name)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("Id") DO UPDATE SET "Name" = EXCLUDED."Name", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in payment_method_docs])
-    
+                    INSERT INTO payment."PaymentMethod" ("Id", "Name", "CreatedDate", "ModifiedDate")
+                    VALUES (%(id)s, %(name)s, %(createdDate)s, %(modifiedDate)s) ON CONFLICT ("Id") DO
+                    UPDATE SET "Name" = EXCLUDED."Name", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in payment_method_docs])
+
     conn.commit()
 
     # Group vouchers, series, and gifts under their parent promotion to match the consolidated ES Promotions Schema
@@ -758,7 +795,7 @@ def generate_all_master_data():
                     "modifiedDate": v["modifiedDate"],
                     "voucherSeries": v_series
                 })
-        
+
         p_gifts = []
         for g in gift_docs:
             if g["promotionCode"] == p_code:
@@ -770,7 +807,7 @@ def generate_all_master_data():
                     "createdDate": g["createdDate"],
                     "modifiedDate": g["modifiedDate"]
                 })
-        
+
         unified_promotion_docs.append({
             "code": p["code"],
             "name": p["name"],
@@ -795,6 +832,6 @@ def generate_all_master_data():
     conn.close()
     print("Master Data successfully generated, saved to PostgreSQL, and synced to Elasticsearch!")
 
+
 if __name__ == "__main__":
     generate_all_master_data()
-

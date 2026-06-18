@@ -23,7 +23,8 @@ object ProcessDimVoucher {
       val stgTable = "nessie.stg.dim_voucher"
 
       // 1. Fetch watermark from the target table to achieve incremental load
-      val watermarkOpt = SparkIOUtils.getMaxWatermark(spark, targetTable, "ModifiedDate")
+      val watermarkOpt =
+        SparkIOUtils.getMaxWatermark(spark, targetTable, "ModifiedDate")
 
       println("Loading voucher, series, and promotion foundation tables...")
       val voucherSeriesFnd = spark.table("nessie.fnd.voucher_series")
@@ -33,15 +34,26 @@ object ProcessDimVoucher {
       // 2. Filter delta for voucher series if watermark exists
       var deltaVoucherSeries = voucherSeriesFnd
       watermarkOpt.foreach { watermark =>
-        println(s"Filtering voucher_series delta records with ModifiedDate > $watermark")
-        deltaVoucherSeries = voucherSeriesFnd.filter(col("ModifiedDate") > watermark)
+        println(
+          s"Filtering voucher_series delta records with ModifiedDate > $watermark"
+        )
+        deltaVoucherSeries =
+          voucherSeriesFnd.filter(col("ModifiedDate") > watermark)
       }
 
       // 3. Transform, join and select fields
       println("Transforming dim_voucher...")
       val dimVoucherDf = deltaVoucherSeries
-        .join(voucherFnd, deltaVoucherSeries("VoucherCode") === voucherFnd("Code"), "left")
-        .join(promotionFnd, voucherFnd("PromotionCode") === promotionFnd("Code"), "left")
+        .join(
+          voucherFnd,
+          deltaVoucherSeries("VoucherCode") === voucherFnd("Code"),
+          "left"
+        )
+        .join(
+          promotionFnd,
+          voucherFnd("PromotionCode") === promotionFnd("Code"),
+          "left"
+        )
         .select(
           deltaVoucherSeries("SeriesCode").as("VoucherSeriesCode"),
           deltaVoucherSeries("VoucherCode").as("VoucherCode"),
@@ -49,7 +61,8 @@ object ProcessDimVoucher {
           coalesce(voucherFnd("VoucherAmount"), lit(0.0)).as("VoucherAmount"),
           coalesce(voucherFnd("MinOrderValue"), lit(0.0)).as("MinOrderValue"),
           coalesce(deltaVoucherSeries("ExpiryDay"), lit(0)).as("ExpiryDay"),
-          coalesce(voucherFnd("PromotionCode"), lit("Unknown")).as("PromotionCode"),
+          coalesce(voucherFnd("PromotionCode"), lit("Unknown"))
+            .as("PromotionCode"),
           coalesce(promotionFnd("Name"), lit("Unknown")).as("PromotionName"),
           coalesce(promotionFnd("Type"), lit("Unknown")).as("PromotionType"),
           deltaVoucherSeries("Status").as("Status"),
@@ -60,7 +73,9 @@ object ProcessDimVoucher {
       // 4. Write to staging and merge/overwrite to target
       val targetExists = SparkIOUtils.tableExists(spark, targetTable)
       if (!targetExists) {
-        println(s"Target table '$targetTable' does not exist. Performing initial load...")
+        println(
+          s"Target table '$targetTable' does not exist. Performing initial load..."
+        )
         SparkIOUtils.writeToIceberg(spark, dimVoucherDf, stgTable, "overwrite")
         val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
         SparkIOUtils.writeToIceberg(spark, stgDf, targetTable, "overwrite")
@@ -68,10 +83,17 @@ object ProcessDimVoucher {
         println(s"Merging delta records into target table '$targetTable'...")
         SparkIOUtils.writeToIceberg(spark, dimVoucherDf, stgTable, "overwrite")
         val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
-        SparkIOUtils.mergeIcebergTable(spark, stgDf, targetTable, Seq("VoucherSeriesCode"))
+        SparkIOUtils.mergeIcebergTable(
+          spark,
+          stgDf,
+          targetTable,
+          Seq("VoucherSeriesCode")
+        )
       }
 
-      println(s"✔ dim_voucher incremental load completed successfully for target: $targetTable")
+      println(
+        s"✔ dim_voucher incremental load completed successfully for target: $targetTable"
+      )
     }
 
     jobResult match {

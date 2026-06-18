@@ -6,9 +6,12 @@ import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 
 public class KafkaSink {
 
-    protected KafkaSink() {}
+    protected KafkaSink() {
+    }
 
-    /** Sink nhận bất kỳ Object T và tự serialize sang JSON bytes. */
+    /**
+     * Sink nhận bất kỳ Object T và tự serialize sang JSON bytes.
+     */
     public static <T> org.apache.flink.connector.kafka.sink.KafkaSink<T> buildObjectSink(FlinkConfig config, String topic) {
         return org.apache.flink.connector.kafka.sink.KafkaSink.<T>builder()
                 .setBootstrapServers(config.get("kafka", "bootstrap_servers"))
@@ -21,7 +24,9 @@ public class KafkaSink {
                 .build();
     }
 
-    /** Sink nhận String (JSON đã serialized). */
+    /**
+     * Sink nhận String (JSON đã serialized).
+     */
     public static org.apache.flink.connector.kafka.sink.KafkaSink<String> buildStringSink(FlinkConfig config, String topic) {
         return org.apache.flink.connector.kafka.sink.KafkaSink.<String>builder()
                 .setBootstrapServers(config.get("kafka", "bootstrap_servers"))

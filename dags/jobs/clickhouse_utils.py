@@ -53,7 +53,7 @@ def run_clickhouse_setup(table_name, layer=None):
             )
             bucket_name = 'iceberg-data'
             prefix = f"{lyr}/{tbl}_"
-            
+
             response = s3.list_objects_v2(
                 Bucket=bucket_name,
                 Prefix=prefix,
@@ -75,27 +75,28 @@ def run_clickhouse_setup(table_name, layer=None):
     if layer == "report":
         db_name = "report"
         schema_paths = [
-            os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'schema_manager', 'clickhouse', 'schema_clickhouse.sql')),
+            os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'schema_manager', 'clickhouse',
+                                         'schema_clickhouse.sql')),
             '/opt/airflow/schema_manager/clickhouse/schema_clickhouse.sql',
             '/opt/airflow/dags/schema_manager/clickhouse/schema_clickhouse.sql'
         ]
-        
+
         schema_sql_path = None
         for path in schema_paths:
             if os.path.exists(path):
                 schema_sql_path = path
                 break
-                
+
         if not schema_sql_path:
             raise FileNotFoundError("schema_clickhouse.sql not found in search paths")
-            
+
         with open(schema_sql_path, 'r', encoding='utf-8') as sf:
             content = sf.read()
-            
+
         # Parse statements to find the specific CREATE TABLE statement
         raw_statements = content.split(';')
         statements_to_run = [f"CREATE DATABASE IF NOT EXISTS {db_name}"]
-        
+
         target_marker = f"{db_name}.{table_name}"
         found_table = False
         for stmt in raw_statements:
@@ -109,10 +110,10 @@ def run_clickhouse_setup(table_name, layer=None):
                 statements_to_run.append(stmt_clean)
                 found_table = True
                 break
-                
+
         if not found_table:
             raise ValueError(f"Could not find CREATE TABLE statement for {target_marker} in schema_clickhouse.sql")
-            
+
         sql = ';\n'.join(statements_to_run)
     elif layer == "dw" or layer == "serving":
         db_name = layer
@@ -143,7 +144,7 @@ def run_clickhouse_setup(table_name, layer=None):
     else:
         resolved_stg = resolve_iceberg_path('stg', table_name)
         resolved_fnd = resolve_iceberg_path('fnd', table_name)
-        
+
         stg_sql = f"""
         CREATE TABLE stg.{table_name}
         ENGINE = Iceberg(
@@ -202,7 +203,8 @@ def run_clickhouse_setup(table_name, layer=None):
                 if response.status_code != 200:
                     err_msg = response.text
                     if "CANNOT_EXTRACT_TABLE_STRUCTURE" in err_msg or "Code: 636" in err_msg:
-                        print(f"WARNING: ClickHouse table '{table_name}' could not be created because no Parquet files exist in S3 (path might be empty). Skipping table creation.")
+                        print(
+                            f"WARNING: ClickHouse table '{table_name}' could not be created because no Parquet files exist in S3 (path might be empty). Skipping table creation.")
                         return
                     raise Exception(f"ClickHouse HTTP {response.status_code}: {err_msg}")
             print(f"Successfully created ClickHouse tables for '{table_name}' via {host}")

@@ -16,13 +16,12 @@ default_args = {
 }
 
 with DAG(
-    'incremental_data_generation_pipeline',
-    default_args=default_args,
-    description='Pipeline to periodically generate incremental Employee Salary and Promotion data',
-    schedule_interval='@monthly',  # Runs monthly on the 1st of the month
-    catchup=False,
+        'incremental_data_generation_pipeline',
+        default_args=default_args,
+        description='Pipeline to periodically generate incremental Employee Salary and Promotion data',
+        schedule_interval='@monthly',  # Runs monthly on the 1st of the month
+        catchup=False,
 ) as dag:
-
     generate_incremental_data_task = PythonOperator(
         task_id='generate_incremental_data',
         python_callable=generate_incremental_data

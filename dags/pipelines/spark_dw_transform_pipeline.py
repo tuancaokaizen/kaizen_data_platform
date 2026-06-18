@@ -30,18 +30,20 @@ default_args = {
 }
 
 with DAG(
-    'spark_dw_transform_pipeline',
-    default_args=default_args,
-    description='Spark Batch DW Dimensional Transformations (Sales & Returns Facts)',
-    schedule_interval=None,  # Triggered manually or by upstream ingestion pipeline
-    catchup=False,
-    params={
-        "fromDate": Param(None, type=["null", "string"], description="Start date (YYYY-MM-DD) for fact partitioning. Defaults to D-1 if left blank."),
-        "toDate": Param(None, type=["null", "string"], description="End date (YYYY-MM-DD) for fact partitioning. Defaults to today (D) if left blank."),
-        "useWatermark": Param(False, type="boolean", description="Whether to ignore date range and use target table watermark.")
-    }
+        'spark_dw_transform_pipeline',
+        default_args=default_args,
+        description='Spark Batch DW Dimensional Transformations (Sales & Returns Facts)',
+        schedule_interval=None,  # Triggered manually or by upstream ingestion pipeline
+        catchup=False,
+        params={
+            "fromDate": Param(None, type=["null", "string"],
+                              description="Start date (YYYY-MM-DD) for fact partitioning. Defaults to D-1 if left blank."),
+            "toDate": Param(None, type=["null", "string"],
+                            description="End date (YYYY-MM-DD) for fact partitioning. Defaults to today (D) if left blank."),
+            "useWatermark": Param(False, type="boolean",
+                                  description="Whether to ignore date range and use target table watermark.")
+        }
 ) as dag:
-
     # 1. Transform Product Master Data into DW Product Dimension
     transform_dim_product = KubernetesPodOperator(
         **get_transformer_task(
@@ -166,18 +168,18 @@ with DAG(
 
     # Execute Dimensions sequentially, then Facts sequentially, and finally Serving Reports sequentially
     (
-        transform_dim_product >> ch_dim_product >>
-        transform_dim_customer >> ch_dim_customer >>
-        transform_dim_shop >> ch_dim_shop >>
-        transform_dim_employee >> ch_dim_employee >>
-        transform_dim_promotion >> ch_dim_promotion >>
-        transform_dim_voucher >> ch_dim_voucher >>
-        transform_sales_transactions >> ch_fact_sales_transaction >>
-        transform_return_transactions >> ch_fact_return_transaction >>
-        transform_payment_transactions >> ch_fact_payment_transaction >>
-        transform_promotion_cost >> ch_fact_promotion_cost >>
-        transform_cogs >> ch_fact_cogs_transaction >>
-        transform_serving_financial_report >> ch_financial_serving >> ch_financial_report >>
-        transform_serving_fund_report >> ch_fund_serving >> ch_fund_report >>
-        push_serving_to_clickhouse
+            transform_dim_product >> ch_dim_product >>
+            transform_dim_customer >> ch_dim_customer >>
+            transform_dim_shop >> ch_dim_shop >>
+            transform_dim_employee >> ch_dim_employee >>
+            transform_dim_promotion >> ch_dim_promotion >>
+            transform_dim_voucher >> ch_dim_voucher >>
+            transform_sales_transactions >> ch_fact_sales_transaction >>
+            transform_return_transactions >> ch_fact_return_transaction >>
+            transform_payment_transactions >> ch_fact_payment_transaction >>
+            transform_promotion_cost >> ch_fact_promotion_cost >>
+            transform_cogs >> ch_fact_cogs_transaction >>
+            transform_serving_financial_report >> ch_financial_serving >> ch_financial_report >>
+            transform_serving_fund_report >> ch_fund_serving >> ch_fund_report >>
+            push_serving_to_clickhouse
     )

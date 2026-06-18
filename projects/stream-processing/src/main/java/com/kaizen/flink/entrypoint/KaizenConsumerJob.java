@@ -23,7 +23,7 @@ import java.util.List;
 
 /**
  * Unified Consumer Job - KaizenConsumerJob
- *
+ * <p>
  * Consolidates OrderPgConsumerJob, PaymentPgConsumerJob, and TransactionEsConsumerJob
  * into a single Flink application. This allows all three streaming topologies to share
  * Task Slots under the same default Slot Sharing Group, dramatically reducing required Flink slots.
@@ -45,30 +45,30 @@ public class KaizenConsumerJob {
         // ── 1. Order-bundles → PostgreSQL Sink ────────────────────────────────
         KafkaSource<String> orderPgSrc = KafkaSourceBuilder.buildKafkaSource(config, "order-bundles", PG_ORDER_GROUP_ID);
         env.fromSource(orderPgSrc, WatermarkStrategy.noWatermarks(), "Kafka-OrderPg")
-           .map(json -> JsonUtils.fromJson(json, OrderBundle.class))
-           .returns(org.apache.flink.api.common.typeinfo.TypeInformation.of(OrderBundle.class))
-           .addSink(new OrderBundlePgSink(config))
-           .name("PG-OrderSink");
+                .map(json -> JsonUtils.fromJson(json, OrderBundle.class))
+                .returns(org.apache.flink.api.common.typeinfo.TypeInformation.of(OrderBundle.class))
+                .addSink(new OrderBundlePgSink(config))
+                .name("PG-OrderSink");
 
         // ── 2. Payment-bundles → PostgreSQL Sink ──────────────────────────────
         KafkaSource<String> paymentPgSrc = KafkaSourceBuilder.buildKafkaSource(config, "payment-bundles", PG_PAYMENT_GROUP_ID);
         env.fromSource(paymentPgSrc, WatermarkStrategy.noWatermarks(), "Kafka-PaymentPg")
-           .map(json -> JsonUtils.fromJson(json, PaymentBundle.class))
-           .returns(org.apache.flink.api.common.typeinfo.TypeInformation.of(PaymentBundle.class))
-           .addSink(new PaymentBundlePgSink(config))
-           .name("PG-PaymentSink");
+                .map(json -> JsonUtils.fromJson(json, PaymentBundle.class))
+                .returns(org.apache.flink.api.common.typeinfo.TypeInformation.of(PaymentBundle.class))
+                .addSink(new PaymentBundlePgSink(config))
+                .name("PG-PaymentSink");
 
         // ── 3. Order-bundles → Elasticsearch Sink ──────────────────────────────
         KafkaSource<String> orderEsSrc = KafkaSourceBuilder.buildKafkaSource(config, "order-bundles", ES_GROUP_ID);
         env.fromSource(orderEsSrc, WatermarkStrategy.noWatermarks(), "Kafka-OrderEs")
-           .sinkTo(EsSink.buildStringIndexSink(config, "order-bundles"))
-           .name("ES-OrderSink");
+                .sinkTo(EsSink.buildStringIndexSink(config, "order-bundles"))
+                .name("ES-OrderSink");
 
         // ── 4. Payment-bundles → Elasticsearch Sink ────────────────────────────
         KafkaSource<String> paymentEsSrc = KafkaSourceBuilder.buildKafkaSource(config, "payment-bundles", ES_GROUP_ID);
         env.fromSource(paymentEsSrc, WatermarkStrategy.noWatermarks(), "Kafka-PaymentEs")
-           .sinkTo(EsSink.buildStringIndexSink(config, "payment-bundles"))
-           .name("ES-PaymentSink");
+                .sinkTo(EsSink.buildStringIndexSink(config, "payment-bundles"))
+                .name("ES-PaymentSink");
 
         LOG.info("Starting KaizenConsumerJob...");
         env.execute("Kaizen-KaizenConsumerJob");
@@ -131,20 +131,20 @@ public class KaizenConsumerJob {
 
         private void upsertOrder(com.kaizen.flink.model.Order o) throws SQLException {
             try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO \"order\".\"Order\" " +
-                "(\"Id\",\"CustomerId\",\"ShopCode\",\"TransactionDate\",\"TotalBill\",\"TotalDiscount\",\"TotalPayment\",\"EmployeeSaleId\",\"Status\",\"CreatedDate\",\"ModifiedDate\",\"VoucherSeriesCode\") " +
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?) " +
-                "ON CONFLICT (\"Id\") DO UPDATE SET " +
-                "\"CustomerId\"=EXCLUDED.\"CustomerId\", " +
-                "\"ShopCode\"=EXCLUDED.\"ShopCode\", " +
-                "\"TransactionDate\"=EXCLUDED.\"TransactionDate\", " +
-                "\"TotalBill\"=EXCLUDED.\"TotalBill\", " +
-                "\"TotalDiscount\"=EXCLUDED.\"TotalDiscount\", " +
-                "\"TotalPayment\"=EXCLUDED.\"TotalPayment\", " +
-                "\"EmployeeSaleId\"=EXCLUDED.\"EmployeeSaleId\", " +
-                "\"Status\"=EXCLUDED.\"Status\", " +
-                "\"ModifiedDate\"=EXCLUDED.\"ModifiedDate\", " +
-                "\"VoucherSeriesCode\"=EXCLUDED.\"VoucherSeriesCode\"")) {
+                    "INSERT INTO \"order\".\"Order\" " +
+                            "(\"Id\",\"CustomerId\",\"ShopCode\",\"TransactionDate\",\"TotalBill\",\"TotalDiscount\",\"TotalPayment\",\"EmployeeSaleId\",\"Status\",\"CreatedDate\",\"ModifiedDate\",\"VoucherSeriesCode\") " +
+                            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?) " +
+                            "ON CONFLICT (\"Id\") DO UPDATE SET " +
+                            "\"CustomerId\"=EXCLUDED.\"CustomerId\", " +
+                            "\"ShopCode\"=EXCLUDED.\"ShopCode\", " +
+                            "\"TransactionDate\"=EXCLUDED.\"TransactionDate\", " +
+                            "\"TotalBill\"=EXCLUDED.\"TotalBill\", " +
+                            "\"TotalDiscount\"=EXCLUDED.\"TotalDiscount\", " +
+                            "\"TotalPayment\"=EXCLUDED.\"TotalPayment\", " +
+                            "\"EmployeeSaleId\"=EXCLUDED.\"EmployeeSaleId\", " +
+                            "\"Status\"=EXCLUDED.\"Status\", " +
+                            "\"ModifiedDate\"=EXCLUDED.\"ModifiedDate\", " +
+                            "\"VoucherSeriesCode\"=EXCLUDED.\"VoucherSeriesCode\"")) {
                 ps.setString(1, o.getId());
                 ps.setString(2, o.getCustomerId());
                 ps.setObject(3, o.getShopCode(), Types.VARCHAR);
@@ -163,11 +163,11 @@ public class KaizenConsumerJob {
 
         private void upsertOrderItem(OrderItem i) throws SQLException {
             try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO \"order\".\"OrderItem\" " +
-                "(\"Id\",\"OrderId\",\"ProductId\",\"Quantity\",\"UnitPrice\",\"CreatedDate\",\"ModifiedDate\") " +
-                "VALUES (?,?,?,?,?,?,?) " +
-                "ON CONFLICT (\"Id\",\"OrderId\") DO UPDATE SET " +
-                "\"Quantity\"=EXCLUDED.\"Quantity\", \"ModifiedDate\"=EXCLUDED.\"ModifiedDate\"")) {
+                    "INSERT INTO \"order\".\"OrderItem\" " +
+                            "(\"Id\",\"OrderId\",\"ProductId\",\"Quantity\",\"UnitPrice\",\"CreatedDate\",\"ModifiedDate\") " +
+                            "VALUES (?,?,?,?,?,?,?) " +
+                            "ON CONFLICT (\"Id\",\"OrderId\") DO UPDATE SET " +
+                            "\"Quantity\"=EXCLUDED.\"Quantity\", \"ModifiedDate\"=EXCLUDED.\"ModifiedDate\"")) {
                 ps.setString(1, i.getId());
                 ps.setString(2, i.getOrderId());
                 ps.setObject(3, i.getProductId(), Types.VARCHAR);
@@ -181,10 +181,10 @@ public class KaizenConsumerJob {
 
         private void upsertReturn(Return r) throws SQLException {
             try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO \"order\".\"Return\" " +
-                "(\"Id\",\"OrderId\",\"ReturnAmount\",\"CreatedDate\",\"ModifiedDate\") " +
-                "VALUES (?,?,?,?,?) " +
-                "ON CONFLICT (\"Id\",\"OrderId\") DO UPDATE SET \"ReturnAmount\"=EXCLUDED.\"ReturnAmount\"")) {
+                    "INSERT INTO \"order\".\"Return\" " +
+                            "(\"Id\",\"OrderId\",\"ReturnAmount\",\"CreatedDate\",\"ModifiedDate\") " +
+                            "VALUES (?,?,?,?,?) " +
+                            "ON CONFLICT (\"Id\",\"OrderId\") DO UPDATE SET \"ReturnAmount\"=EXCLUDED.\"ReturnAmount\"")) {
                 ps.setString(1, r.getId());
                 ps.setString(2, r.getOrderId());
                 ps.setObject(3, r.getReturnAmount(), Types.INTEGER);
@@ -196,11 +196,11 @@ public class KaizenConsumerJob {
 
         private void upsertReturnItem(ReturnItem ri) throws SQLException {
             try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO \"order\".\"ReturnItem\" " +
-                "(\"Id\",\"ReturnId\",\"ProductId\",\"Quantity\",\"UnitPrice\",\"OrderItemId\",\"OrderId\",\"TotalAmount\",\"CreatedDate\",\"ModifiedDate\") " +
-                "VALUES (?,?,?,?,?,?,?,?,?,?) " +
-                "ON CONFLICT (\"Id\") DO UPDATE SET " +
-                "\"Quantity\"=EXCLUDED.\"Quantity\", \"TotalAmount\"=EXCLUDED.\"TotalAmount\", \"ModifiedDate\"=EXCLUDED.\"ModifiedDate\"")) {
+                    "INSERT INTO \"order\".\"ReturnItem\" " +
+                            "(\"Id\",\"ReturnId\",\"ProductId\",\"Quantity\",\"UnitPrice\",\"OrderItemId\",\"OrderId\",\"TotalAmount\",\"CreatedDate\",\"ModifiedDate\") " +
+                            "VALUES (?,?,?,?,?,?,?,?,?,?) " +
+                            "ON CONFLICT (\"Id\") DO UPDATE SET " +
+                            "\"Quantity\"=EXCLUDED.\"Quantity\", \"TotalAmount\"=EXCLUDED.\"TotalAmount\", \"ModifiedDate\"=EXCLUDED.\"ModifiedDate\"")) {
                 ps.setString(1, ri.getId());
                 ps.setString(2, ri.getReturnId());
                 ps.setObject(3, ri.getProductId(), Types.VARCHAR);
@@ -316,9 +316,9 @@ public class KaizenConsumerJob {
                 pType = 1; // Fallback to 1 (Phiếu thu)
             }
             try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO payment.\"Payment\" (\"Id\",\"PaymentType\",\"Status\",\"TotalPayment\",\"CreatedDate\",\"ModifiedDate\") " +
-                "VALUES (?,?,?,?,?,?) " +
-                "ON CONFLICT (\"Id\") DO UPDATE SET \"Status\"=EXCLUDED.\"Status\", \"ModifiedDate\"=EXCLUDED.\"ModifiedDate\"")) {
+                    "INSERT INTO payment.\"Payment\" (\"Id\",\"PaymentType\",\"Status\",\"TotalPayment\",\"CreatedDate\",\"ModifiedDate\") " +
+                            "VALUES (?,?,?,?,?,?) " +
+                            "ON CONFLICT (\"Id\") DO UPDATE SET \"Status\"=EXCLUDED.\"Status\", \"ModifiedDate\"=EXCLUDED.\"ModifiedDate\"")) {
                 ps.setString(1, p.getId());
                 ps.setShort(2, pType);
                 ps.setObject(3, p.getStatus(), Types.VARCHAR);
@@ -331,9 +331,9 @@ public class KaizenConsumerJob {
 
         private void upsertTransaction(PaymentTransaction t) throws SQLException {
             try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO payment.\"Transaction\" (\"Id\",\"PaymentId\",\"PaymentMethodId\",\"Amount\",\"CreatedDate\",\"ModifiedDate\") " +
-                "VALUES (?,?,?,?,?,?) " +
-                "ON CONFLICT (\"Id\") DO UPDATE SET \"Amount\"=EXCLUDED.\"Amount\", \"ModifiedDate\"=EXCLUDED.\"ModifiedDate\"")) {
+                    "INSERT INTO payment.\"Transaction\" (\"Id\",\"PaymentId\",\"PaymentMethodId\",\"Amount\",\"CreatedDate\",\"ModifiedDate\") " +
+                            "VALUES (?,?,?,?,?,?) " +
+                            "ON CONFLICT (\"Id\") DO UPDATE SET \"Amount\"=EXCLUDED.\"Amount\", \"ModifiedDate\"=EXCLUDED.\"ModifiedDate\"")) {
                 ps.setString(1, t.getId());
                 ps.setString(2, t.getPaymentId());
                 ps.setShort(3, t.getPaymentMethodId());
@@ -347,9 +347,9 @@ public class KaizenConsumerJob {
         private void upsertOrderPayment(com.kaizen.flink.model.OrderPayment op) throws SQLException {
             Timestamp ts = new Timestamp(op.getCreatedDate());
             try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO payment.\"OrderPayment\" (\"Id\",\"PaymentId\",\"OrderId\",\"CreatedDate\",\"ModifiedDate\") " +
-                "VALUES (?,?,?,?,?) " +
-                "ON CONFLICT (\"Id\") DO UPDATE SET \"ModifiedDate\"=EXCLUDED.\"ModifiedDate\"")) {
+                    "INSERT INTO payment.\"OrderPayment\" (\"Id\",\"PaymentId\",\"OrderId\",\"CreatedDate\",\"ModifiedDate\") " +
+                            "VALUES (?,?,?,?,?) " +
+                            "ON CONFLICT (\"Id\") DO UPDATE SET \"ModifiedDate\"=EXCLUDED.\"ModifiedDate\"")) {
                 ps.setString(1, op.getId());
                 ps.setString(2, op.getPaymentId());
                 ps.setString(3, op.getOrderId());
@@ -362,9 +362,9 @@ public class KaizenConsumerJob {
         private void upsertReturnPayment(com.kaizen.flink.model.ReturnPayment rp) throws SQLException {
             Timestamp ts = new Timestamp(rp.getCreatedDate());
             try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT INTO payment.\"ReturnPayment\" (\"Id\",\"PaymentId\",\"ReturnId\",\"OrderId\",\"CreatedDate\",\"ModifiedDate\") " +
-                "VALUES (?,?,?,?,?,?) " +
-                "ON CONFLICT (\"Id\") DO UPDATE SET \"ModifiedDate\"=EXCLUDED.\"ModifiedDate\"")) {
+                    "INSERT INTO payment.\"ReturnPayment\" (\"Id\",\"PaymentId\",\"ReturnId\",\"OrderId\",\"CreatedDate\",\"ModifiedDate\") " +
+                            "VALUES (?,?,?,?,?,?) " +
+                            "ON CONFLICT (\"Id\") DO UPDATE SET \"ModifiedDate\"=EXCLUDED.\"ModifiedDate\"")) {
                 ps.setString(1, rp.getId());
                 ps.setString(2, rp.getPaymentId());
                 ps.setString(3, rp.getReturnId());

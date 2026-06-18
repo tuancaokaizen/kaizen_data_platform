@@ -11,14 +11,19 @@ import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsIni
  */
 public class KafkaSourceBuilder {
 
-    private KafkaSourceBuilder() {}
+    private KafkaSourceBuilder() {
+    }
 
-    /** Source với group ID mặc định từ config. */
+    /**
+     * Source với group ID mặc định từ config.
+     */
     public static KafkaSource<String> buildKafkaSource(FlinkConfig config, String topic) {
         return buildKafkaSource(config, topic, config.getOrDefault("kafka", "group_id", "kaizen-stream-group"));
     }
 
-    /** Source với group ID tùy chỉnh – cần thiết để nhiều consumer group độc lập nhau. */
+    /**
+     * Source với group ID tùy chỉnh – cần thiết để nhiều consumer group độc lập nhau.
+     */
     public static KafkaSource<String> buildKafkaSource(FlinkConfig config, String topic, String groupId) {
         return KafkaSource.<String>builder()
                 .setBootstrapServers(config.get("kafka", "bootstrap_servers"))

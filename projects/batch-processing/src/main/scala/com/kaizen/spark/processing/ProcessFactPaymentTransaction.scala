@@ -21,8 +21,12 @@ object ProcessFactPaymentTransaction {
     val spark = SparkIOUtils.createSparkSession(jobName)
     val config = new SparkConfig()
 
-    val fromTs = formatTimestamp(fromDate.getOrElse("1970-01-01"), isEndOfDay = false)
-    val toTs = formatTimestamp(toDate.getOrElse(java.time.LocalDate.now().plusDays(1).toString), isEndOfDay = false)
+    val fromTs =
+      formatTimestamp(fromDate.getOrElse("1970-01-01"), isEndOfDay = false)
+    val toTs = formatTimestamp(
+      toDate.getOrElse(java.time.LocalDate.now().plusDays(1).toString),
+      isEndOfDay = false
+    )
 
     val jobResult = Try {
       SparkIOUtils.ensureNamespaceExists(spark, "nessie.stg")
@@ -31,35 +35,54 @@ object ProcessFactPaymentTransaction {
       val targetTable = "nessie.dw.fact_payment_transaction"
       val stgTable = "nessie.stg.fact_payment_transaction"
 
-      println(s"Running Payment Fact Transformation for range: $fromTs to $toTs")
+      println(
+        s"Running Payment Fact Transformation for range: $fromTs to $toTs"
+      )
 
       // Load foundation data
-      val transactionFnd = spark.table("nessie.fnd.transaction")
+      val transactionFnd = spark
+        .table("nessie.fnd.transaction")
         .filter(
           (col("CreatedDate") >= fromTs && col("CreatedDate") < toTs) ||
-          (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs)
+            (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs)
         )
 
       if (transactionFnd.isEmpty) {
-        println("No payment transactions found in the specified range. Skipping transformation.")
+        println(
+          "No payment transactions found in the specified range. Skipping transformation."
+        )
       } else {
-        val paymentFnd = spark.table("nessie.fnd.payment")
+        val paymentFnd = spark
+          .table("nessie.fnd.payment")
           .filter(col("Status") === "SUCCESS")
         val orderPaymentFnd = spark.table("nessie.fnd.order_payment")
         val returnPaymentFnd = spark.table("nessie.fnd.return_payment")
 
         // Transform and map to Fact schema
         val factPaymentDf = transactionFnd
-          .join(paymentFnd, transactionFnd("PaymentId") === paymentFnd("Id"), "inner")
-          .join(orderPaymentFnd, transactionFnd("PaymentId") === orderPaymentFnd("PaymentId"), "left")
-          .join(returnPaymentFnd, transactionFnd("PaymentId") === returnPaymentFnd("PaymentId"), "left")
+          .join(
+            paymentFnd,
+            transactionFnd("PaymentId") === paymentFnd("Id"),
+            "inner"
+          )
+          .join(
+            orderPaymentFnd,
+            transactionFnd("PaymentId") === orderPaymentFnd("PaymentId"),
+            "left"
+          )
+          .join(
+            returnPaymentFnd,
+            transactionFnd("PaymentId") === returnPaymentFnd("PaymentId"),
+            "left"
+          )
           .select(
             transactionFnd("Id").as("TransactionId"),
             transactionFnd("PaymentId").as("PaymentId"),
             transactionFnd("PaymentMethodId").as("PaymentMethodId"),
             paymentFnd("PaymentType").as("PaymentType"),
             paymentFnd("Status").as("PaymentStatus"),
-            coalesce(orderPaymentFnd("OrderId"), returnPaymentFnd("OrderId")).as("OrderId"),
+            coalesce(orderPaymentFnd("OrderId"), returnPaymentFnd("OrderId"))
+              .as("OrderId"),
             returnPaymentFnd("ReturnId").as("ReturnId"),
             transactionFnd("Amount").as("Amount"),
             transactionFnd("CreatedDate").as("CreatedDate"),
@@ -69,15 +92,34 @@ object ProcessFactPaymentTransaction {
         // Write to Iceberg
         val targetExists = SparkIOUtils.tableExists(spark, targetTable)
         if (!targetExists) {
-          println(s"Target table '$targetTable' does not exist. Initializing table...")
-          SparkIOUtils.writeToIceberg(spark, factPaymentDf, stgTable, "overwrite")
+          println(
+            s"Target table '$targetTable' does not exist. Initializing table..."
+          )
+          SparkIOUtils.writeToIceberg(
+            spark,
+            factPaymentDf,
+            stgTable,
+            "overwrite"
+          )
           val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
           SparkIOUtils.writeToIceberg(spark, stgDf, targetTable, "overwrite")
         } else {
-          println(s"Merging payment transaction items into target table '$targetTable'...")
-          SparkIOUtils.writeToIceberg(spark, factPaymentDf, stgTable, "overwrite")
+          println(
+            s"Merging payment transaction items into target table '$targetTable'..."
+          )
+          SparkIOUtils.writeToIceberg(
+            spark,
+            factPaymentDf,
+            stgTable,
+            "overwrite"
+          )
           val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
-          SparkIOUtils.mergeIcebergTable(spark, stgDf, targetTable, Seq("TransactionId"))
+          SparkIOUtils.mergeIcebergTable(
+            spark,
+            stgDf,
+            targetTable,
+            Seq("TransactionId")
+          )
         }
         println(s"✔ Payment Fact Transformation completed for: $targetTable")
       }
@@ -87,8 +129,14 @@ object ProcessFactPaymentTransaction {
       case Success(_) =>
         println(s"✔ [$jobName] completed successfully.")
         Try {
-          SparkIOUtils.expireTableSnapshots(spark, "nessie.stg.fact_payment_transaction")
-          SparkIOUtils.expireTableSnapshots(spark, "nessie.dw.fact_payment_transaction")
+          SparkIOUtils.expireTableSnapshots(
+            spark,
+            "nessie.stg.fact_payment_transaction"
+          )
+          SparkIOUtils.expireTableSnapshots(
+            spark,
+            "nessie.dw.fact_payment_transaction"
+          )
         }
         spark.stop()
       case Failure(e) =>

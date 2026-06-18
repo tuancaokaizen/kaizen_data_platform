@@ -35,6 +35,7 @@ yaml_path = os.path.join(config_dir, "table_configs.yaml")
 with open(yaml_path, "r", encoding="utf-8") as f:
     TABLE_CONFIGS = yaml.safe_load(f)
 
+
 def get_ingestion_task(table_key):
     """
     Generates KubernetesPodOperator configuration dictionary dynamically
@@ -55,23 +56,23 @@ def get_ingestion_task(table_key):
         f"--master 'spark://kaizen-spark-master.compute.svc.cluster.local:7077' "
         f"--class '{java_class}' "
     )
-    
+
     # Add spark configurations as --conf flags
     for key, val in spark_conf.items():
         spark_cmd += f"--conf '{key}={val}' "
-        
+
     # Dynamically set the driver host to the pod IP address so executors can connect back
     spark_cmd += "--conf spark.driver.host=$(hostname -i) "
-        
+
     escaped_source = default_source.replace('"', '\\"')
     escaped_target = default_target.replace('"', '\\"')
-    
+
     source_template = f"{{{{ (dag_run.conf.get(\"{task_id}_sourceTable\") if dag_run.conf else None) or \"{escaped_source}\" }}}}"
     target_template = f"{{{{ (dag_run.conf.get(\"{task_id}_targetTable\") if dag_run.conf else None) or \"{escaped_target}\" }}}}"
     load_type_template = f"{{{{ (dag_run.conf.get(\"{task_id}_loadType\") if dag_run.conf else None) or \"{config['load_type']}\" }}}}"
     watermark_template = f"{{{{ (dag_run.conf.get(\"{task_id}_watermarkColumn\") if dag_run.conf else None) or \"{config['watermark_col']}\" }}}}"
     join_key_template = f"{{{{ (dag_run.conf.get(\"{task_id}_joinKey\") if dag_run.conf else None) or \"{config['join_key']}\" }}}}"
-    
+
     # Jinja templates to support manual date range backfills defaulting to D-1 [yesterday, today) or start of month
     range_type = config.get("range_type", "daily")
     if range_type == "start_of_month":
@@ -91,7 +92,7 @@ def get_ingestion_task(table_key):
         "{{ (dag_run.conf.get('toDate') if dag_run.conf else None) or (ds if dag_run.external_trigger else (data_interval_end | ds)) }}"
         "{% endif %}"
     )
-    
+
     spark_cmd += (
         f"'/tmp/kaizen-batch-processing.jar' "
         f"--sourceTable '{source_template}' "
@@ -102,7 +103,7 @@ def get_ingestion_task(table_key):
         f"--fromDate '{from_date_tmpl}' "
         f"--toDate '{to_date_tmpl}'"
     )
-    
+
     download_cmd = "curl -s -f -o /tmp/kaizen-batch-processing.jar http://minio.storage.svc.cluster.local:9000/spark/jobs/kaizen-batch-processing.jar"
     full_command = f"{download_cmd} && {spark_cmd}"
 
@@ -120,6 +121,7 @@ def get_ingestion_task(table_key):
             "SPARK_SUBMIT_OPTS": "-Divy.default.ivy.user.dir=/tmp/.ivy2 -Divy.home=/tmp/.ivy2"
         }
     }
+
 
 def get_clickhouse_task(table_key):
     """
@@ -135,6 +137,7 @@ def get_clickhouse_task(table_key):
         "retries": 0
     }
 
+
 def get_clickhouse_dw_task(table_name):
     """
     Generates ClickHouse integration PythonOperator configuration dynamically for DW layer.
@@ -145,6 +148,7 @@ def get_clickhouse_dw_task(table_name):
         "op_kwargs": {"table_name": table_name, "layer": "dw"},
         "retries": 0
     }
+
 
 def get_clickhouse_serving_task(table_name):
     """
@@ -157,6 +161,7 @@ def get_clickhouse_serving_task(table_name):
         "retries": 0
     }
 
+
 def get_clickhouse_report_task(table_name):
     """
     Generates ClickHouse integration PythonOperator configuration dynamically for report layer.
@@ -167,6 +172,7 @@ def get_clickhouse_report_task(table_name):
         "op_kwargs": {"table_name": table_name, "layer": "report"},
         "retries": 0
     }
+
 
 def get_push_serving_task():
     """
@@ -182,16 +188,16 @@ def get_push_serving_task():
         f"--master 'spark://kaizen-spark-master.compute.svc.cluster.local:7077' "
         f"--class '{java_class}' "
     )
-    
+
     # Add spark configurations as --conf flags
     for key, val in spark_conf.items():
         spark_cmd += f"--conf '{key}={val}' "
-        
+
     # Dynamically set the driver host to the pod IP address so executors can connect back
     spark_cmd += "--conf spark.driver.host=$(hostname -i) "
-    
+
     spark_cmd += "'/tmp/kaizen-batch-processing.jar'"
-    
+
     download_cmd = "curl -s -f -o /tmp/kaizen-batch-processing.jar http://minio.storage.svc.cluster.local:9000/spark/jobs/kaizen-batch-processing.jar"
     full_command = f"{download_cmd} && {spark_cmd}"
 
@@ -210,6 +216,7 @@ def get_push_serving_task():
         }
     }
 
+
 def get_transformer_task(task_id, transformer_class):
     """
     Generates KubernetesPodOperator configuration dictionary dynamically
@@ -221,14 +228,14 @@ def get_transformer_task(task_id, transformer_class):
         f"--master 'spark://kaizen-spark-master.compute.svc.cluster.local:7077' "
         f"--class '{transformer_class}' "
     )
-    
+
     # Add spark configurations as --conf flags
     for key, val in spark_conf.items():
         spark_cmd += f"--conf '{key}={val}' "
-        
+
     # Dynamically set the driver host to the pod IP address so executors can connect back
     spark_cmd += "--conf spark.driver.host=$(hostname -i) "
-    
+
     # Jinja templates to support manual date range backfills defaulting to D-1 [yesterday, today)
     from_date_tmpl = (
         "{% if dag_run.conf and dag_run.conf.get('useWatermark') %}{% else %}"
@@ -240,13 +247,13 @@ def get_transformer_task(task_id, transformer_class):
         "{{ (dag_run.conf.get('toDate') if dag_run.conf else None) or (ds if dag_run.external_trigger else (data_interval_end | ds)) }}"
         "{% endif %}"
     )
-    
+
     spark_cmd += (
         f"'/tmp/kaizen-batch-processing.jar' "
         f"--fromDate '{from_date_tmpl}' "
         f"--toDate '{to_date_tmpl}'"
     )
-    
+
     download_cmd = "curl -s -f -o /tmp/kaizen-batch-processing.jar http://minio.storage.svc.cluster.local:9000/spark/jobs/kaizen-batch-processing.jar"
     full_command = f"{download_cmd} && {spark_cmd}"
 
