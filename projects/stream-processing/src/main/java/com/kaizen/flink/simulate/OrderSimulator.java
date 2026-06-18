@@ -10,30 +10,34 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Sinh OrderBundle với business rules:
- *
+ * <p>
  * 1. THROUGHPUT: được gọi mỗi 100ms → 10 bundles/giây → 100 transactions/10s.
- *
+ * <p>
  * 2. VOUCHER:
- *    - Mỗi khi khách hàng hoàn thành đủ 10 đơn hàng → tự động cấp 1 voucher hoạt động tại orderDate.
- *    - Voucher được áp dụng tự động vào lần mua tiếp theo của cùng khách hàng nếu đạt thời gian hiệu lực và MinOrderValue.
- *
+ * - Mỗi khi khách hàng hoàn thành đủ 10 đơn hàng → tự động cấp 1 voucher hoạt động tại orderDate.
+ * - Voucher được áp dụng tự động vào lần mua tiếp theo của cùng khách hàng nếu đạt thời gian hiệu lực và MinOrderValue.
+ * <p>
  * 3. GIFT:
- *    - Nếu có chương trình khuyến mãi GIFT đang hoạt động tại orderDate, đơn hàng sẽ tự động nhận được sản phẩm tặng kèm (UnitPrice = 0).
- *
+ * - Nếu có chương trình khuyến mãi GIFT đang hoạt động tại orderDate, đơn hàng sẽ tự động nhận được sản phẩm tặng kèm (UnitPrice = 0).
+ * <p>
  * 4. RETURN (7-day window):
- *    - 25% xác suất có return sau khi đơn COMPLETED.
- *    - Return được giả lập trễ (gửi sự kiện trả hàng kèm đầy đủ thông tin bán hàng sau sự kiện bán hàng 15 giây).
+ * - 25% xác suất có return sau khi đơn COMPLETED.
+ * - Return được giả lập trễ (gửi sự kiện trả hàng kèm đầy đủ thông tin bán hàng sau sự kiện bán hàng 15 giây).
  */
 public final class OrderSimulator {
 
-    private static final int  VOUCHER_THRESHOLD  = 10;      // đơn hàng cần để nhận voucher
-    private static final int  RETURN_PROBABILITY = 4;       // 1/4 = 25%
+    private static final int VOUCHER_THRESHOLD = 10;      // đơn hàng cần để nhận voucher
+    private static final int RETURN_PROBABILITY = 4;       // 1/4 = 25%
 
-    /** Đếm số lần mua của từng customer. */
+    /**
+     * Đếm số lần mua của từng customer.
+     */
     private static final ConcurrentHashMap<String, AtomicInteger> ORDER_COUNT =
             new ConcurrentHashMap<>();
 
-    /** Voucher đang chờ áp dụng cho customer (chỉ giữ 1 voucher/customer). */
+    /**
+     * Voucher đang chờ áp dụng cho customer (chỉ giữ 1 voucher/customer).
+     */
     private static final ConcurrentHashMap<String, String> PENDING_VOUCHER =
             new ConcurrentHashMap<>();
 
@@ -56,7 +60,8 @@ public final class OrderSimulator {
 
     private static final Queue<PendingReturn> PENDING_RETURNS = new ConcurrentLinkedQueue<>();
 
-    private OrderSimulator() {}
+    private OrderSimulator() {
+    }
 
     public static OrderBundle generate() {
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
@@ -73,12 +78,12 @@ public final class OrderSimulator {
 
         if (readyReturn != null) {
             PENDING_RETURNS.remove(readyReturn);
-            
+
             // Đưa mã return thực tế vào hàng chờ động để PaymentSimulator kết nối thanh toán (hoàn tiền)
             IdPool.GENERATED_RETURNS.add(new IdPool.ReturnRef(
-                readyReturn.returnRecord.getId(),
-                readyReturn.order.getId(),
-                readyReturn.returnRecord.getReturnAmount() != null ? readyReturn.returnRecord.getReturnAmount() : 0
+                    readyReturn.returnRecord.getId(),
+                    readyReturn.order.getId(),
+                    readyReturn.returnRecord.getReturnAmount() != null ? readyReturn.returnRecord.getReturnAmount() : 0
             ));
             if (IdPool.GENERATED_RETURNS.size() > 1000) {
                 IdPool.GENERATED_RETURNS.poll();
@@ -92,9 +97,9 @@ public final class OrderSimulator {
         long orderDate = now - rnd.nextLong(1000L, 5000L);
 
         // ── Customer + Voucher logic ──────────────────────────────────────────
-        String customerId  = IdPool.pickPareto(IdPool.CUSTOMER_IDS);
-        int orderCount     = ORDER_COUNT.computeIfAbsent(customerId, k -> new AtomicInteger(0))
-                                        .incrementAndGet();
+        String customerId = IdPool.pickPareto(IdPool.CUSTOMER_IDS);
+        int orderCount = ORDER_COUNT.computeIfAbsent(customerId, k -> new AtomicInteger(0))
+                .incrementAndGet();
 
         // Sau mỗi 10 đơn → cấp voucher mới thích hợp (phải hoạt động tại orderDate) cho lần sau
         if (orderCount % VOUCHER_THRESHOLD == 0) {
@@ -112,16 +117,16 @@ public final class OrderSimulator {
 
         // ── OrderItems (1-5 sản phẩm) ────────────────────────────────────────
         String orderId = "SORD-" + uuid12();
-        int itemCount  = rnd.nextInt(1, 6);
+        int itemCount = rnd.nextInt(1, 6);
         List<OrderItem> items = new ArrayList<>(itemCount);
         int totalBill = 0;
 
         for (int i = 0; i < itemCount; i++) {
             String itemId = "SOI-" + uuid12();
             IdPool.ProductRef prod = IdPool.PRODUCTS.get(rnd.nextInt(IdPool.PRODUCTS.size()));
-            int qty       = rnd.nextInt(1, 10);
+            int qty = rnd.nextInt(1, 10);
             int unitPrice = prod.retailPrice;
-            totalBill    += qty * unitPrice;
+            totalBill += qty * unitPrice;
             items.add(new OrderItem(itemId, orderId, prod.id, qty, unitPrice, orderDate, orderDate));
         }
 
@@ -179,12 +184,12 @@ public final class OrderSimulator {
                 PENDING_VOUCHER.remove(customerId);
             }
         }
-        
-        int totalDiscount   = voucherDiscount;
-        int totalPayment    = Math.max(0, totalBill - totalDiscount);
 
-        String shopCode     = IdPool.pickPareto(IdPool.SHOP_CODES);
-        String empId        = IdPool.pick(IdPool.EMPLOYEE_IDS);
+        int totalDiscount = voucherDiscount;
+        int totalPayment = Math.max(0, totalBill - totalDiscount);
+
+        String shopCode = IdPool.pickPareto(IdPool.SHOP_CODES);
+        String empId = IdPool.pick(IdPool.EMPLOYEE_IDS);
 
         // ── Quyết định xem đơn này có bị trả lại sau này hay không (25% xác suất) ──
         boolean willBeReturned = rnd.nextInt(RETURN_PROBABILITY) == 0;
@@ -215,10 +220,10 @@ public final class OrderSimulator {
                 double discountRatio = (double) totalDiscount / totalBill;
 
                 for (OrderItem src : selectedItems) {
-                    int maxQty   = src.getQuantity() != null ? src.getQuantity() : 1;
-                    int retQty   = fullReturn ? maxQty : rnd.nextInt(1, maxQty + 1);
+                    int maxQty = src.getQuantity() != null ? src.getQuantity() : 1;
+                    int retQty = fullReturn ? maxQty : rnd.nextInt(1, maxQty + 1);
                     int salePrice = src.getUnitPrice() != null ? src.getUnitPrice() : 0;
-                    
+
                     int itemAmt;
                     if (isZeroReturn) {
                         itemAmt = 0;

@@ -21,8 +21,12 @@ object ProcessFactReturnTransaction {
     val spark = SparkIOUtils.createSparkSession(jobName)
     val config = new SparkConfig()
 
-    val fromTs = formatTimestamp(fromDate.getOrElse("1970-01-01"), isEndOfDay = false)
-    val toTs = formatTimestamp(toDate.getOrElse(java.time.LocalDate.now().plusDays(1).toString), isEndOfDay = false)
+    val fromTs =
+      formatTimestamp(fromDate.getOrElse("1970-01-01"), isEndOfDay = false)
+    val toTs = formatTimestamp(
+      toDate.getOrElse(java.time.LocalDate.now().plusDays(1).toString),
+      isEndOfDay = false
+    )
 
     val jobResult = Try {
       SparkIOUtils.ensureNamespaceExists(spark, "nessie.stg")
@@ -34,15 +38,18 @@ object ProcessFactReturnTransaction {
       println(s"Running Return Fact Transformation for range: $fromTs to $toTs")
 
       // Load foundation data
-      val returnFnd = spark.table("nessie.fnd.return")
+      val returnFnd = spark
+        .table("nessie.fnd.return")
         .filter(
           (col("CreatedDate") >= fromTs && col("CreatedDate") < toTs) ||
-          (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs)
+            (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs)
         )
         .dropDuplicates("Id")
 
       if (returnFnd.isEmpty) {
-        println("No returns found in the specified range. Skipping returns transformation.")
+        println(
+          "No returns found in the specified range. Skipping returns transformation."
+        )
       } else {
         val returnItemFnd = spark.table("nessie.fnd.return_item")
         val filteredReturnItems = returnItemFnd.filter(col("UnitPrice") > 0)
@@ -50,7 +57,11 @@ object ProcessFactReturnTransaction {
 
         // Transform and map to Fact schema
         val factReturnDf = filteredReturnItems
-          .join(returnFnd, filteredReturnItems("ReturnId") === returnFnd("Id"), "inner")
+          .join(
+            returnFnd,
+            filteredReturnItems("ReturnId") === returnFnd("Id"),
+            "inner"
+          )
           .join(orderFnd, returnFnd("OrderId") === orderFnd("Id"), "inner")
           .select(
             filteredReturnItems("Id").as("TransactionId"),
@@ -73,15 +84,32 @@ object ProcessFactReturnTransaction {
         // Write to Iceberg
         val targetExists = SparkIOUtils.tableExists(spark, targetTable)
         if (!targetExists) {
-          println(s"Target table '$targetTable' does not exist. Initializing table...")
-          SparkIOUtils.writeToIceberg(spark, factReturnDf, stgTable, "overwrite")
+          println(
+            s"Target table '$targetTable' does not exist. Initializing table..."
+          )
+          SparkIOUtils.writeToIceberg(
+            spark,
+            factReturnDf,
+            stgTable,
+            "overwrite"
+          )
           val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
           SparkIOUtils.writeToIceberg(spark, stgDf, targetTable, "overwrite")
         } else {
           println(s"Merging return items into target table '$targetTable'...")
-          SparkIOUtils.writeToIceberg(spark, factReturnDf, stgTable, "overwrite")
+          SparkIOUtils.writeToIceberg(
+            spark,
+            factReturnDf,
+            stgTable,
+            "overwrite"
+          )
           val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
-          SparkIOUtils.mergeIcebergTable(spark, stgDf, targetTable, Seq("TransactionId"))
+          SparkIOUtils.mergeIcebergTable(
+            spark,
+            stgDf,
+            targetTable,
+            Seq("TransactionId")
+          )
         }
         println(s"✔ Return Fact Transformation completed for: $targetTable")
       }
@@ -91,8 +119,14 @@ object ProcessFactReturnTransaction {
       case Success(_) =>
         println(s"✔ [$jobName] completed successfully.")
         Try {
-          SparkIOUtils.expireTableSnapshots(spark, "nessie.stg.fact_return_transaction")
-          SparkIOUtils.expireTableSnapshots(spark, "nessie.dw.fact_return_transaction")
+          SparkIOUtils.expireTableSnapshots(
+            spark,
+            "nessie.stg.fact_return_transaction"
+          )
+          SparkIOUtils.expireTableSnapshots(
+            spark,
+            "nessie.dw.fact_return_transaction"
+          )
         }
         spark.stop()
       case Failure(e) =>

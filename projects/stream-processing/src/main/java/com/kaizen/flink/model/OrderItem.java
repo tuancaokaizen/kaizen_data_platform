@@ -6,7 +6,9 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 
-/** Ánh xạ bảng order."OrderItem" – PK composite ("Id", "OrderId") */
+/**
+ * Ánh xạ bảng order."OrderItem" – PK composite ("Id", "OrderId")
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

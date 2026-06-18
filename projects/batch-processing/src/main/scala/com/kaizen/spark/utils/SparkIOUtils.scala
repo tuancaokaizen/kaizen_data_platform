@@ -7,27 +7,30 @@ import scala.annotation.tailrec
 
 object SparkIOUtils {
 
-  /**
-   * Parses command-line arguments formatted as --key value into a Map.
-   * Example: Array("--sourceTable", "public.Geography") -> Map("sourceTable" -> "public.Geography")
-   */
+  /** Parses command-line arguments formatted as --key value into a Map.
+    * Example: Array("--sourceTable", "public.Geography") -> Map("sourceTable"
+    * -> "public.Geography")
+    */
   def parseArgs(args: Array[String]): Map[String, String] = {
     @tailrec
-    def parse(list: List[String], map: Map[String, String]): Map[String, String] = list match {
+    def parse(
+        list: List[String],
+        map: Map[String, String]
+    ): Map[String, String] = list match {
       case Nil => map
-      case key :: value :: tail if key.startsWith("--") && !value.startsWith("--") => 
+      case key :: value :: tail
+          if key.startsWith("--") && !value.startsWith("--") =>
         parse(tail, map + (key.substring(2) -> value))
-      case key :: tail if key.startsWith("--") => 
+      case key :: tail if key.startsWith("--") =>
         parse(tail, map + (key.substring(2) -> ""))
-      case _ :: tail => 
+      case _ :: tail =>
         parse(tail, map)
     }
     parse(args.toList, Map.empty)
   }
 
-  /**
-   * Generates PostgreSQL JDBC URL from SparkConfig
-   */
+  /** Generates PostgreSQL JDBC URL from SparkConfig
+    */
   def getPostgresJdbcUrl(config: SparkConfig): String = {
     val host = config.get("postgres", "host")
     val port = config.get("postgres", "port")
@@ -35,38 +38,44 @@ object SparkIOUtils {
     s"jdbc:postgresql://$host:$port/$database"
   }
 
-  /**
-   * Initializes Spark session with Kryo serialization.
-   * Leverages existing configuration if running in Spark cluster, falls back to local[*] if run locally.
-   */
+  /** Initializes Spark session with Kryo serialization. Leverages existing
+    * configuration if running in Spark cluster, falls back to local[*] if run
+    * locally.
+    */
   def createSparkSession(jobName: String): SparkSession = {
-    java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Ho_Chi_Minh"))
+    java.util.TimeZone.setDefault(
+      java.util.TimeZone.getTimeZone("Asia/Ho_Chi_Minh")
+    )
     System.setProperty("user.timezone", "Asia/Ho_Chi_Minh")
 
-    val builder = SparkSession.builder()
+    val builder = SparkSession
+      .builder()
       .appName(jobName)
       .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .config("spark.sql.shuffle.partitions", "4")
       .config("spark.sql.session.timeZone", "Asia/Ho_Chi_Minh")
 
-    if (sys.props.contains("spark.master") || sys.env.contains("SPARK_MASTER")) {
+    if (
+      sys.props.contains("spark.master") || sys.env.contains("SPARK_MASTER")
+    ) {
       builder.getOrCreate()
     } else {
       builder.config("spark.master", "local[*]").getOrCreate()
     }
   }
 
-  /**
-   * Ensures Nessie/Iceberg namespace exists
-   */
-  def ensureNamespaceExists(spark: SparkSession, catalogAndNamespace: String): Unit = {
+  /** Ensures Nessie/Iceberg namespace exists
+    */
+  def ensureNamespaceExists(
+      spark: SparkSession,
+      catalogAndNamespace: String
+  ): Unit = {
     println(s"Ensuring namespace '$catalogAndNamespace' exists...")
     spark.sql(s"CREATE NAMESPACE IF NOT EXISTS $catalogAndNamespace")
   }
 
-  /**
-   * Check if a table exists in the catalog by attempting to load it.
-   */
+  /** Check if a table exists in the catalog by attempting to load it.
+    */
   def tableExists(spark: SparkSession, table: String): Boolean = {
     try {
       spark.read.format("iceberg").load(table)
@@ -78,13 +87,14 @@ object SparkIOUtils {
 
   private def quoteColumn(col: String): String = {
     val trimmed = col.trim
-    if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) trimmed else s""""$trimmed""""
+    if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) trimmed
+    else s""""$trimmed""""
   }
 
-  /**
-   * Read table from PostgreSQL (supports SQL wrapping for incremental loads based on watermark).
-   * Supports multiple watermark columns separated by comma (treated as OR condition).
-   */
+  /** Read table from PostgreSQL (supports SQL wrapping for incremental loads
+    * based on watermark). Supports multiple watermark columns separated by
+    * comma (treated as OR condition).
+    */
   def readFromPostgres(
       spark: SparkSession,
       table: String,
@@ -96,14 +106,22 @@ object SparkIOUtils {
     val jdbcUrl = getPostgresJdbcUrl(config)
     val dbTable = (watermarkCol, minTimestamp, maxTimestamp) match {
       case (Some(colsStr), Some(minTs), Some(maxTs)) =>
-        val conditions = colsStr.split(",").map(quoteColumn).map { qCol =>
-          s"($qCol >= '$minTs' AND $qCol < '$maxTs')"
-        }.mkString(" OR ")
+        val conditions = colsStr
+          .split(",")
+          .map(quoteColumn)
+          .map { qCol =>
+            s"($qCol >= '$minTs' AND $qCol < '$maxTs')"
+          }
+          .mkString(" OR ")
         s"""(SELECT * FROM $table WHERE $conditions) as temp_table"""
       case (Some(colsStr), Some(minTs), None) =>
-        val conditions = colsStr.split(",").map(quoteColumn).map { qCol =>
-          s"$qCol > '$minTs'"
-        }.mkString(" OR ")
+        val conditions = colsStr
+          .split(",")
+          .map(quoteColumn)
+          .map { qCol =>
+            s"$qCol > '$minTs'"
+          }
+          .mkString(" OR ")
         s"""(SELECT * FROM $table WHERE $conditions) as temp_table"""
       case _ =>
         table
@@ -120,10 +138,14 @@ object SparkIOUtils {
       .load()
   }
 
-  /**
-   * Writes DataFrame to Iceberg.
-   */
-  def writeToIceberg(spark: SparkSession, df: DataFrame, table: String, mode: String): Unit = {
+  /** Writes DataFrame to Iceberg.
+    */
+  def writeToIceberg(
+      spark: SparkSession,
+      df: DataFrame,
+      table: String,
+      mode: String
+  ): Unit = {
     val parts = table.split("\\.")
     if (parts.length > 1) {
       val namespace = parts.init.mkString(".")
@@ -137,25 +159,30 @@ object SparkIOUtils {
       .saveAsTable(table)
   }
 
-  /**
-   * Read from Iceberg catalog.
-   */
+  /** Read from Iceberg catalog.
+    */
   def readFromIceberg(spark: SparkSession, table: String): DataFrame = {
     spark.table(table)
   }
 
-  /**
-   * Queries current max watermark value from target Iceberg table.
-   * If watermarkCol contains multiple columns, uses the first one (primary) to fetch max value.
-   */
-  def getMaxWatermark(spark: SparkSession, table: String, watermarkCol: String): Option[String] = {
+  /** Queries current max watermark value from target Iceberg table. If
+    * watermarkCol contains multiple columns, uses the first one (primary) to
+    * fetch max value.
+    */
+  def getMaxWatermark(
+      spark: SparkSession,
+      table: String,
+      watermarkCol: String
+  ): Option[String] = {
     if (tableExists(spark, table)) {
-      println(s"Fetching max watermark from Iceberg table: $table for column: $watermarkCol")
+      println(
+        s"Fetching max watermark from Iceberg table: $table for column: $watermarkCol"
+      )
       val df = readFromIceberg(spark, table)
-      
+
       val cols = watermarkCol.split(",").map(_.trim)
       val primaryCol = cols.head
-      
+
       val maxRow = df.select(max(col(primaryCol))).collect()
       if (maxRow.nonEmpty && maxRow(0) != null && maxRow(0).get(0) != null) {
         val watermarkVal = maxRow(0).get(0).toString
@@ -171,16 +198,17 @@ object SparkIOUtils {
     }
   }
 
-  /**
-   * Performs Iceberg MERGE INTO target using join keys from a source DataFrame.
-   */
+  /** Performs Iceberg MERGE INTO target using join keys from a source
+    * DataFrame.
+    */
   def mergeIcebergTable(
       spark: SparkSession,
       sourceDf: DataFrame,
       targetTable: String,
       joinKeys: Seq[String]
   ): Unit = {
-    val tempViewName = s"merge_source_${java.util.UUID.randomUUID().toString.replace("-", "")}"
+    val tempViewName =
+      s"merge_source_${java.util.UUID.randomUUID().toString.replace("-", "")}"
     sourceDf.createOrReplaceTempView(tempViewName)
     try {
       val joinCondition = joinKeys.map(k => s"t.$k = s.$k").mkString(" AND ")
@@ -191,21 +219,27 @@ object SparkIOUtils {
            |WHEN MATCHED THEN UPDATE SET *
            |WHEN NOT MATCHED THEN INSERT *
            |""".stripMargin
-      println(s"Executing Iceberg MERGE INTO: $targetTable using join condition: $joinCondition")
+      println(
+        s"Executing Iceberg MERGE INTO: $targetTable using join condition: $joinCondition"
+      )
       spark.sql(sqlText)
     } finally {
       spark.catalog.dropTempView(tempViewName)
     }
   }
 
-  /**
-   * Writes a DataFrame to ClickHouse via JDBC.
-   */
-  def writeToClickHouse(df: DataFrame, tableName: String, config: SparkConfig): Unit = {
+  /** Writes a DataFrame to ClickHouse via JDBC.
+    */
+  def writeToClickHouse(
+      df: DataFrame,
+      tableName: String,
+      config: SparkConfig
+  ): Unit = {
     val clickhouseHost = config.get("clickhouse", "host")
     val clickhousePort = config.get("clickhouse", "port")
     val clickhouseDb = config.get("clickhouse", "database")
-    val jdbcUrl = s"jdbc:clickhouse://$clickhouseHost:$clickhousePort/$clickhouseDb"
+    val jdbcUrl =
+      s"jdbc:clickhouse://$clickhouseHost:$clickhousePort/$clickhouseDb"
 
     println(s"Writing to ClickHouse table: $tableName")
     df.write
@@ -219,10 +253,13 @@ object SparkIOUtils {
       .save()
   }
 
-  /**
-   * Reads an Elasticsearch resource index into a DataFrame.
-   */
-  def readFromElasticSearch(spark: SparkSession, resource: String, config: SparkConfig): DataFrame = {
+  /** Reads an Elasticsearch resource index into a DataFrame.
+    */
+  def readFromElasticSearch(
+      spark: SparkSession,
+      resource: String,
+      config: SparkConfig
+  ): DataFrame = {
     println(s"Reading from Elasticsearch index: $resource")
     spark.read
       .format("org.elasticsearch.spark.sql")
@@ -231,12 +268,13 @@ object SparkIOUtils {
       .load()
   }
 
-  /**
-   * Safe, standalone snapshot expiration for Iceberg tables.
-   * Cleans up older snapshot metadata and data files in S3/MinIO.
-   */
+  /** Safe, standalone snapshot expiration for Iceberg tables. Cleans up older
+    * snapshot metadata and data files in S3/MinIO.
+    */
   def expireTableSnapshots(spark: SparkSession, table: String): Unit = {
     // No-op: We keep historical snapshots now that ClickHouse queries active files natively via the Iceberg engine.
-    println(s"Skipping snapshot expiration for table: $table (retaining snapshots).")
+    println(
+      s"Skipping snapshot expiration for table: $table (retaining snapshots)."
+    )
   }
 }

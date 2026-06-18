@@ -13,7 +13,6 @@ import psycopg2  # type: ignore
 from psycopg2.extras import execute_batch  # type: ignore
 import requests  # type: ignore
 
-
 # ── Parse config.ini ────────────────────────────────────────────────────────
 config_paths = [
     os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'config.ini')),
@@ -42,18 +41,20 @@ db_pass = os.environ.get('POSTGRES_PASSWORD', config.get('postgres', 'password',
 
 es_hosts = os.environ.get('ELASTICSEARCH_HOSTS', config.get('elasticsearch', 'hosts', fallback='http://localhost:9200'))
 
+
 def get_next_month(dt):
     if dt.month == 12:
         return datetime(dt.year + 1, 1, 1)
     else:
         return datetime(dt.year, dt.month + 1, 1)
 
+
 def bulk_send_to_es(es_hosts, index_name, docs, batch_size=1000):
     if not docs:
         return
     url = f"{es_hosts.rstrip('/')}/{index_name}/_bulk"
     headers = {"Content-Type": "application/x-ndjson"}
-    
+
     payload_lines = []
     for doc in docs:
         doc_id = None
@@ -79,10 +80,10 @@ def bulk_send_to_es(es_hosts, index_name, docs, batch_size=1000):
             action = {"index": {"_id": str(doc_id)}}
         else:
             action = {"index": {}}
-            
+
         payload_lines.append(json.dumps(action))
         payload_lines.append(json.dumps(processed_doc))
-        
+
         if len(payload_lines) >= batch_size * 2:
             payload = "\n".join(payload_lines) + "\n"
             try:
@@ -92,7 +93,7 @@ def bulk_send_to_es(es_hosts, index_name, docs, batch_size=1000):
                 print(f"Error bulk indexing to ES index {index_name}: {e}")
                 raise e
             payload_lines = []
-            
+
     if payload_lines:
         payload = "\n".join(payload_lines) + "\n"
         try:
@@ -102,6 +103,7 @@ def bulk_send_to_es(es_hosts, index_name, docs, batch_size=1000):
         except Exception as e:
             print(f"Error bulk indexing to ES index {index_name}: {e}")
             raise e
+
 
 def generate_incremental_data():
     # ── DB Connection ────────────────────────────────────────────────────────
@@ -134,7 +136,8 @@ def generate_incremental_data():
         temp_dt = get_next_month(temp_dt)
 
     if not months:
-        print(f"Data is already up to date. Current system month is {current_system_month.strftime('%Y-%m')}. No incremental generation needed.")
+        print(
+            f"Data is already up to date. Current system month is {current_system_month.strftime('%Y-%m')}. No incremental generation needed.")
         cur.close()
         conn.close()
         return
@@ -146,7 +149,7 @@ def generate_incremental_data():
     employee_docs = [{"id": r[0], "shopCode": r[1], "isManager": r[2]} for r in cur.fetchall()]
     if not employee_docs:
         print("WARNING: No active employees found in shop.Employee table. Skipping salary generation.")
-    
+
     # 3. Load Promotion products
     cur.execute('SELECT "Id" FROM product."Product" WHERE "IsPromotion" = TRUE;')
     gift_prod_ids = [r[0] for r in cur.fetchall()]
@@ -161,7 +164,7 @@ def generate_incremental_data():
             emp_id = emp["id"]
             shop_code = emp["shopCode"]
             is_manager = emp["isManager"]
-            
+
             # Base salaries
             if is_manager:
                 base_salary = random.randint(20, 30) * 1000000
@@ -169,11 +172,11 @@ def generate_incremental_data():
             else:
                 base_salary = random.randint(7, 15) * 1000000
                 commission_rate = random.randint(1, 5)
-                
+
             for month_dt in months:
                 month_str = month_dt.strftime("%Y%m")
                 sal_id = f"SAL_{emp_id}_{month_str}"
-                
+
                 salary_docs.append({
                     "id": sal_id,
                     "employeeId": emp_id,
@@ -187,10 +190,14 @@ def generate_incremental_data():
 
         # Save to PostgreSQL
         cur.executemany("""
-            INSERT INTO shop."EmployeeSalary" ("Id", "EmployeeId", "ShopCode", "SalaryMonth", "BaseSalary", "CommissionRate", "CreatedDate", "ModifiedDate")
-            VALUES (%(id)s, %(employeeId)s, %(shopCode)s, %(salaryMonth)s, %(baseSalary)s, %(commissionRate)s, %(createdDate)s, %(modifiedDate)s)
-            ON CONFLICT ("Id") DO UPDATE SET "BaseSalary" = EXCLUDED."BaseSalary", "ModifiedDate" = EXCLUDED."ModifiedDate"
-        """, [{**doc, "salaryMonth": doc["salaryMonth"], "createdDate": now_dt, "modifiedDate": now_dt} for doc in salary_docs])
+                        INSERT INTO shop."EmployeeSalary" ("Id", "EmployeeId", "ShopCode", "SalaryMonth", "BaseSalary",
+                                                           "CommissionRate", "CreatedDate", "ModifiedDate")
+                        VALUES (%(id)s, %(employeeId)s, %(shopCode)s, %(salaryMonth)s, %(baseSalary)s,
+                                %(commissionRate)s, %(createdDate)s, %(modifiedDate)s) ON CONFLICT ("Id") DO
+                        UPDATE SET "BaseSalary" = EXCLUDED."BaseSalary", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                        """,
+                        [{**doc, "salaryMonth": doc["salaryMonth"], "createdDate": now_dt, "modifiedDate": now_dt} for
+                         doc in salary_docs])
         conn.commit()
 
         # Publish to ES
@@ -226,7 +233,8 @@ def generate_incremental_data():
         else:
             promo_end_dt = datetime(promo_start_dt.year, promo_start_dt.month + 1, 1) - timedelta(seconds=1)
 
-        print(f"Generating promotions for period {promo_start_dt.strftime('%Y-%m-%d')} to {promo_end_dt.strftime('%Y-%m-%d')}...")
+        print(
+            f"Generating promotions for period {promo_start_dt.strftime('%Y-%m-%d')} to {promo_end_dt.strftime('%Y-%m-%d')}...")
 
         # A. Voucher promotion
         max_promo_idx += 1
@@ -250,7 +258,7 @@ def generate_incremental_data():
             min_val = random.choice(min_vals)
             voucher_docs.append({
                 "code": v_code,
-                "name": f"Voucher giảm {amt//1000}k đơn từ {min_val//1000}k ({promo_start_dt.strftime('%m/%Y')})",
+                "name": f"Voucher giảm {amt // 1000}k đơn từ {min_val // 1000}k ({promo_start_dt.strftime('%m/%Y')})",
                 "promotionCode": promo_code1,
                 "voucherAmount": amt,
                 "minOrderValue": min_val,
@@ -293,17 +301,27 @@ def generate_incremental_data():
 
     # Save Promotions to PostgreSQL
     cur.executemany("""
-        INSERT INTO promotion."Promotion" ("Code", "Name", "StartDate", "EndDate", "Status", "Type", "CreatedDate", "ModifiedDate")
-        VALUES (%(code)s, %(name)s, %(startDate)s, %(endDate)s, %(status)s, %(type)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("Code") DO UPDATE SET "Name" = EXCLUDED."Name", "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "startDate": datetime.fromtimestamp(doc["startDate"] / 1000.0), "endDate": datetime.fromtimestamp(doc["endDate"] / 1000.0), "createdDate": now_dt, "modifiedDate": now_dt} for doc in promotion_docs])
-    
+                    INSERT INTO promotion."Promotion" ("Code", "Name", "StartDate", "EndDate", "Status", "Type",
+                                                       "CreatedDate", "ModifiedDate")
+                    VALUES (%(code)s, %(name)s, %(startDate)s, %(endDate)s, %(status)s, %(type)s, %(createdDate)s,
+                            %(modifiedDate)s) ON CONFLICT ("Code") DO
+                    UPDATE SET "Name" = EXCLUDED."Name", "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "startDate": datetime.fromtimestamp(doc["startDate"] / 1000.0),
+                           "endDate": datetime.fromtimestamp(doc["endDate"] / 1000.0), "createdDate": now_dt,
+                           "modifiedDate": now_dt} for doc in promotion_docs])
+
     # Save Vouchers to PostgreSQL
     cur.executemany("""
-        INSERT INTO promotion."Voucher" ("Code", "Name", "PromotionCode", "VoucherAmount", "MinOrderValue", "StartDate", "EndDate", "IssuedQuantity", "Status", "CreatedDate", "ModifiedDate")
-        VALUES (%(code)s, %(name)s, %(promotionCode)s, %(voucherAmount)s, %(minOrderValue)s, %(startDate)s, %(endDate)s, %(issuedQuantity)s, %(status)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("Code") DO UPDATE SET "Name" = EXCLUDED."Name", "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "startDate": datetime.fromtimestamp(doc["startDate"] / 1000.0), "endDate": datetime.fromtimestamp(doc["endDate"] / 1000.0), "createdDate": now_dt, "modifiedDate": now_dt} for doc in voucher_docs])
+                    INSERT INTO promotion."Voucher" ("Code", "Name", "PromotionCode", "VoucherAmount", "MinOrderValue",
+                                                     "StartDate", "EndDate", "IssuedQuantity", "Status", "CreatedDate",
+                                                     "ModifiedDate")
+                    VALUES (%(code)s, %(name)s, %(promotionCode)s, %(voucherAmount)s, %(minOrderValue)s, %(startDate)s,
+                            %(endDate)s, %(issuedQuantity)s, %(status)s, %(createdDate)s,
+                            %(modifiedDate)s) ON CONFLICT ("Code") DO
+                    UPDATE SET "Name" = EXCLUDED."Name", "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "startDate": datetime.fromtimestamp(doc["startDate"] / 1000.0),
+                           "endDate": datetime.fromtimestamp(doc["endDate"] / 1000.0), "createdDate": now_dt,
+                           "modifiedDate": now_dt} for doc in voucher_docs])
 
     # Generate VoucherSeries (50 per voucher)
     for v in voucher_docs:
@@ -321,17 +339,21 @@ def generate_incremental_data():
 
     # Save VoucherSeries to PostgreSQL
     cur.executemany("""
-        INSERT INTO promotion."VoucherSeries" ("SeriesCode", "VoucherCode", "ExpiryDay", "Status", "CreatedDate", "ModifiedDate")
-        VALUES (%(seriesCode)s, %(voucherCode)s, %(expiryDay)s, %(status)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("SeriesCode") DO UPDATE SET "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in voucher_series_docs])
+                    INSERT INTO promotion."VoucherSeries" ("SeriesCode", "VoucherCode", "ExpiryDay", "Status",
+                                                           "CreatedDate", "ModifiedDate")
+                    VALUES (%(seriesCode)s, %(voucherCode)s, %(expiryDay)s, %(status)s, %(createdDate)s,
+                            %(modifiedDate)s) ON CONFLICT ("SeriesCode") DO
+                    UPDATE SET "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in voucher_series_docs])
 
     # Save Gifts to PostgreSQL
     cur.executemany("""
-        INSERT INTO promotion."Gift" ("Id", "ProductId", "PromotionCode", "PromotionQuantity", "Status", "CreatedDate", "ModifiedDate")
-        VALUES (%(id)s, %(productId)s, %(promotionCode)s, %(promotionQuantity)s, %(status)s, %(createdDate)s, %(modifiedDate)s)
-        ON CONFLICT ("Id") DO UPDATE SET "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
-    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in gift_docs])
+                    INSERT INTO promotion."Gift" ("Id", "ProductId", "PromotionCode", "PromotionQuantity", "Status",
+                                                  "CreatedDate", "ModifiedDate")
+                    VALUES (%(id)s, %(productId)s, %(promotionCode)s, %(promotionQuantity)s, %(status)s,
+                            %(createdDate)s, %(modifiedDate)s) ON CONFLICT ("Id") DO
+                    UPDATE SET "Status" = EXCLUDED."Status", "ModifiedDate" = EXCLUDED."ModifiedDate"
+                    """, [{**doc, "createdDate": now_dt, "modifiedDate": now_dt} for doc in gift_docs])
     conn.commit()
 
     # Group vouchers, series, and gifts under their parent promotion to match the consolidated ES Promotions Schema
@@ -365,7 +387,7 @@ def generate_incremental_data():
                     "modifiedDate": v["modifiedDate"],
                     "voucherSeries": v_series
                 })
-        
+
         p_gifts = []
         for g in gift_docs:
             if g["promotionCode"] == p_code:
@@ -377,7 +399,7 @@ def generate_incremental_data():
                     "createdDate": g["createdDate"],
                     "modifiedDate": g["modifiedDate"]
                 })
-        
+
         unified_promotion_docs.append({
             "code": p["code"],
             "name": p["name"],
@@ -397,6 +419,7 @@ def generate_incremental_data():
     cur.close()
     conn.close()
     print("Incremental Salaries and Promotions successfully generated and synced!")
+
 
 if __name__ == "__main__":
     generate_incremental_data()

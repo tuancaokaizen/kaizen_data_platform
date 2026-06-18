@@ -16,18 +16,20 @@ default_args = {
 }
 
 with DAG(
-    'sil_daily_pipeline',
-    default_args=default_args,
-    description='Daily Pipeline running sequentially at 12:30 AM (Ingest -> Transform)',
-    schedule_interval='30 0 * * *',  # Runs daily at 12:30 AM
-    catchup=False,
-    params={
-        "fromDate": Param(None, type=["null", "string"], description="Start date (YYYY-MM-DD) for ingestion & transform. Defaults to D-1 if blank."),
-        "toDate": Param(None, type=["null", "string"], description="End date (YYYY-MM-DD) for ingestion & transform. Defaults to D if blank."),
-        "useWatermark": Param(False, type="boolean", description="Whether to ignore date range and use target table watermark.")
-    }
+        'sil_daily_pipeline',
+        default_args=default_args,
+        description='Daily Pipeline running sequentially at 12:30 AM (Ingest -> Transform)',
+        schedule_interval='30 0 * * *',  # Runs daily at 12:30 AM
+        catchup=False,
+        params={
+            "fromDate": Param(None, type=["null", "string"],
+                              description="Start date (YYYY-MM-DD) for ingestion & transform. Defaults to D-1 if blank."),
+            "toDate": Param(None, type=["null", "string"],
+                            description="End date (YYYY-MM-DD) for ingestion & transform. Defaults to D if blank."),
+            "useWatermark": Param(False, type="boolean",
+                                  description="Whether to ignore date range and use target table watermark.")
+        }
 ) as dag:
-
     # 1. Trigger Master Data Ingestion DAG and wait for it to complete successfully
     trigger_master_ingest = TriggerDagRunOperator(
         task_id='trigger_master_ingest',

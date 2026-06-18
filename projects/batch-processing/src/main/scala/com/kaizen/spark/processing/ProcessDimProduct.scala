@@ -42,10 +42,12 @@ object ProcessDimProduct {
           product("IsPromotion").as("IsPromotion"),
           product("Status").as("Status"),
           coalesce(supplement("Brand"), lit("Unknown")).as("Brand"),
-          coalesce(supplement("PrimaryFunction"), lit("Unknown")).as("PrimaryFunction"),
+          coalesce(supplement("PrimaryFunction"), lit("Unknown"))
+            .as("PrimaryFunction"),
           coalesce(medicine("Indication"), lit("Unknown")).as("Indication"),
           coalesce(medicine("IsPrescription"), lit(false)).as("IsPrescription"),
-          coalesce(medicine("SpecialtyDisease"), lit("Unknown")).as("SpecialtyDisease"),
+          coalesce(medicine("SpecialtyDisease"), lit("Unknown"))
+            .as("SpecialtyDisease"),
           product("CreatedDate").as("CreatedDate"),
           product("ModifiedDate").as("ModifiedDate")
         )
@@ -57,7 +59,9 @@ object ProcessDimProduct {
       val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
       SparkIOUtils.writeToIceberg(spark, stgDf, targetTable, "overwrite")
 
-      println(s"✔ dim_product full load completed successfully for target: $targetTable")
+      println(
+        s"✔ dim_product full load completed successfully for target: $targetTable"
+      )
     }
 
     jobResult match {

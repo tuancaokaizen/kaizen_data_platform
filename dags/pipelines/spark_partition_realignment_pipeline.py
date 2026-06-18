@@ -19,13 +19,12 @@ default_args = {
 }
 
 with DAG(
-    'spark_dw_partition_realignment_pipeline',
-    default_args=default_args,
-    description='One-shot DAG to realign partitions and rewrite historical data in Nessie fact tables',
-    schedule_interval=None,
-    catchup=False
+        'spark_dw_partition_realignment_pipeline',
+        default_args=default_args,
+        description='One-shot DAG to realign partitions and rewrite historical data in Nessie fact tables',
+        schedule_interval=None,
+        catchup=False
 ) as dag:
-
     realign_partitions = KubernetesPodOperator(
         **get_transformer_task(
             task_id="realign_partitions",

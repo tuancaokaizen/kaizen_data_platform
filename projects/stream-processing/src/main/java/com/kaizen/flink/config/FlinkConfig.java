@@ -1,6 +1,7 @@
 package com.kaizen.flink.config;
 
 import org.ini4j.Ini;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
@@ -68,22 +69,22 @@ public class FlinkConfig implements Serializable {
         org.apache.flink.configuration.Configuration conf = new org.apache.flink.configuration.Configuration();
         conf.setString("state.checkpoints.dir", "s3a://flink/checkpoint");
         conf.setString("state.savepoints.dir", "s3a://flink/savepoint");
-        
+
         String endpoint = get("minio", "endpoint");
         String accessKey = get("minio", "access_key");
         String secretKey = get("minio", "secret_key");
-        
+
         conf.setString("s3.endpoint", endpoint);
         conf.setString("s3.access-key", accessKey);
         conf.setString("s3.secret-key", secretKey);
         conf.setString("s3.path.style.access", "true");
-        
+
         conf.setString("fs.s3a.endpoint", endpoint);
         conf.setString("fs.s3a.access.key", accessKey);
         conf.setString("fs.s3a.secret.key", secretKey);
         conf.setString("fs.s3a.path.style.access", "true");
         conf.setString("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem");
-        
+
         return org.apache.flink.streaming.api.environment.StreamExecutionEnvironment.getExecutionEnvironment(conf);
     }
 }

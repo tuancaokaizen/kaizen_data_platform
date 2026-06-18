@@ -95,7 +95,8 @@ object ClearNessieTablesJob {
             spark.sql(s"DROP TABLE IF EXISTS $table PURGE")
             println(s"✔ Successfully dropped table: $table (Purged from MinIO)")
           } catch {
-            case e: Exception => println(s"❌ Failed to drop table $table: ${e.getMessage}")
+            case e: Exception =>
+              println(s"❌ Failed to drop table $table: ${e.getMessage}")
           }
         } else {
           println(s"Table $table does not exist. Skipping.")

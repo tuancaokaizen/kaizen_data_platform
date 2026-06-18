@@ -6,7 +6,9 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 
-/** Ánh xạ bảng promotion."Gift" */
+/**
+ * Ánh xạ bảng promotion."Gift"
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

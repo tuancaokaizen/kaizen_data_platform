@@ -20,13 +20,12 @@ default_args = {
 }
 
 with DAG(
-    'spark_dw_clear_nessie_pipeline',
-    default_args=default_args,
-    description='Manually triggered DAG to drop all Nessie tables (STG, FND, DW) using ClearNessieTablesJob',
-    schedule_interval=None,  # Triggered manually only
-    catchup=False
+        'spark_dw_clear_nessie_pipeline',
+        default_args=default_args,
+        description='Manually triggered DAG to drop all Nessie tables (STG, FND, DW) using ClearNessieTablesJob',
+        schedule_interval=None,  # Triggered manually only
+        catchup=False
 ) as dag:
-
     clear_nessie_tables = KubernetesPodOperator(
         **get_transformer_task(
             task_id="clear_nessie_tables",

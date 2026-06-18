@@ -20,13 +20,12 @@ default_args = {
 }
 
 with DAG(
-    'spark_dw_maintenance_pipeline',
-    default_args=default_args,
-    description='Daily Scheduled DAG to perform Iceberg maintenance (compaction, expire snapshots, orphan files cleanup)',
-    schedule_interval='0 2 * * *',  # Run daily at 2:00 AM
-    catchup=False
+        'spark_dw_maintenance_pipeline',
+        default_args=default_args,
+        description='Daily Scheduled DAG to perform Iceberg maintenance (compaction, expire snapshots, orphan files cleanup)',
+        schedule_interval='0 2 * * *',  # Run daily at 2:00 AM
+        catchup=False
 ) as dag:
-
     run_maintenance = KubernetesPodOperator(
         **get_transformer_task(
             task_id="run_maintenance",

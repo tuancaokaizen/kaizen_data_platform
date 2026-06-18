@@ -60,13 +60,15 @@ object IcebergMaintenanceJob {
             )
             println(s"✔ Compaction successful for $table.")
           } catch {
-            case e: Exception => println(s"❌ Compaction failed for $table: ${e.getMessage}")
+            case e: Exception =>
+              println(s"❌ Compaction failed for $table: ${e.getMessage}")
           }
 
           // 2. Expire Snapshots (Retain last 5 snapshots, expire ones older than 7 days)
           try {
             println(s"Expiring old snapshots for $table...")
-            val olderThanMs = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L) // 7 days ago
+            val olderThanMs = System
+              .currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L) // 7 days ago
             spark.sql(
               s"""
                  |CALL nessie.system.expire_snapshots(
@@ -78,16 +80,24 @@ object IcebergMaintenanceJob {
             )
             println(s"✔ Snapshot expiration successful for $table.")
           } catch {
-            case e: Exception => println(s"❌ Expiring snapshots failed for $table: ${e.getMessage}")
+            case e: Exception =>
+              println(
+                s"❌ Expiring snapshots failed for $table: ${e.getMessage}"
+              )
           }
 
           // 3. Remove Orphan Files from storage
           try {
             println(s"Cleaning up orphan files for $table...")
-            spark.sql(s"CALL nessie.system.remove_orphan_files(table => '$table')")
+            spark.sql(
+              s"CALL nessie.system.remove_orphan_files(table => '$table')"
+            )
             println(s"✔ Orphan files cleanup successful for $table.")
           } catch {
-            case e: Exception => println(s"❌ Orphan files cleanup failed for $table: ${e.getMessage}")
+            case e: Exception =>
+              println(
+                s"❌ Orphan files cleanup failed for $table: ${e.getMessage}"
+              )
           }
         } else {
           println(s"Table $table does not exist. Skipping maintenance.")
@@ -144,7 +154,8 @@ object IcebergMaintenanceJob {
           // Expire old snapshots (Retain only the last 1 snapshot older than 1 day for staging)
           try {
             println(s"Expiring old snapshots for $table...")
-            val olderThanMs = System.currentTimeMillis() - (24 * 60 * 60 * 1000L) // 1 day ago
+            val olderThanMs =
+              System.currentTimeMillis() - (24 * 60 * 60 * 1000L) // 1 day ago
             spark.sql(
               s"""
                  |CALL nessie.system.expire_snapshots(
@@ -156,16 +167,24 @@ object IcebergMaintenanceJob {
             )
             println(s"✔ Snapshot expiration successful for staging: $table.")
           } catch {
-            case e: Exception => println(s"❌ Expiring snapshots failed for $table: ${e.getMessage}")
+            case e: Exception =>
+              println(
+                s"❌ Expiring snapshots failed for $table: ${e.getMessage}"
+              )
           }
 
           // Remove Orphan Files from storage
           try {
             println(s"Cleaning up orphan files for $table...")
-            spark.sql(s"CALL nessie.system.remove_orphan_files(table => '$table')")
+            spark.sql(
+              s"CALL nessie.system.remove_orphan_files(table => '$table')"
+            )
             println(s"✔ Orphan files cleanup successful for staging: $table.")
           } catch {
-            case e: Exception => println(s"❌ Orphan files cleanup failed for $table: ${e.getMessage}")
+            case e: Exception =>
+              println(
+                s"❌ Orphan files cleanup failed for $table: ${e.getMessage}"
+              )
           }
         } else {
           println(s"Staging table $table does not exist. Skipping.")

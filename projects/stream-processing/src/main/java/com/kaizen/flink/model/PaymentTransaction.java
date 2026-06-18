@@ -6,7 +6,9 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 
-/** Ánh xạ bảng payment."Transaction" */
+/**
+ * Ánh xạ bảng payment."Transaction"
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

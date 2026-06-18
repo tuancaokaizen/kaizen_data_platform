@@ -6,7 +6,9 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 
-/** Ánh xạ bảng order."ReturnItem" – PK ("Id") */
+/**
+ * Ánh xạ bảng order."ReturnItem" – PK ("Id")
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

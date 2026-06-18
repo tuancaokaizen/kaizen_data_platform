@@ -23,14 +23,17 @@ object ProcessDimPromotion {
       val stgTable = "nessie.stg.dim_promotion"
 
       // 1. Fetch watermark from the target table to achieve incremental load
-      val watermarkOpt = SparkIOUtils.getMaxWatermark(spark, targetTable, "ModifiedDate")
+      val watermarkOpt =
+        SparkIOUtils.getMaxWatermark(spark, targetTable, "ModifiedDate")
 
       println("Loading promotion foundation table...")
       var promotionFnd = spark.table("nessie.fnd.promotion")
 
       // 2. Filter delta if watermark exists
       watermarkOpt.foreach { watermark =>
-        println(s"Filtering promotion delta records with ModifiedDate > $watermark")
+        println(
+          s"Filtering promotion delta records with ModifiedDate > $watermark"
+        )
         promotionFnd = promotionFnd.filter(col("ModifiedDate") > watermark)
       }
 
@@ -50,18 +53,37 @@ object ProcessDimPromotion {
       // 4. Write to staging and merge/overwrite to target
       val targetExists = SparkIOUtils.tableExists(spark, targetTable)
       if (!targetExists) {
-        println(s"Target table '$targetTable' does not exist. Performing initial load...")
-        SparkIOUtils.writeToIceberg(spark, dimPromotionDf, stgTable, "overwrite")
+        println(
+          s"Target table '$targetTable' does not exist. Performing initial load..."
+        )
+        SparkIOUtils.writeToIceberg(
+          spark,
+          dimPromotionDf,
+          stgTable,
+          "overwrite"
+        )
         val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
         SparkIOUtils.writeToIceberg(spark, stgDf, targetTable, "overwrite")
       } else {
         println(s"Merging delta records into target table '$targetTable'...")
-        SparkIOUtils.writeToIceberg(spark, dimPromotionDf, stgTable, "overwrite")
+        SparkIOUtils.writeToIceberg(
+          spark,
+          dimPromotionDf,
+          stgTable,
+          "overwrite"
+        )
         val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
-        SparkIOUtils.mergeIcebergTable(spark, stgDf, targetTable, Seq("PromotionCode"))
+        SparkIOUtils.mergeIcebergTable(
+          spark,
+          stgDf,
+          targetTable,
+          Seq("PromotionCode")
+        )
       }
 
-      println(s"✔ dim_promotion incremental load completed successfully for target: $targetTable")
+      println(
+        s"✔ dim_promotion incremental load completed successfully for target: $targetTable"
+      )
     }
 
     jobResult match {

@@ -14,10 +14,10 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Job 5/10 – PaymentProducerJob
- *
+ * <p>
  * Bước 0: Seed bảng tham chiếu PaymentType và PaymentMethod (idempotent).
  * Topic: payment-bundles
- *
+ * <p>
  * Phụ thuộc: OrderProducerJob.
  */
 public class PaymentProducerJob {
@@ -35,6 +35,7 @@ public class PaymentProducerJob {
         @SuppressWarnings({"deprecation", "serial"})
         DataStream<String> bundleStream = env.addSource(new SourceFunction<String>() {
             volatile boolean running = true;
+
             @Override
             public void run(SourceContext<String> ctx) throws Exception {
                 IdPool.init(config);
@@ -56,11 +57,15 @@ public class PaymentProducerJob {
                     Thread.sleep(emitMs);
                 }
             }
-            @Override public void cancel() { running = false; }
+
+            @Override
+            public void cancel() {
+                running = false;
+            }
         }).setParallelism(1).name("Src-PaymentBundle");
 
         bundleStream.sinkTo(KafkaSink.buildStringSink(config, "payment-bundles"))
-                    .name("Kafka-PaymentBundles");
+                .name("Kafka-PaymentBundles");
 
         LOG.info("Starting PaymentProducerJob (" + emitMs + "ms/payment)...");
         env.execute("Kaizen-PaymentProducerJob");

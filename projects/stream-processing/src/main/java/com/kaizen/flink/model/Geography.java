@@ -6,7 +6,9 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 
-/** Ánh xạ bảng public."Geography" */
+/**
+ * Ánh xạ bảng public."Geography"
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

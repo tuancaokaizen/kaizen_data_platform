@@ -17,14 +17,16 @@ object PushServingToClickHouseJob {
 
     val jobResult = Try {
       // Get the date 30 days ago in Asia/Ho_Chi_Minh timezone
-      val today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"))
+      val today =
+        java.time.LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"))
       val oneMonthAgo = today.minusDays(30).toString
       println(s"Filtering serving reports from: $oneMonthAgo to today ($today)")
 
       val clickhouseHost = config.get("clickhouse", "host")
       val clickhousePort = config.get("clickhouse", "port")
       val clickhouseDb = config.get("clickhouse", "database")
-      val jdbcUrl = s"jdbc:clickhouse://$clickhouseHost:$clickhousePort/$clickhouseDb"
+      val jdbcUrl =
+        s"jdbc:clickhouse://$clickhouseHost:$clickhousePort/$clickhouseDb"
       val user = config.get("clickhouse", "username")
       val password = config.get("clickhouse", "password")
 
@@ -44,11 +46,14 @@ object PushServingToClickHouseJob {
       val finTable = "nessie.serving.financial_report"
       if (SparkIOUtils.tableExists(spark, finTable)) {
         println(s"Reading from $finTable...")
-        val finDf = SparkIOUtils.readFromIceberg(spark, finTable)
+        val finDf = SparkIOUtils
+          .readFromIceberg(spark, finTable)
           .filter(col("ReportDate") >= to_date(lit(oneMonthAgo)))
-        
+
         truncateTable("report.financial_report")
-        println(s"Writing 1-month financial_report to ClickHouse table report.financial_report...")
+        println(
+          s"Writing 1-month financial_report to ClickHouse table report.financial_report..."
+        )
         SparkIOUtils.writeToClickHouse(finDf, "report.financial_report", config)
       } else {
         println(s"WARNING: Serving table $finTable does not exist. Skipping.")
@@ -58,11 +63,14 @@ object PushServingToClickHouseJob {
       val fundTable = "nessie.serving.fund_report"
       if (SparkIOUtils.tableExists(spark, fundTable)) {
         println(s"Reading from $fundTable...")
-        val fundDf = SparkIOUtils.readFromIceberg(spark, fundTable)
+        val fundDf = SparkIOUtils
+          .readFromIceberg(spark, fundTable)
           .filter(col("ReportDate") >= to_date(lit(oneMonthAgo)))
-        
+
         truncateTable("report.fund_report")
-        println(s"Writing 1-month fund_report to ClickHouse table report.fund_report...")
+        println(
+          s"Writing 1-month fund_report to ClickHouse table report.fund_report..."
+        )
         SparkIOUtils.writeToClickHouse(fundDf, "report.fund_report", config)
       } else {
         println(s"WARNING: Serving table $fundTable does not exist. Skipping.")

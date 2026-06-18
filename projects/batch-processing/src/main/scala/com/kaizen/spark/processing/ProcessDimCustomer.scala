@@ -49,7 +49,9 @@ object ProcessDimCustomer {
       val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
       SparkIOUtils.writeToIceberg(spark, stgDf, targetTable, "overwrite")
 
-      println(s"✔ dim_customer full load completed successfully for target: $targetTable")
+      println(
+        s"✔ dim_customer full load completed successfully for target: $targetTable"
+      )
     }
 
     jobResult match {

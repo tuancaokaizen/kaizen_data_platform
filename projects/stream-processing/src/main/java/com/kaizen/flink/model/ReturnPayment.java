@@ -6,7 +6,9 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 
-/** Ánh xạ bảng payment."ReturnPayment" – liên kết Payment ↔ Return */
+/**
+ * Ánh xạ bảng payment."ReturnPayment" – liên kết Payment ↔ Return
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

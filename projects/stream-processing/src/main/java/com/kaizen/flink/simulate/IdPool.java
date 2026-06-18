@@ -1,6 +1,7 @@
 package com.kaizen.flink.simulate;
 
 import com.kaizen.flink.config.FlinkConfig;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -13,22 +14,22 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class IdPool {
 
     // ── Master Data IDs (Loaded dynamically) ──────────────────────────────────
-    public static List<String> GEOGRAPHY_IDS   = Collections.emptyList();
-    public static List<String> PRODUCT_IDS     = Collections.emptyList();
-    public static List<ProductRef> PRODUCTS     = Collections.emptyList();
-    public static List<String> SHOP_CODES      = Collections.emptyList();
-    public static List<String> EMPLOYEE_IDS    = Collections.emptyList();
-    public static List<String> CUSTOMER_IDS    = Collections.emptyList();
-    public static List<String> ORDER_IDS       = Collections.emptyList();
-    
+    public static List<String> GEOGRAPHY_IDS = Collections.emptyList();
+    public static List<String> PRODUCT_IDS = Collections.emptyList();
+    public static List<ProductRef> PRODUCTS = Collections.emptyList();
+    public static List<String> SHOP_CODES = Collections.emptyList();
+    public static List<String> EMPLOYEE_IDS = Collections.emptyList();
+    public static List<String> CUSTOMER_IDS = Collections.emptyList();
+    public static List<String> ORDER_IDS = Collections.emptyList();
+
     // Đối tượng tham chiếu kèm thời gian hiệu lực
-    public static List<VoucherRef> VOUCHERS     = Collections.emptyList();
+    public static List<VoucherRef> VOUCHERS = Collections.emptyList();
     public static List<PromotionRef> PROMOTIONS = Collections.emptyList();
-    public static List<GiftRef> GIFTS           = Collections.emptyList();
-    
-    public static List<ReturnRef> RETURNS       = Collections.emptyList();
+    public static List<GiftRef> GIFTS = Collections.emptyList();
+
+    public static List<ReturnRef> RETURNS = Collections.emptyList();
     public static final java.util.Queue<ReturnRef> GENERATED_RETURNS = new java.util.concurrent.ConcurrentLinkedQueue<>();
-    
+
     // In-memory caches to reduce PostgreSQL connection and query overhead during stream generation
     private static final java.util.Queue<ReturnRef> UNPAID_RETURNS_CACHE = new java.util.concurrent.ConcurrentLinkedQueue<>();
     private static final java.util.Queue<UnpaidOrderRef> UNPAID_ORDERS_CACHE = new java.util.concurrent.ConcurrentLinkedQueue<>();
@@ -111,18 +112,21 @@ public final class IdPool {
     }
 
     // ── Reference data (smallint keys cho PaymentType / PaymentMethod) ───────
-    /** 1=Phiếu thu, 2=Phiếu chi */
-    public static final short[] PAYMENT_TYPE_IDS    = {1, 2};
-    public static final short[] PAYMENT_METHOD_IDS  = {1, 2, 3};
+    /**
+     * 1=Phiếu thu, 2=Phiếu chi
+     */
+    public static final short[] PAYMENT_TYPE_IDS = {1, 2};
+    public static final short[] PAYMENT_METHOD_IDS = {1, 2, 3};
 
-    public static final String[] PAYMENT_TYPE_NAMES   =
+    public static final String[] PAYMENT_TYPE_NAMES =
             {"Phiếu thu", "Phiếu chi"};
     public static final String[] PAYMENT_METHOD_NAMES =
             {"Tiền mặt", "Thẻ ngân hàng", "Ví điện tử (MoMo/ZaloPay)"};
 
     private static boolean initialized = false;
 
-    private IdPool() {}
+    private IdPool() {
+    }
 
     public static synchronized void init(FlinkConfig config) {
         if (initialized) {
@@ -130,8 +134,8 @@ public final class IdPool {
         }
 
         try (java.sql.Connection conn = com.kaizen.flink.utils.PostgresSink.getConnection(config)) {
-            GEOGRAPHY_IDS   = queryIds(conn, "SELECT \"Id\" FROM public.\"Geography\"");
-            
+            GEOGRAPHY_IDS = queryIds(conn, "SELECT \"Id\" FROM public.\"Geography\"");
+
             // Load Products with prices
             List<ProductRef> products = new ArrayList<>();
             List<String> productIds = new ArrayList<>();
@@ -147,10 +151,10 @@ public final class IdPool {
             PRODUCTS = Collections.unmodifiableList(products);
             PRODUCT_IDS = Collections.unmodifiableList(productIds);
 
-            SHOP_CODES      = queryIds(conn, "SELECT \"Code\" FROM shop.\"Shop\"");
-            EMPLOYEE_IDS    = queryIds(conn, "SELECT \"Id\" FROM shop.\"Employee\" WHERE \"Status\"=true");
-            CUSTOMER_IDS    = queryIds(conn, "SELECT \"Id\" FROM customer.\"Customer\"");
-            ORDER_IDS       = queryIds(conn, "SELECT \"Id\" FROM \"order\".\"Order\" LIMIT 5000");
+            SHOP_CODES = queryIds(conn, "SELECT \"Code\" FROM shop.\"Shop\"");
+            EMPLOYEE_IDS = queryIds(conn, "SELECT \"Id\" FROM shop.\"Employee\" WHERE \"Status\"=true");
+            CUSTOMER_IDS = queryIds(conn, "SELECT \"Id\" FROM customer.\"Customer\"");
+            ORDER_IDS = queryIds(conn, "SELECT \"Id\" FROM \"order\".\"Order\" LIMIT 5000");
 
             // Load Vouchers
             List<VoucherRef> vouchers = new ArrayList<>();
@@ -158,11 +162,11 @@ public final class IdPool {
                  java.sql.ResultSet rs = stmt.executeQuery("SELECT \"Code\", \"StartDate\", \"EndDate\", \"VoucherAmount\", \"MinOrderValue\" FROM promotion.\"Voucher\" WHERE \"Status\"=true")) {
                 while (rs.next()) {
                     vouchers.add(new VoucherRef(
-                        rs.getString(1),
-                        rs.getTimestamp(2).getTime(),
-                        rs.getTimestamp(3).getTime(),
-                        rs.getInt(4),
-                        rs.getInt(5)
+                            rs.getString(1),
+                            rs.getTimestamp(2).getTime(),
+                            rs.getTimestamp(3).getTime(),
+                            rs.getInt(4),
+                            rs.getInt(5)
                     ));
                 }
             }
@@ -174,10 +178,10 @@ public final class IdPool {
                  java.sql.ResultSet rs = stmt.executeQuery("SELECT \"Code\", \"Type\", \"StartDate\", \"EndDate\" FROM promotion.\"Promotion\" WHERE \"Status\"=true")) {
                 while (rs.next()) {
                     promotions.add(new PromotionRef(
-                        rs.getString(1),
-                        rs.getString(2),
-                        rs.getTimestamp(3).getTime(),
-                        rs.getTimestamp(4).getTime()
+                            rs.getString(1),
+                            rs.getString(2),
+                            rs.getTimestamp(3).getTime(),
+                            rs.getTimestamp(4).getTime()
                     ));
                 }
             }
@@ -189,10 +193,10 @@ public final class IdPool {
                  java.sql.ResultSet rs = stmt.executeQuery("SELECT \"Id\", \"ProductId\", \"PromotionCode\", \"PromotionQuantity\" FROM promotion.\"Gift\" WHERE \"Status\"=true")) {
                 while (rs.next()) {
                     gifts.add(new GiftRef(
-                        rs.getString(1),
-                        rs.getString(2),
-                        rs.getString(3),
-                        rs.getInt(4)
+                            rs.getString(1),
+                            rs.getString(2),
+                            rs.getString(3),
+                            rs.getInt(4)
                     ));
                 }
             }
@@ -204,9 +208,9 @@ public final class IdPool {
                  java.sql.ResultSet rs = stmt.executeQuery("SELECT \"Id\", \"OrderId\", \"ReturnAmount\" FROM \"order\".\"Return\" LIMIT 1000")) {
                 while (rs.next()) {
                     returns.add(new ReturnRef(
-                        rs.getString(1),
-                        rs.getString(2),
-                        rs.getInt(3)
+                            rs.getString(1),
+                            rs.getString(2),
+                            rs.getInt(3)
                     ));
                 }
             }
@@ -290,9 +294,9 @@ public final class IdPool {
                  java.sql.ResultSet rs = stmt.executeQuery("SELECT \"Id\", \"OrderId\", \"ReturnAmount\" FROM \"order\".\"Return\" LIMIT 1000")) {
                 while (rs.next()) {
                     returns.add(new ReturnRef(
-                        rs.getString(1),
-                        rs.getString(2),
-                        rs.getInt(3)
+                            rs.getString(1),
+                            rs.getString(2),
+                            rs.getInt(3)
                     ));
                 }
             }
@@ -325,21 +329,21 @@ public final class IdPool {
         }
 
         String sql = "SELECT r.\"Id\", r.\"OrderId\", r.\"ReturnAmount\" " +
-                     "FROM \"order\".\"Return\" r " +
-                     "WHERE NOT EXISTS (" +
-                     "  SELECT 1 FROM payment.\"ReturnPayment\" rp " +
-                     "  JOIN payment.\"Payment\" p ON rp.\"PaymentId\" = p.\"Id\" " +
-                     "  WHERE rp.\"ReturnId\" = r.\"Id\" AND rp.\"OrderId\" = r.\"OrderId\" AND p.\"Status\" = 'SUCCESS'" +
-                     ") " +
-                     "LIMIT 50";
+                "FROM \"order\".\"Return\" r " +
+                "WHERE NOT EXISTS (" +
+                "  SELECT 1 FROM payment.\"ReturnPayment\" rp " +
+                "  JOIN payment.\"Payment\" p ON rp.\"PaymentId\" = p.\"Id\" " +
+                "  WHERE rp.\"ReturnId\" = r.\"Id\" AND rp.\"OrderId\" = r.\"OrderId\" AND p.\"Status\" = 'SUCCESS'" +
+                ") " +
+                "LIMIT 50";
         try (java.sql.Connection conn = com.kaizen.flink.utils.PostgresSink.getConnection(config);
              java.sql.Statement stmt = conn.createStatement();
              java.sql.ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
                 UNPAID_RETURNS_CACHE.add(new ReturnRef(
-                    rs.getString(1),
-                    rs.getString(2),
-                    rs.getInt(3)
+                        rs.getString(1),
+                        rs.getString(2),
+                        rs.getInt(3)
                 ));
             }
         } catch (Exception e) {
@@ -360,20 +364,20 @@ public final class IdPool {
         }
 
         String sql = "SELECT o.\"Id\", o.\"TotalPayment\" " +
-                     "FROM \"order\".\"Order\" o " +
-                     "WHERE NOT EXISTS (" +
-                     "  SELECT 1 FROM payment.\"OrderPayment\" op " +
-                     "  JOIN payment.\"Payment\" p ON op.\"PaymentId\" = p.\"Id\" " +
-                     "  WHERE op.\"OrderId\" = o.\"Id\" AND p.\"Status\" = 'SUCCESS'" +
-                     ") " +
-                     "LIMIT 50";
+                "FROM \"order\".\"Order\" o " +
+                "WHERE NOT EXISTS (" +
+                "  SELECT 1 FROM payment.\"OrderPayment\" op " +
+                "  JOIN payment.\"Payment\" p ON op.\"PaymentId\" = p.\"Id\" " +
+                "  WHERE op.\"OrderId\" = o.\"Id\" AND p.\"Status\" = 'SUCCESS'" +
+                ") " +
+                "LIMIT 50";
         try (java.sql.Connection conn = com.kaizen.flink.utils.PostgresSink.getConnection(config);
              java.sql.Statement stmt = conn.createStatement();
              java.sql.ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
                 UNPAID_ORDERS_CACHE.add(new UnpaidOrderRef(
-                    rs.getString(1),
-                    rs.getInt(2)
+                        rs.getString(1),
+                        rs.getInt(2)
                 ));
             }
         } catch (Exception e) {

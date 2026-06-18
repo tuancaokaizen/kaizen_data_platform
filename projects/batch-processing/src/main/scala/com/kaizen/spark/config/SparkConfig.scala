@@ -17,7 +17,9 @@ class SparkConfig(configFilePath: String = "config.ini") extends Serializable {
           stream.close()
         }
       } else {
-        throw new java.io.FileNotFoundException(s"Config file $configFilePath not found on disk or classpath!")
+        throw new java.io.FileNotFoundException(
+          s"Config file $configFilePath not found on disk or classpath!"
+        )
       }
     }
   }

@@ -21,8 +21,12 @@ object ProcessSrvFundReport {
     val spark = SparkIOUtils.createSparkSession(jobName)
     val config = new SparkConfig()
 
-    val fromTs = formatTimestamp(fromDate.getOrElse("1970-01-01"), isEndOfDay = false)
-    val toTs = formatTimestamp(toDate.getOrElse(java.time.LocalDate.now().plusDays(1).toString), isEndOfDay = false)
+    val fromTs =
+      formatTimestamp(fromDate.getOrElse("1970-01-01"), isEndOfDay = false)
+    val toTs = formatTimestamp(
+      toDate.getOrElse(java.time.LocalDate.now().plusDays(1).toString),
+      isEndOfDay = false
+    )
 
     val jobResult = Try {
       SparkIOUtils.ensureNamespaceExists(spark, "nessie.stg")
@@ -34,7 +38,8 @@ object ProcessSrvFundReport {
       println(s"Generating Serving Fund Report for range: $fromTs to $toTs")
 
       // Load DW and Foundation tables
-      val factPayment = spark.table("nessie.dw.fact_payment_transaction")
+      val factPayment = spark
+        .table("nessie.dw.fact_payment_transaction")
         .filter(col("CreatedDate") >= fromTs && col("CreatedDate") < toTs)
       val orderFnd = spark.table("nessie.fnd.order")
       val returnFnd = spark.table("nessie.fnd.return")
@@ -53,8 +58,12 @@ object ProcessSrvFundReport {
           to_date(validPayments("CreatedDate")).as("ReportDate"),
           orderFnd("ShopCode").as("ShopCode"),
           validPayments("PaymentMethodId").as("PaymentMethodId"),
-          when(col("PaymentType") === 1, col("Amount")).otherwise(lit(0.0)).as("ReceiptAmt"),
-          when(col("PaymentType") === 2, col("Amount")).otherwise(lit(0.0)).as("ExpenditureAmt")
+          when(col("PaymentType") === 1, col("Amount"))
+            .otherwise(lit(0.0))
+            .as("ReceiptAmt"),
+          when(col("PaymentType") === 2, col("Amount"))
+            .otherwise(lit(0.0))
+            .as("ExpenditureAmt")
         )
 
       val cashFlowAgg = cashFlowPaymentWithShop
@@ -82,12 +91,17 @@ object ProcessSrvFundReport {
 
       val orderInvoiceDetails = orderFnd
         .filter(col("Status").isin("Completed", "Returned"))
-        .join(orderPaymentSplitRatio, orderFnd("Id") === orderPaymentSplitRatio("OrderId"), "inner")
+        .join(
+          orderPaymentSplitRatio,
+          orderFnd("Id") === orderPaymentSplitRatio("OrderId"),
+          "inner"
+        )
         .select(
           to_date(orderFnd("TransactionDate")).as("ReportDate"),
           orderFnd("ShopCode").as("ShopCode"),
           orderPaymentSplitRatio("PaymentMethodId").as("PaymentMethodId"),
-          (orderFnd("TotalPayment") * orderPaymentSplitRatio("SplitRatio")).as("OrderAllocatedAmt")
+          (orderFnd("TotalPayment") * orderPaymentSplitRatio("SplitRatio"))
+            .as("OrderAllocatedAmt")
         )
 
       val orderInvoiceAgg = orderInvoiceDetails
@@ -111,13 +125,18 @@ object ProcessSrvFundReport {
         )
 
       val returnInvoiceDetails = returnFnd
-        .join(returnPaymentSplitRatio, returnFnd("Id") === returnPaymentSplitRatio("ReturnId"), "inner")
+        .join(
+          returnPaymentSplitRatio,
+          returnFnd("Id") === returnPaymentSplitRatio("ReturnId"),
+          "inner"
+        )
         .join(orderFnd, returnFnd("OrderId") === orderFnd("Id"), "inner")
         .select(
           to_date(returnFnd("CreatedDate")).as("ReportDate"),
           orderFnd("ShopCode").as("ShopCode"),
           returnPaymentSplitRatio("PaymentMethodId").as("PaymentMethodId"),
-          (returnFnd("ReturnAmount") * returnPaymentSplitRatio("SplitRatio")).as("ReturnAllocatedAmt")
+          (returnFnd("ReturnAmount") * returnPaymentSplitRatio("SplitRatio"))
+            .as("ReturnAllocatedAmt")
         )
 
       val returnInvoiceAgg = returnInvoiceDetails
@@ -125,36 +144,69 @@ object ProcessSrvFundReport {
         .agg(sum("ReturnAllocatedAmt").as("TotalReturnAmount"))
 
       // 3. Union distinct keys (ReportDate, ShopCode, PaymentMethodId) từ cả 3 nguồn
-      val allKeys = cashFlowAgg.select("ReportDate", "ShopCode", "PaymentMethodId")
-        .union(orderInvoiceAgg.select("ReportDate", "ShopCode", "PaymentMethodId"))
-        .union(returnInvoiceAgg.select("ReportDate", "ShopCode", "PaymentMethodId"))
+      val allKeys = cashFlowAgg
+        .select("ReportDate", "ShopCode", "PaymentMethodId")
+        .union(
+          orderInvoiceAgg.select("ReportDate", "ShopCode", "PaymentMethodId")
+        )
+        .union(
+          returnInvoiceAgg.select("ReportDate", "ShopCode", "PaymentMethodId")
+        )
         .distinct()
 
       // Ghép dữ liệu và bổ sung thông tin hiển thị
       val reportDf = allKeys
-        .join(cashFlowAgg, Seq("ReportDate", "ShopCode", "PaymentMethodId"), "left")
-        .join(orderInvoiceAgg, Seq("ReportDate", "ShopCode", "PaymentMethodId"), "left")
-        .join(returnInvoiceAgg, Seq("ReportDate", "ShopCode", "PaymentMethodId"), "left")
+        .join(
+          cashFlowAgg,
+          Seq("ReportDate", "ShopCode", "PaymentMethodId"),
+          "left"
+        )
+        .join(
+          orderInvoiceAgg,
+          Seq("ReportDate", "ShopCode", "PaymentMethodId"),
+          "left"
+        )
+        .join(
+          returnInvoiceAgg,
+          Seq("ReportDate", "ShopCode", "PaymentMethodId"),
+          "left"
+        )
         .join(dimShop, Seq("ShopCode"), "left")
-        .join(paymentMethodFnd, allKeys("PaymentMethodId") === paymentMethodFnd("Id"), "left")
+        .join(
+          paymentMethodFnd,
+          allKeys("PaymentMethodId") === paymentMethodFnd("Id"),
+          "left"
+        )
         .select(
           allKeys("ReportDate"),
           allKeys("ShopCode"),
           coalesce(dimShop("ShopName"), lit("Unknown")).as("ShopName"),
-          coalesce(paymentMethodFnd("Name"), lit("Unknown")).as("PaymentMethodName"),
+          coalesce(paymentMethodFnd("Name"), lit("Unknown"))
+            .as("PaymentMethodName"),
           coalesce(col("TotalReceipts"), lit(0.0)).as("TotalReceipts"),
           coalesce(col("TotalExpenditures"), lit(0.0)).as("TotalExpenditures"),
-          (coalesce(col("TotalReceipts"), lit(0.0)) - coalesce(col("TotalExpenditures"), lit(0.0))).as("NetCashFlow"),
+          (coalesce(col("TotalReceipts"), lit(0.0)) - coalesce(
+            col("TotalExpenditures"),
+            lit(0.0)
+          )).as("NetCashFlow"),
           coalesce(col("TotalOrderAmount"), lit(0.0)).as("TotalOrderAmount"),
           coalesce(col("TotalReturnAmount"), lit(0.0)).as("TotalReturnAmount"),
-          ((coalesce(col("TotalReceipts"), lit(0.0)) - coalesce(col("TotalExpenditures"), lit(0.0))) - 
-            (coalesce(col("TotalOrderAmount"), lit(0.0)) - coalesce(col("TotalReturnAmount"), lit(0.0)))).as("ReconciliationDiff")
+          ((coalesce(col("TotalReceipts"), lit(0.0)) - coalesce(
+            col("TotalExpenditures"),
+            lit(0.0)
+          )) -
+            (coalesce(col("TotalOrderAmount"), lit(0.0)) - coalesce(
+              col("TotalReturnAmount"),
+              lit(0.0)
+            ))).as("ReconciliationDiff")
         )
 
       // Write to Iceberg Serving
       val targetExists = SparkIOUtils.tableExists(spark, targetTable)
       if (!targetExists) {
-        println(s"Target table '$targetTable' does not exist. Initializing table...")
+        println(
+          s"Target table '$targetTable' does not exist. Initializing table..."
+        )
         SparkIOUtils.writeToIceberg(spark, reportDf, stgTable, "overwrite")
         val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
         SparkIOUtils.writeToIceberg(spark, stgDf, targetTable, "overwrite")
@@ -162,7 +214,12 @@ object ProcessSrvFundReport {
         println(s"Merging report records into target table '$targetTable'...")
         SparkIOUtils.writeToIceberg(spark, reportDf, stgTable, "overwrite")
         val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
-        SparkIOUtils.mergeIcebergTable(spark, stgDf, targetTable, Seq("ReportDate", "ShopCode", "PaymentMethodName"))
+        SparkIOUtils.mergeIcebergTable(
+          spark,
+          stgDf,
+          targetTable,
+          Seq("ReportDate", "ShopCode", "PaymentMethodName")
+        )
       }
       println(s"✔ Serving Fund Report generation completed for: $targetTable")
     }

@@ -41,14 +41,13 @@ params = {
 }
 
 with DAG(
-    'spark_transaction_simulation_pipeline',
-    default_args=default_args,
-    description='Manually triggered DAG to run BatchTransactionSimulatorJob for Postgres transaction backfill',
-    schedule_interval=None,  # Triggered manually only
-    catchup=False,
-    params=params
+        'spark_transaction_simulation_pipeline',
+        default_args=default_args,
+        description='Manually triggered DAG to run BatchTransactionSimulatorJob for Postgres transaction backfill',
+        schedule_interval=None,  # Triggered manually only
+        catchup=False,
+        params=params
 ) as dag:
-
     # Jinja arguments template
     args_tmpl = (
         "{% if dag_run.conf and dag_run.conf.get('fromDate') %} --fromDate '{{ dag_run.conf.get('fromDate') }}'{% endif %}"

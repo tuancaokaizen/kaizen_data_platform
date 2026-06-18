@@ -14,14 +14,14 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Job 4/10 – OrderProducerJob
- *
+ * <p>
  * Topic: order-bundles (toàn bộ OrderBundle JSON)
- *
+ * <p>
  * Business rules:
- *  - 100ms/emit (setParallelism=1) → 10 orders/s → 100 records/10s
- *  - Voucher: sau 10 đơn → cấp voucher, tự áp dụng ở lần mua tiếp theo
- *  - Return: 25% xác suất, trong vòng 7 ngày, partial hoặc full
- *
+ * - 100ms/emit (setParallelism=1) → 10 orders/s → 100 records/10s
+ * - Voucher: sau 10 đơn → cấp voucher, tự áp dụng ở lần mua tiếp theo
+ * - Return: 25% xác suất, trong vòng 7 ngày, partial hoặc full
+ * <p>
  * Phụ thuộc: Master Data được sinh từ Airflow và lưu vào Postgres.
  * Consumer jobs (OrderPgConsumerJob) đảm bảo FK ordering khi insert.
  */
@@ -42,6 +42,7 @@ public class OrderProducerJob {
         @SuppressWarnings({"deprecation", "serial"})
         DataStream<String> bundleStream = env.addSource(new SourceFunction<String>() {
             volatile boolean running = true;
+
             @Override
             public void run(SourceContext<String> ctx) throws Exception {
                 IdPool.init(config);
@@ -61,11 +62,15 @@ public class OrderProducerJob {
                     Thread.sleep(emitMs);
                 }
             }
-            @Override public void cancel() { running = false; }
+
+            @Override
+            public void cancel() {
+                running = false;
+            }
         }).setParallelism(1).name("Src-OrderBundle");
 
         bundleStream.sinkTo(KafkaSink.buildStringSink(config, "order-bundles"))
-                    .name("Kafka-OrderBundles");
+                .name("Kafka-OrderBundles");
 
         LOG.info("Starting OrderProducerJob (" + emitMs + "ms/order)...");
         env.execute("Kaizen-OrderProducerJob");
