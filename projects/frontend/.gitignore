@@ -1,0 +1,22 @@
+# Dependencies / Thư viện
+node_modules/
+
+# Build output / Build production
+dist/
+
+# Local env / Biến môi trường local
+.env
+.env.local
+.env.*.local
+
+# Vite cache / Cache Vite
+.vite/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.idea/
+.vscode/

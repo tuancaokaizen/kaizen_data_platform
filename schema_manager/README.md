@@ -33,6 +33,10 @@ schema_manager/
     ├── payment-methods.json   # Mapping index payment-methods
     ├── order-bundles.json     # Mapping index order-bundles (chứa nested OrderItems & Returns)
     └── payment-bundles.json   # Mapping index payment-bundles (chứa nested Transactions, OrderPayments & ReturnPayments)
+│
+└── clickhouse/                # ClickHouse DDL report hot + view hot/cold tiếng Việt
+    ├── schema_clickhouse.sql        # Bảng native report (hot, ReplacingMergeTree)
+    └── schema_clickhouse_views.sql  # View báo cáo hot/cold với tên cột tiếng Việt
 ```
 
 ---
@@ -57,7 +61,35 @@ Chứa cấu hình mapping chi tiết cho từng Elasticsearch Index tương ứ
 
 ---
 
-## 3. Script Dọn dẹp Dữ liệu (`clean_data.sh`)
+## 3. ClickHouse Report (clickhouse/)
+
+Quản lý schema **hot layer** (`report.*`) và **view hợp nhất hot-cold** phục vụ màn hình báo cáo.
+
+| Layer | Database ClickHouse | Nguồn dữ liệu | Phạm vi |
+|-------|---------------------|---------------|---------|
+| **Hot** | `report.financial_report`, `report.fund_report` | Spark `PushServingToClickHouseJob` | 30 ngày gần nhất |
+| **Cold** | `serving.financial_report`, `serving.fund_report` | Nessie Iceberg (`nessie.serving.*`) | Lịch sử đầy đủ |
+
+### View (`schema_clickhouse_views.sql`)
+
+| View | Mô tả |
+|------|--------|
+| `report.v_bao_cao_tai_chinh` | Báo cáo tài chính — hot (30 ngày gần nhất) |
+| `serving.v_bao_cao_tai_chinh` | Báo cáo tài chính — cold (Nessie/Iceberg) |
+| `report.v_bao_cao_tai_chinh_tong_hop` | Hợp nhất hot + cold |
+| `report.v_bao_cao_quy` | Báo cáo quỹ/dòng tiền — hot |
+| `serving.v_bao_cao_quy` | Báo cáo quỹ — cold |
+| `report.v_bao_cao_quy_tong_hop` | Hợp nhất hot + cold |
+
+Phân tầng hot/cold thể hiện qua database (`report` / `serving`); view hợp nhất dùng hậu tố `_tong_hop`.
+
+Cột tiếng Việt: `NgayBaoCao`, `MaCuaHang`, `TenCuaHang`, `DoanhThuThuan`, `LoiNhuanGop`, `TongThu`, `DongTienRong`, ...
+
+View được deploy tự động ở cuối DAG `spark_dw_transform_pipeline` (task `create_clickhouse_report_views`).
+
+---
+
+## 4. Script Dọn dẹp Dữ liệu (`clean_data.sh`)
 
 Nhằm hỗ trợ quá trình phát triển và kiểm thử chạy lại các kịch bản sinh dữ liệu từ đầu, hệ thống cung cấp script dọn sạch dữ liệu nhanh mà **không làm mất cấu trúc bảng hay index mappings**:
 

@@ -18,6 +18,7 @@ from jobs.spark_generic_ingest import (
     get_clickhouse_dw_task,
     get_clickhouse_serving_task,
     get_clickhouse_report_task,
+    get_clickhouse_views_task,
     get_push_serving_task
 )
 
@@ -166,6 +167,9 @@ with DAG(
     # 12. Push Serving Reports (1-month) to ClickHouse Hot Layer
     push_serving_to_clickhouse = KubernetesPodOperator(**get_push_serving_task())
 
+    # 13. Create hot/cold report views with Vietnamese column aliases
+    ch_report_views = PythonOperator(**get_clickhouse_views_task())
+
     # Execute Dimensions sequentially, then Facts sequentially, and finally Serving Reports sequentially
     (
             transform_dim_product >> ch_dim_product >>
@@ -181,5 +185,5 @@ with DAG(
             transform_cogs >> ch_fact_cogs_transaction >>
             transform_serving_financial_report >> ch_financial_serving >> ch_financial_report >>
             transform_serving_fund_report >> ch_fund_serving >> ch_fund_report >>
-            push_serving_to_clickhouse
+            push_serving_to_clickhouse >> ch_report_views
     )

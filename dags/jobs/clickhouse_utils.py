@@ -74,11 +74,15 @@ def run_clickhouse_setup(table_name, layer=None):
 
     if layer == "report":
         db_name = "report"
+        # Airflow syncs only /opt/airflow/dags — bundle DDL lives under dags/schema_manager
+        # Airflow chỉ sync /opt/airflow/dags — file DDL được đóng gói trong dags/schema_manager
         schema_paths = [
+            os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'schema_manager', 'clickhouse',
+                                         'schema_clickhouse.sql')),
             os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'schema_manager', 'clickhouse',
                                          'schema_clickhouse.sql')),
+            '/opt/airflow/dags/schema_manager/clickhouse/schema_clickhouse.sql',
             '/opt/airflow/schema_manager/clickhouse/schema_clickhouse.sql',
-            '/opt/airflow/dags/schema_manager/clickhouse/schema_clickhouse.sql'
         ]
 
         schema_sql_path = None
@@ -213,6 +217,87 @@ def run_clickhouse_setup(table_name, layer=None):
             # If we returned early from inside the try block (e.g. on warning), we won't hit this
             last_err = e
             print(f"Failed to execute queries on ClickHouse host {host}: {e}")
+
+    if last_err:
+        raise last_err
+
+
+def run_clickhouse_views_setup():
+    """Deploy hot/cold report views with Vietnamese column aliases / Triển khai view báo cáo hot-cold có alias tiếng Việt."""
+    import requests
+    import os
+    import configparser
+
+    # Resolve config.ini from common Airflow/local paths / Tìm config.ini từ các đường dẫn Airflow/local
+    config_paths = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config.ini')),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'config.ini')),
+        '/opt/airflow/config.ini',
+        '/opt/airflow/dags/config.ini'
+    ]
+    config = configparser.ConfigParser()
+    parsed_path = None
+    for path in config_paths:
+        if os.path.exists(path):
+            config.read(path)
+            parsed_path = path
+            break
+
+    if parsed_path:
+        print(f"Loaded config from: {parsed_path}")
+    else:
+        print("WARNING: config.ini not found. Using default fallbacks.")
+
+    ch_hosts_str = config.get('clickhouse', 'hosts', fallback='clickhouse-service.databases.svc.cluster.local')
+    hosts = [h.strip() for h in ch_hosts_str.split(',') if h.strip()]
+    port = config.getint('clickhouse', 'port', fallback=8123)
+    user = config.get('clickhouse', 'username', fallback='admin')
+    password = config.get('clickhouse', 'password', fallback='kaizen123')
+
+    params = {
+        "user": user,
+        "password": password
+    }
+
+    # Locate views DDL in schema_manager / Tìm file DDL view trong schema_manager
+    schema_paths = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'schema_manager', 'clickhouse',
+                                     'schema_clickhouse_views.sql')),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'schema_manager', 'clickhouse',
+                                     'schema_clickhouse_views.sql')),
+        '/opt/airflow/dags/schema_manager/clickhouse/schema_clickhouse_views.sql',
+        '/opt/airflow/schema_manager/clickhouse/schema_clickhouse_views.sql',
+    ]
+
+    schema_sql_path = None
+    for path in schema_paths:
+        if os.path.exists(path):
+            schema_sql_path = path
+            break
+
+    if not schema_sql_path:
+        raise FileNotFoundError("schema_clickhouse_views.sql not found in search paths")
+
+    with open(schema_sql_path, 'r', encoding='utf-8') as sf:
+        content = sf.read()
+
+    queries = [q.strip() for q in content.split(';') if q.strip()]
+
+    last_err = None
+    for host in hosts:
+        url = f"http://{host}:{port}/"
+        try:
+            print(f"Connecting to ClickHouse on {url}...")
+            for query in queries:
+                print(f"Executing query: {query}")
+                response = requests.post(url, params=params, data=query, timeout=30)
+                if response.status_code != 200:
+                    raise Exception(f"ClickHouse HTTP {response.status_code}: {response.text}")
+            print("Successfully deployed ClickHouse report views (hot/cold, Vietnamese columns).")
+            return
+        except Exception as e:
+            last_err = e
+            print(f"Failed to execute view DDL on ClickHouse host {host}: {e}")
 
     if last_err:
         raise last_err

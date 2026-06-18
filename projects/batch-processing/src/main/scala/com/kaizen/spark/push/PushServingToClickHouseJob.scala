@@ -32,6 +32,8 @@ object PushServingToClickHouseJob {
 
       def truncateTable(tableName: String): Unit = {
         println(s"Truncating ClickHouse table: $tableName")
+        // Register JDBC driver from fat jar / Đăng ký JDBC driver từ fat jar
+        Class.forName("com.clickhouse.jdbc.ClickHouseDriver")
         val conn = java.sql.DriverManager.getConnection(jdbcUrl, user, password)
         try {
           val stmt = conn.createStatement()

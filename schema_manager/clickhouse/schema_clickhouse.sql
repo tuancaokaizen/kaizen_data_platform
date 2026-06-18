@@ -1,5 +1,7 @@
 -- ClickHouse Native Report Schema DDL
 -- Database: report
+--
+-- Views (hot/cold, tên cột tiếng Việt): schema_clickhouse_views.sql
 
 CREATE DATABASE IF NOT EXISTS report;
 

@@ -76,6 +76,17 @@ upload_dags() {
         echo "Port $MINIO_PORT is already open."
     fi
 
+    # Bundle ClickHouse DDL into dags before upload / Đóng gói DDL ClickHouse vào dags trước khi upload
+    SCHEMA_SRC="$DIR/../schema_manager/clickhouse"
+    SCHEMA_DST="$DIR/schema_manager/clickhouse"
+    if [ -d "$SCHEMA_SRC" ]; then
+        mkdir -p "$SCHEMA_DST"
+        cp -f "$SCHEMA_SRC"/*.sql "$SCHEMA_DST/"
+        echo "✔ Synced ClickHouse DDL from schema_manager into dags/schema_manager/clickhouse/"
+    else
+        echo "⚠️ Warning: schema_manager/clickhouse not found at $SCHEMA_SRC"
+    fi
+
     # Tiến hành tải dữ liệu lên MinIO
     local EXIT_CODE=0
     if command -v mc &> /dev/null; then
