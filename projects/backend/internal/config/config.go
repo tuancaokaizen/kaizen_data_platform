@@ -21,7 +21,7 @@ func Load() Config {
 	return Config{
 		Port:         getEnv("API_PORT", "8090"),
 		CHHost:       getEnv("CLICKHOUSE_HOST", "clickhouse-service.databases.svc.cluster.local"),
-		CHPort:       getEnvInt("CLICKHOUSE_PORT", 8123),
+		CHPort:       getEnvInt("CLICKHOUSE_PORT", 9000),
 		CHDatabase:   getEnv("CLICKHOUSE_DATABASE", "report"),
 		CHUser:       getEnv("CLICKHOUSE_USER", "admin"),
 		CHPassword:   getEnv("CLICKHOUSE_PASSWORD", "kaizen123"),

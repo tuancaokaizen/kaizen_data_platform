@@ -68,6 +68,7 @@ dist/
 # Local env (secrets) / Biến môi trường local
 **/.env
 !**/.env.example
+!**/.env.tailscale.example
 
 # Local check and setup scripts at root level
 /*.sh
