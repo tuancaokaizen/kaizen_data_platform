@@ -1,0 +1,9 @@
+# Local env / Biến môi trường local
+.env
+
+# Go build output / Binary build
+build/
+
+# IDE
+.idea/
+.vscode/

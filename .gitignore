@@ -60,6 +60,15 @@ dags/config.k3s-new
 *.tar.gz
 *.zip
 
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+
+# Local env (secrets) / Biến môi trường local
+**/.env
+!**/.env.example
+
 # Local check and setup scripts at root level
 /*.sh
 /.scalafmt.conf

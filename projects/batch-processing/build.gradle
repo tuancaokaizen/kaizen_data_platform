@@ -24,6 +24,10 @@ dependencies {
     // Iceberg & Nessie dependencies (required at runtime for Spark Catalog setup)
     implementation 'org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.3.1'
     implementation 'org.projectnessie.nessie-integrations:nessie-spark-extensions-3.4_2.12:0.67.0'
+
+    // ClickHouse JDBC for PushServingToClickHouseJob / JDBC driver cho push report sang ClickHouse
+    implementation 'com.clickhouse:clickhouse-jdbc:0.6.5'
+    implementation 'com.clickhouse:clickhouse-http-client:0.6.5'
 }
 
 shadowJar {

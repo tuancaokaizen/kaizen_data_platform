@@ -1,4 +1,4 @@
-from jobs.clickhouse_utils import run_clickhouse_setup
+from jobs.clickhouse_utils import run_clickhouse_setup, run_clickhouse_views_setup
 
 # Shared spark_conf for Standalone Master resource settings
 spark_conf = {
@@ -170,6 +170,17 @@ def get_clickhouse_report_task(table_name):
         "task_id": f"create_clickhouse_report_{table_name}",
         "python_callable": run_clickhouse_setup,
         "op_kwargs": {"table_name": table_name, "layer": "report"},
+        "retries": 0
+    }
+
+
+def get_clickhouse_views_task():
+    """
+    Generates ClickHouse PythonOperator to deploy hot/cold report views with Vietnamese columns.
+    """
+    return {
+        "task_id": "create_clickhouse_report_views",
+        "python_callable": run_clickhouse_views_setup,
         "retries": 0
     }
 
