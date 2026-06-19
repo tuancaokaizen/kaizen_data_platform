@@ -42,6 +42,7 @@ func main() {
 	mux.HandleFunc("/healthz", reportHTTP.Healthz)
 	mux.HandleFunc("/api/v1/reports/financial", reportHTTP.GetFinancialReport)
 	mux.HandleFunc("/api/v1/reports/financial/summary", reportHTTP.GetFinancialSummary)
+	mux.HandleFunc("/api/v1/reports/financial/filter-options", reportHTTP.GetFinancialFilterOptions)
 	mux.HandleFunc("/api/v1/reports/fund", reportHTTP.GetFundReport)
 	mux.HandleFunc("/api/v1/reports/fund/summary", reportHTTP.GetFundSummary)
 	mux.HandleFunc("/api/v1/bi/embed-config", biHTTP.GetEmbedConfig)

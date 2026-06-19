@@ -3,7 +3,7 @@ import { App as AntdApp, Layout, Tabs, Typography } from "antd";
 import type { TablePaginationConfig } from "antd/es/table";
 import dayjs from "dayjs";
 import axios from "axios";
-import { fetchReport, type ReportFilter } from "./api/reportApi";
+import { fetchReport, fetchFinancialDetailFilterOptions, type ReportFilter } from "./api/reportApi";
 import { ReportDetailTab, type FilterFormValues } from "./components/ReportDetailTab";
 import { ReportViewSlicer } from "./components/ReportViewSlicer";
 import { SupersetEmbedTab } from "./components/SupersetEmbedTab";
@@ -35,6 +35,10 @@ function App() {
   const [activeViewKey, setActiveViewKey] = useState<ReportViewKey>(DEFAULT_VIEW_KEY);
   const [contentTab, setContentTab] = useState<ContentTabKey>("detail");
   const [reportData, setReportData] = useState<ListResponse<ReportRow>>();
+  const [detailFilterOptions, setDetailFilterOptions] = useState<{
+    shops: { shopCode: string; shopName: string }[];
+    products: { productId: string; productName: string }[];
+  }>({ shops: [], products: [] });
   const [page, setPage] = useState(DEFAULT_PAGE);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [form] = Form.useForm<FilterFormValues>();
@@ -42,7 +46,16 @@ function App() {
   const viewConfig = useMemo(() => getViewConfig(activeViewKey), [activeViewKey]);
   const columns = useMemo(() => getColumnsForView(activeViewKey), [activeViewKey]);
 
+  const isFinancialDetailView = activeViewKey === "financial:detail";
+
   const shopOptions = useMemo(() => {
+    if (isFinancialDetailView) {
+      const dynamic = detailFilterOptions.shops.map((shop) => ({
+        label: shop.shopName ? `${shop.shopCode} - ${shop.shopName}` : shop.shopCode,
+        value: shop.shopCode
+      }));
+      return [{ label: "Tất cả cửa hàng", value: FILTER_ALL_VALUE }, ...dynamic];
+    }
     const unique = new Set(
       (reportData?.data ?? [])
         .map((row) => row.shopCode)
@@ -50,9 +63,18 @@ function App() {
     );
     const dynamic = Array.from(unique).map((code) => ({ label: code, value: code }));
     return [{ label: "Tất cả cửa hàng", value: FILTER_ALL_VALUE }, ...dynamic];
-  }, [reportData?.data]);
+  }, [isFinancialDetailView, detailFilterOptions.shops, reportData?.data]);
 
   const productOptions = useMemo(() => {
+    if (isFinancialDetailView) {
+      const dynamic = detailFilterOptions.products.map((product) => ({
+        label: product.productName
+          ? `${product.productId} - ${product.productName}`
+          : product.productId,
+        value: product.productId
+      }));
+      return [{ label: "Tất cả sản phẩm", value: FILTER_ALL_VALUE }, ...dynamic];
+    }
     const unique = new Map<string, string>();
     for (const row of reportData?.data ?? []) {
       if (!row.productId) continue;
@@ -61,7 +83,7 @@ function App() {
     }
     const dynamic = Array.from(unique.entries()).map(([value, label]) => ({ label, value }));
     return [{ label: "Tất cả sản phẩm", value: FILTER_ALL_VALUE }, ...dynamic];
-  }, [reportData?.data]);
+  }, [isFinancialDetailView, detailFilterOptions.products, reportData?.data]);
 
   const paymentOptions = useMemo(() => {
     const unique = new Set(
@@ -113,6 +135,23 @@ function App() {
     [form, page, pageSize, viewConfig.view]
   );
 
+  const loadDetailFilterOptions = useCallback(
+    async (values?: FilterFormValues, viewKey: ReportViewKey = activeViewKey) => {
+      if (viewKey !== "financial:detail") {
+        setDetailFilterOptions({ shops: [], products: [] });
+        return;
+      }
+      const formValues = values ?? form.getFieldsValue();
+      const fromDate = (formValues.dateRange?.[0] ?? dayjs().subtract(30, "day")).format(
+        "YYYY-MM-DD"
+      );
+      const toDate = (formValues.dateRange?.[1] ?? dayjs()).format("YYYY-MM-DD");
+      const opts = await fetchFinancialDetailFilterOptions(fromDate, toDate);
+      setDetailFilterOptions({ shops: opts.shops ?? [], products: opts.products ?? [] });
+    },
+    [form, activeViewKey]
+  );
+
   const loadReport = useCallback(
     async (
       values?: FilterFormValues,
@@ -137,6 +176,7 @@ function App() {
   const handleSearch = async () => {
     try {
       setLoading(true);
+      await loadDetailFilterOptions(undefined, activeViewKey);
       await loadReport(undefined, { page: DEFAULT_PAGE, pageSize });
     } catch (error) {
       message.error(extractErrorMessage(error));
@@ -173,6 +213,11 @@ function App() {
       try {
         setLoading(true);
         const cfg = getViewConfig(nextKey);
+        if (nextKey === "financial:detail") {
+          await loadDetailFilterOptions(undefined, nextKey);
+        } else {
+          setDetailFilterOptions({ shops: [], products: [] });
+        }
         await loadReport(undefined, {
           page: DEFAULT_PAGE,
           pageSize,
@@ -194,6 +239,9 @@ function App() {
     void (async () => {
       try {
         setLoading(true);
+        if (activeViewKey === "financial:detail") {
+          await loadDetailFilterOptions(initial, "financial:detail");
+        }
         await loadReport(initial, { page: DEFAULT_PAGE, pageSize: DEFAULT_PAGE_SIZE });
       } catch (error) {
         message.error(extractErrorMessage(error));

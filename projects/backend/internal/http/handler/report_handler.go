@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kaizen/backend-report-api/internal/http/response"
+	"github.com/kaizen/backend-report-api/internal/repository"
 	"github.com/kaizen/backend-report-api/internal/service"
 )
 
@@ -101,6 +102,42 @@ func (h *ReportHandler) GetFundSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]any{"data": summary, "view": query.View})
+}
+
+// GetFinancialFilterOptions returns distinct filter values (detail view only for now)
+// Trả về giá trị lọc distinct — hiện chỉ hỗ trợ view chi tiết SP×CH
+func (h *ReportHandler) GetFinancialFilterOptions(w http.ResponseWriter, r *http.Request) {
+	view := r.URL.Query().Get("view")
+	if view == "" {
+		view = repository.FinancialViewDetail
+	}
+	if view != repository.FinancialViewDetail {
+		response.Error(w, http.StatusBadRequest, "filter-options only supported for view=detail")
+		return
+	}
+
+	fromDate, err := time.Parse(dateLayout, r.URL.Query().Get("fromDate"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid fromDate")
+		return
+	}
+	toDate, err := time.Parse(dateLayout, r.URL.Query().Get("toDate"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid toDate")
+		return
+	}
+
+	opts, err := h.reportService.GetFinancialDetailFilterOptions(r.Context(), fromDate, toDate)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"view":     view,
+		"shops":    opts.Shops,
+		"products": opts.Products,
+	})
 }
 
 func buildReportQuery(r *http.Request) (service.ReportQuery, error) {

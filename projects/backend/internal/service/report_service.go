@@ -87,3 +87,13 @@ func (s *ReportService) GetFundSummary(
 	}
 	return s.repo.GetFundSummary(ctx, query.FromDate, query.ToDate, query.View, filter)
 }
+
+// GetFinancialDetailFilterOptions returns distinct shop/product values for detail view filters
+// Trả về giá trị distinct cửa hàng/sản phẩm cho bộ lọc view chi tiết
+func (s *ReportService) GetFinancialDetailFilterOptions(
+	ctx context.Context,
+	fromDate time.Time,
+	toDate time.Time,
+) (repository.FinancialDetailFilterOptions, error) {
+	return s.repo.GetFinancialDetailFilterOptions(ctx, fromDate, toDate)
+}
