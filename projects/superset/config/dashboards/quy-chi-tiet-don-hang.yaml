@@ -1,0 +1,72 @@
+id: db_quy_order
+title: Chi tiết quỹ theo đơn hàng
+dataset: v_bao_cao_quy_theo_don_tong_hop
+slug: quy-chi-tiet-don-hang
+native_filters:
+- column: NgayBaoCao
+  type: filter_time
+  label: Khoảng ngày
+  default: Last 7 days
+- column: MaCuaHang
+  type: filter_select
+  label: Cửa hàng
+  multi: true
+  select_all: true
+- column: MaDonHang
+  type: filter_select
+  label: Mã đơn hàng
+  multi: true
+  search: true
+- column: TenPhuongThucThanhToan
+  type: filter_select
+  label: PTTT
+  multi: true
+layout:
+  row1_kpi:
+  - chart: kpi_don
+    viz: big_number_total
+    metric: COUNT(DISTINCT MaDonHang)
+    title: Số đơn
+  - chart: kpi_thu
+    viz: big_number_total
+    metric: SUM(TongThu)
+    title: Tổng thu
+  row2_trend:
+  - chart: trend_dong_tien_rong
+    viz: echarts_timeseries_line
+    x: NgayBaoCao
+    metrics:
+    - SUM(DongTienRong)
+    title: Xu hướng dòng tiền ròng (tổng)
+    granularity: day
+  row3_breakdown:
+  - chart: pie_pttt_don
+    viz: pie
+    groupby:
+    - TenPhuongThucThanhToan
+    metric: SUM(TongThu)
+    title: Thu theo PTTT (cấp đơn)
+    row_limit: 8
+  - chart: bar_top_cua_hang
+    viz: echarts_timeseries_bar
+    x: TenCuaHang
+    categorical: true
+    metric: SUM(DongTienRong)
+    title: Top cửa hàng — dòng tiền ròng
+    sort: desc
+    row_limit: 12
+    orientation: horizontal
+  row4_detail:
+  - chart: table_don_quy
+    viz: table
+    columns:
+    - NgayBaoCao
+    - MaDonHang
+    - TenCuaHang
+    - TenPhuongThucThanhToan
+    - TongThu
+    - TongChi
+    - DongTienRong
+    - ChenhLechDoiSoat
+    title: Chi tiết thu chi từng đơn
+    page_size: 100

@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 4173"
   },
   "dependencies": {
+    "@superset-ui/embedded-sdk": "^0.4.0",
     "antd": "^5.27.1",
     "axios": "^1.11.0",
     "dayjs": "^1.11.13",

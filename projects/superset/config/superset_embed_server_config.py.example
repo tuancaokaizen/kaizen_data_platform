@@ -1,0 +1,16 @@
+# Paste into superset_config.py on the Superset server, then restart Superset pods.
+# Dán vào superset_config.py trên server Superset, rồi restart pod Superset.
+#
+# Without EMBEDDED_SUPERSET=True, /embedded/<uuid> returns HTTP 404 even when
+# guest_token API works and dashboards have embedded UUID configured.
+
+FEATURE_FLAGS = {
+    **(FEATURE_FLAGS if "FEATURE_FLAGS" in globals() else {}),
+    "EMBEDDED_SUPERSET": True,
+}
+
+# Required for guest_token API (if not already set) / Bắt buộc cho API guest_token
+import os
+
+GUEST_TOKEN_JWT_SECRET = os.environ.get("GUEST_TOKEN_JWT_SECRET", "CHANGE_ME_use_long_random_secret")
+GUEST_ROLE_NAME = "Gamma"

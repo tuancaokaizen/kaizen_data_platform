@@ -1,0 +1,40 @@
+# ClickHouse datasets for Superset — map to report.v_bao_cao_*_tong_hop views
+# Dataset Superset — trỏ vào view ClickHouse đã union hot/cold (MinIO qua serving.*)
+
+database_name: kaizen_clickhouse_report
+
+datasets:
+  - table_name: v_bao_cao_tai_chinh_tong_hop
+    schema: report
+    description: "Báo cáo tài chính — tổng hợp theo cửa hàng (hot + cold)"
+    main_dttm_col: NgayBaoCao
+
+  - table_name: v_bao_cao_tai_chinh_chi_tiet_tong_hop
+    schema: report
+    description: "Báo cáo tài chính — chi tiết theo sản phẩm và cửa hàng"
+    main_dttm_col: NgayBaoCao
+
+  - table_name: v_bao_cao_tai_chinh_theo_san_pham_tong_hop
+    schema: report
+    description: "Báo cáo tài chính — tổng hợp theo sản phẩm"
+    main_dttm_col: NgayBaoCao
+
+  - table_name: v_bao_cao_tai_chinh_theo_don_tong_hop
+    schema: report
+    description: "Báo cáo tài chính — chi tiết theo đơn hàng"
+    main_dttm_col: NgayBaoCao
+
+  - table_name: v_bao_cao_quy_tong_hop
+    schema: report
+    description: "Báo cáo quỹ — theo phương thức thanh toán và cửa hàng"
+    main_dttm_col: NgayBaoCao
+
+  - table_name: v_bao_cao_quy_theo_shop_tong_hop
+    schema: report
+    description: "Báo cáo quỹ — tổng hợp theo cửa hàng"
+    main_dttm_col: NgayBaoCao
+
+  - table_name: v_bao_cao_quy_theo_don_tong_hop
+    schema: report
+    description: "Báo cáo quỹ — chi tiết theo đơn hàng"
+    main_dttm_col: NgayBaoCao

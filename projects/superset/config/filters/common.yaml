@@ -1,0 +1,58 @@
+presets:
+  ngay:
+    column: NgayBaoCao
+    type: filter_time
+    label: Khoảng ngày
+  ngay_7d:
+    column: NgayBaoCao
+    type: filter_time
+    label: Khoảng ngày
+    default: Last 7 days
+  cua_hang:
+    column: MaCuaHang
+    type: filter_select
+    label: Cửa hàng
+    multi: true
+    select_all: true
+  san_pham:
+    column: MaSanPham
+    type: filter_select
+    label: Mã sản phẩm
+    multi: true
+    search: true
+  nganh_hang:
+    column: MaNganhHang
+    type: filter_select
+    label: Ngành hàng
+    multi: true
+  don_hang:
+    column: MaDonHang
+    type: filter_select
+    label: Mã đơn hàng
+    multi: true
+    search: true
+  loai_chung_tu:
+    column: LoaiChungTu
+    type: filter_select
+    label: Loại chứng từ
+    multi: true
+    options:
+    - SALE
+    - RETURN
+  trang_thai_don:
+    column: TrangThaiDon
+    type: filter_select
+    label: Trạng thái đơn
+    multi: true
+    search: true
+  pttt:
+    column: TenPhuongThucThanhToan
+    type: filter_select
+    label: Phương thức thanh toán
+    multi: true
+    search: true
+  pttt_short:
+    column: TenPhuongThucThanhToan
+    type: filter_select
+    label: PTTT
+    multi: true

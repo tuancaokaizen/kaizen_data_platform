@@ -28,9 +28,14 @@ object IcebergMaintenanceJob {
         "nessie.dw.dim_employee",
         "nessie.dw.dim_promotion",
         "nessie.dw.dim_voucher",
-        // Serving Reports
+        // Serving Reports / Báo cáo serving
         "nessie.serving.financial_report",
+        "nessie.serving.financial_report_detail",
+        "nessie.serving.financial_report_product",
+        "nessie.serving.financial_report_order",
         "nessie.serving.fund_report",
+        "nessie.serving.fund_report_shop",
+        "nessie.serving.fund_report_order",
         // FND Incremental tables
         "nessie.fnd.order",
         "nessie.fnd.order_item",

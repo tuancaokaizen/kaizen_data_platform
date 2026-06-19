@@ -301,3 +301,136 @@ def run_clickhouse_views_setup():
 
     if last_err:
         raise last_err
+
+
+# Report tables cleared with serving layer reset / Bảng báo cáo khi reset serving
+SERVING_REPORT_TABLES = [
+    "financial_report",
+    "financial_report_detail",
+    "financial_report_product",
+    "financial_report_order",
+    "fund_report",
+    "fund_report_shop",
+    "fund_report_order",
+    # Legacy grains / Grain cũ đã bỏ
+    "fund_report_detail",
+    "fund_report_product",
+]
+
+
+def _load_clickhouse_connection():
+    """Load ClickHouse hosts and credentials from config.ini / Đọc cấu hình ClickHouse."""
+    import os
+    import configparser
+
+    config_paths = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'config.ini')),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'config.ini')),
+        '/opt/airflow/config.ini',
+        '/opt/airflow/dags/config.ini',
+    ]
+    config = configparser.ConfigParser()
+    parsed_path = None
+    for path in config_paths:
+        if os.path.exists(path):
+            config.read(path)
+            parsed_path = path
+            break
+
+    if parsed_path:
+        print(f"Loaded config from: {parsed_path}")
+    else:
+        print("WARNING: config.ini not found. Using default fallbacks.")
+
+    ch_hosts_str = config.get(
+        'clickhouse', 'hosts', fallback='clickhouse-service.databases.svc.cluster.local'
+    )
+    hosts = [h.strip() for h in ch_hosts_str.split(',') if h.strip()]
+    port = config.getint('clickhouse', 'port', fallback=8123)
+    user = config.get('clickhouse', 'username', fallback='admin')
+    password = config.get('clickhouse', 'password', fallback='kaizen123')
+    return hosts, port, user, password
+
+
+def _execute_clickhouse_queries(queries, success_message):
+    """Run DDL/DML statements against ClickHouse HTTP API / Chạy query qua HTTP API."""
+    import requests
+
+    hosts, port, user, password = _load_clickhouse_connection()
+    params = {"user": user, "password": password}
+
+    last_err = None
+    for host in hosts:
+        url = f"http://{host}:{port}/"
+        try:
+            print(f"Connecting to ClickHouse on {url}...")
+            for query in queries:
+                print(f"Executing query: {query}")
+                response = requests.post(url, params=params, data=query, timeout=30)
+                if response.status_code != 200:
+                    raise Exception(f"ClickHouse HTTP {response.status_code}: {response.text}")
+            print(success_message)
+            return
+        except Exception as e:
+            last_err = e
+            print(f"Failed to execute queries on ClickHouse host {host}: {e}")
+
+    if last_err:
+        raise last_err
+
+
+def run_clickhouse_clear_serving():
+    """Drop report views and hot/serving tables; keeps DW/FND intact / Xóa view + bảng report/serving."""
+    view_drops = [
+        # Legacy view names / Tên view cũ
+        "DROP VIEW IF EXISTS report.v_bao_cao_tai_chinh_nong",
+        "DROP VIEW IF EXISTS serving.v_bao_cao_tai_chinh_lanh",
+        "DROP VIEW IF EXISTS report.v_bao_cao_quy_nong",
+        "DROP VIEW IF EXISTS serving.v_bao_cao_quy_lanh",
+        # Financial views / View tài chính
+        "DROP VIEW IF EXISTS report.v_bao_cao_tai_chinh_tong_hop",
+        "DROP VIEW IF EXISTS report.v_bao_cao_tai_chinh_chi_tiet_tong_hop",
+        "DROP VIEW IF EXISTS report.v_bao_cao_tai_chinh_theo_san_pham_tong_hop",
+        "DROP VIEW IF EXISTS report.v_bao_cao_tai_chinh_theo_don_tong_hop",
+        "DROP VIEW IF EXISTS report.v_bao_cao_tai_chinh",
+        "DROP VIEW IF EXISTS report.v_bao_cao_tai_chinh_chi_tiet",
+        "DROP VIEW IF EXISTS report.v_bao_cao_tai_chinh_theo_san_pham",
+        "DROP VIEW IF EXISTS report.v_bao_cao_tai_chinh_theo_don",
+        "DROP VIEW IF EXISTS serving.v_bao_cao_tai_chinh",
+        "DROP VIEW IF EXISTS serving.v_bao_cao_tai_chinh_chi_tiet",
+        "DROP VIEW IF EXISTS serving.v_bao_cao_tai_chinh_theo_san_pham",
+        "DROP VIEW IF EXISTS serving.v_bao_cao_tai_chinh_theo_don",
+        # Fund views / View quỹ
+        "DROP VIEW IF EXISTS report.v_bao_cao_quy_tong_hop",
+        "DROP VIEW IF EXISTS report.v_bao_cao_quy_theo_shop_tong_hop",
+        "DROP VIEW IF EXISTS report.v_bao_cao_quy_theo_don_tong_hop",
+        "DROP VIEW IF EXISTS report.v_bao_cao_quy_theo_san_pham_tong_hop",
+        "DROP VIEW IF EXISTS report.v_bao_cao_quy_chi_tiet_tong_hop",
+        "DROP VIEW IF EXISTS report.v_bao_cao_quy",
+        "DROP VIEW IF EXISTS report.v_bao_cao_quy_theo_shop",
+        "DROP VIEW IF EXISTS report.v_bao_cao_quy_theo_san_pham",
+        "DROP VIEW IF EXISTS report.v_bao_cao_quy_chi_tiet",
+        "DROP VIEW IF EXISTS report.v_bao_cao_quy_theo_don",
+        "DROP VIEW IF EXISTS serving.v_bao_cao_quy",
+        "DROP VIEW IF EXISTS serving.v_bao_cao_quy_theo_shop",
+        "DROP VIEW IF EXISTS serving.v_bao_cao_quy_theo_san_pham",
+        "DROP VIEW IF EXISTS serving.v_bao_cao_quy_chi_tiet",
+        "DROP VIEW IF EXISTS serving.v_bao_cao_quy_theo_don",
+    ]
+
+    table_drops = []
+    for tbl in SERVING_REPORT_TABLES:
+        table_drops.append(f"DROP TABLE IF EXISTS report.{tbl}")
+        table_drops.append(f"DROP TABLE IF EXISTS serving.{tbl}")
+
+    queries = [
+        "CREATE DATABASE IF NOT EXISTS report",
+        "CREATE DATABASE IF NOT EXISTS serving",
+        *view_drops,
+        *table_drops,
+    ]
+
+    _execute_clickhouse_queries(
+        queries,
+        "Successfully dropped ClickHouse report views + report.* hot tables + serving.* pointers.",
+    )

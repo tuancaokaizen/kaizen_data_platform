@@ -207,9 +207,21 @@ object SparkIOUtils {
       targetTable: String,
       joinKeys: Seq[String]
   ): Unit = {
+    // Align source columns to target schema / Chỉ merge cột có trong cả source và target
+    val targetColumns = readFromIceberg(spark, targetTable).columns
+    val sourceColumnSet = sourceDf.columns.toSet
+    val alignedColumns = targetColumns.filter(sourceColumnSet.contains)
+    val missingInSource = targetColumns.filterNot(sourceColumnSet.contains)
+    if (missingInSource.nonEmpty) {
+      println(
+        s"WARNING: Target columns missing in source will not be updated: ${missingInSource.mkString(", ")}"
+      )
+    }
+    val alignedSource = sourceDf.select(alignedColumns.map(col): _*)
+
     val tempViewName =
       s"merge_source_${java.util.UUID.randomUUID().toString.replace("-", "")}"
-    sourceDf.createOrReplaceTempView(tempViewName)
+    alignedSource.createOrReplaceTempView(tempViewName)
     try {
       val joinCondition = joinKeys.map(k => s"t.$k = s.$k").mkString(" AND ")
       val sqlText =

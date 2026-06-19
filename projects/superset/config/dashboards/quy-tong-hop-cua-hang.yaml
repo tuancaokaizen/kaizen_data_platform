@@ -1,0 +1,63 @@
+id: db_quy_shop
+title: Tổng hợp quỹ theo cửa hàng
+dataset: v_bao_cao_quy_theo_shop_tong_hop
+slug: quy-tong-hop-cua-hang
+native_filters:
+- column: NgayBaoCao
+  type: filter_time
+  label: Khoảng ngày
+- column: MaCuaHang
+  type: filter_select
+  label: Cửa hàng
+  multi: true
+  select_all: true
+layout:
+  row1_kpi:
+  - chart: kpi_thu
+    viz: big_number_total
+    metric: SUM(TongThu)
+    title: Tổng thu
+  - chart: kpi_chi
+    viz: big_number_total
+    metric: SUM(TongChi)
+    title: Tổng chi
+  - chart: kpi_rong
+    viz: big_number_total
+    metric: SUM(DongTienRong)
+    title: Dòng tiền ròng
+  row2_compare:
+  - chart: bar_waterfall_shop
+    viz: echarts_timeseries_bar
+    x: TenCuaHang
+    categorical: true
+    metrics:
+    - SUM(TongThu)
+    - SUM(TongChi)
+    title: Thu vs Chi theo cửa hàng
+  row3_trend:
+  - chart: line_rong
+    viz: echarts_timeseries_line
+    x: NgayBaoCao
+    metric: SUM(DongTienRong)
+    title: Xu hướng dòng tiền ròng
+  row4_rank:
+  - chart: bar_top_rong
+    viz: echarts_timeseries_bar
+    x: TenCuaHang
+    categorical: true
+    metric: SUM(DongTienRong)
+    title: Xếp hạng cửa hàng — dòng tiền ròng
+    orientation: horizontal
+  row5_detail:
+  - chart: table_shop
+    viz: table
+    columns:
+    - NgayBaoCao
+    - TenCuaHang
+    - TongThu
+    - TongChi
+    - DongTienRong
+    - TongTienDonHang
+    - TongTienHoanTra
+    - ChenhLechDoiSoat
+    title: Bảng chi tiết theo cửa hàng

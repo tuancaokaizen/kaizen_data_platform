@@ -8,6 +8,25 @@ import scala.util.{Try, Success, Failure}
 
 object PushServingToClickHouseJob {
 
+  private val FinancialAggregateTables = Seq(
+    "financial_report",
+    "financial_report_detail",
+    "financial_report_product"
+  )
+
+  private val FinancialOrderTables = Seq(
+    "financial_report_order"
+  )
+
+  private val FundAggregateTables = Seq(
+    "fund_report",
+    "fund_report_shop"
+  )
+
+  private val FundOrderTables = Seq(
+    "fund_report_order"
+  )
+
   def main(args: Array[String]): Unit = {
     val jobName = "PushServingToClickHouseJob"
     println(s"=== Starting $jobName ===")
@@ -16,11 +35,13 @@ object PushServingToClickHouseJob {
     val config = new SparkConfig()
 
     val jobResult = Try {
-      // Get the date 30 days ago in Asia/Ho_Chi_Minh timezone
       val today =
         java.time.LocalDate.now(java.time.ZoneId.of("Asia/Ho_Chi_Minh"))
       val oneMonthAgo = today.minusDays(30).toString
-      println(s"Filtering serving reports from: $oneMonthAgo to today ($today)")
+      val oneWeekAgo = today.minusDays(7).toString
+      println(
+        s"Hot window: aggregate=30 days ($oneMonthAgo), order grain=7 days ($oneWeekAgo)"
+      )
 
       val clickhouseHost = config.get("clickhouse", "host")
       val clickhousePort = config.get("clickhouse", "port")
@@ -32,50 +53,58 @@ object PushServingToClickHouseJob {
 
       def truncateTable(tableName: String): Unit = {
         println(s"Truncating ClickHouse table: $tableName")
-        // Register JDBC driver from fat jar / Đăng ký JDBC driver từ fat jar
         Class.forName("com.clickhouse.jdbc.ClickHouseDriver")
         val conn = java.sql.DriverManager.getConnection(jdbcUrl, user, password)
         try {
           val stmt = conn.createStatement()
-          stmt.execute(s"TRUNCATE TABLE $tableName")
+          stmt.execute(s"TRUNCATE TABLE IF EXISTS $tableName")
           stmt.close()
         } finally {
           conn.close()
         }
       }
 
-      // 1. Push financial_report
-      val finTable = "nessie.serving.financial_report"
-      if (SparkIOUtils.tableExists(spark, finTable)) {
-        println(s"Reading from $finTable...")
-        val finDf = SparkIOUtils
-          .readFromIceberg(spark, finTable)
-          .filter(col("ReportDate") >= to_date(lit(oneMonthAgo)))
+      def pushServingTable(
+          icebergTable: String,
+          clickhouseTable: String,
+          fromDate: String
+      ): Unit = {
+        if (!SparkIOUtils.tableExists(spark, icebergTable)) {
+          println(s"WARNING: Serving table $icebergTable does not exist. Skipping.")
+          return
+        }
+        println(s"Reading from $icebergTable (ReportDate >= $fromDate)...")
+        val df = SparkIOUtils
+          .readFromIceberg(spark, icebergTable)
+          .filter(col("ReportDate") >= to_date(lit(fromDate)))
 
-        truncateTable("report.financial_report")
-        println(
-          s"Writing 1-month financial_report to ClickHouse table report.financial_report..."
-        )
-        SparkIOUtils.writeToClickHouse(finDf, "report.financial_report", config)
-      } else {
-        println(s"WARNING: Serving table $finTable does not exist. Skipping.")
+        truncateTable(clickhouseTable)
+        println(s"Writing to ClickHouse table $clickhouseTable...")
+        SparkIOUtils.writeToClickHouse(df, clickhouseTable, config)
       }
 
-      // 2. Push fund_report
-      val fundTable = "nessie.serving.fund_report"
-      if (SparkIOUtils.tableExists(spark, fundTable)) {
-        println(s"Reading from $fundTable...")
-        val fundDf = SparkIOUtils
-          .readFromIceberg(spark, fundTable)
-          .filter(col("ReportDate") >= to_date(lit(oneMonthAgo)))
-
-        truncateTable("report.fund_report")
-        println(
-          s"Writing 1-month fund_report to ClickHouse table report.fund_report..."
+      FinancialAggregateTables.foreach { table =>
+        pushServingTable(
+          s"nessie.serving.$table",
+          s"report.$table",
+          oneMonthAgo
         )
-        SparkIOUtils.writeToClickHouse(fundDf, "report.fund_report", config)
-      } else {
-        println(s"WARNING: Serving table $fundTable does not exist. Skipping.")
+      }
+
+      FinancialOrderTables.foreach { table =>
+        pushServingTable(s"nessie.serving.$table", s"report.$table", oneWeekAgo)
+      }
+
+      FundAggregateTables.foreach { table =>
+        pushServingTable(
+          s"nessie.serving.$table",
+          s"report.$table",
+          oneMonthAgo
+        )
+      }
+
+      FundOrderTables.foreach { table =>
+        pushServingTable(s"nessie.serving.$table", s"report.$table", oneWeekAgo)
       }
 
       println(s"✔ Serving data successfully pushed to ClickHouse report layer.")

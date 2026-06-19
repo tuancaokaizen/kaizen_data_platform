@@ -1,174 +1,202 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  Alert,
-  App as AntdApp,
-  Button,
-  Card,
-  Col,
-  DatePicker,
-  Form,
-  Input,
-  Layout,
-  Row,
-  Select,
-  Space,
-  Statistic,
-  Table,
-  Tabs,
-  Typography
-} from "antd";
-import type { ColumnsType } from "antd/es/table";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { App as AntdApp, Layout, Tabs, Typography } from "antd";
+import type { TablePaginationConfig } from "antd/es/table";
 import dayjs from "dayjs";
 import axios from "axios";
-import { fetchFinancialReport, fetchFundReport, type ReportFilter } from "./api/reportApi";
-import type { FinancialRow, FundRow, ListResponse } from "./types/report";
-import { formatNumber } from "./utils/formatNumber";
+import { fetchReport, type ReportFilter } from "./api/reportApi";
+import { ReportDetailTab, type FilterFormValues } from "./components/ReportDetailTab";
+import { ReportViewSlicer } from "./components/ReportViewSlicer";
+import { SupersetEmbedTab } from "./components/SupersetEmbedTab";
+import { getColumnsForView, rowKeyForView } from "./config/reportColumns";
+import {
+  DEFAULT_VIEW_KEY,
+  getViewConfig,
+  type FilterField,
+  type ReportCategory,
+  type ReportViewKey
+} from "./config/reportViews";
+import type { ListResponse, ReportRow } from "./types/report";
+import { Form } from "antd";
 
 const { Header, Content } = Layout;
 const { Title, Text } = Typography;
-const { RangePicker } = DatePicker;
 
-// Table cell renderer for numeric columns / Render ô số trong bảng
-const numCell = (value: number) => formatNumber(value);
+const DEFAULT_PAGE = 1;
+const DEFAULT_PAGE_SIZE = 20;
+const PAGE_SIZE_ALL = 0;
+const FILTER_ALL_VALUE = "__ALL__";
+const PAGE_SIZE_OPTIONS = ["20", "50", "100"];
+
+type ContentTabKey = "detail" | "bi";
 
 function App() {
   const { message } = AntdApp.useApp();
   const [loading, setLoading] = useState(false);
-  const [financialData, setFinancialData] = useState<ListResponse<FinancialRow>>();
-  const [fundData, setFundData] = useState<ListResponse<FundRow>>();
-  const [activeTab, setActiveTab] = useState("financial");
-  const [form] = Form.useForm();
+  const [activeViewKey, setActiveViewKey] = useState<ReportViewKey>(DEFAULT_VIEW_KEY);
+  const [contentTab, setContentTab] = useState<ContentTabKey>("detail");
+  const [reportData, setReportData] = useState<ListResponse<ReportRow>>();
+  const [page, setPage] = useState(DEFAULT_PAGE);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [form] = Form.useForm<FilterFormValues>();
+
+  const viewConfig = useMemo(() => getViewConfig(activeViewKey), [activeViewKey]);
+  const columns = useMemo(() => getColumnsForView(activeViewKey), [activeViewKey]);
 
   const shopOptions = useMemo(() => {
-    const sourceRows = activeTab === "financial" ? financialData?.data : fundData?.data;
-    const unique = new Set((sourceRows ?? []).map((row) => row.shopCode));
-    return Array.from(unique).map((shopCode) => ({ label: shopCode, value: shopCode }));
-  }, [activeTab, financialData?.data, fundData?.data]);
+    const unique = new Set(
+      (reportData?.data ?? [])
+        .map((row) => row.shopCode)
+        .filter((code): code is string => Boolean(code))
+    );
+    const dynamic = Array.from(unique).map((code) => ({ label: code, value: code }));
+    return [{ label: "Tất cả cửa hàng", value: FILTER_ALL_VALUE }, ...dynamic];
+  }, [reportData?.data]);
 
-  const financialColumns: ColumnsType<FinancialRow> = [
-    { title: "Ngày", dataIndex: "reportDate" },
-    { title: "Mã CH", dataIndex: "shopCode" },
-    { title: "Tên cửa hàng", dataIndex: "shopName" },
-    { title: "SL bán", dataIndex: "salesQuantity", render: numCell, align: "right" },
-    { title: "SL trả", dataIndex: "returnQuantity", render: numCell, align: "right" },
-    { title: "Doanh thu thuần", dataIndex: "netRevenue", render: numCell, align: "right" },
-    { title: "Lợi nhuận gộp", dataIndex: "grossProfit", render: numCell, align: "right" }
-  ];
-
-  const fundColumns: ColumnsType<FundRow> = [
-    { title: "Ngày", dataIndex: "reportDate" },
-    { title: "Mã CH", dataIndex: "shopCode" },
-    { title: "Tên cửa hàng", dataIndex: "shopName" },
-    { title: "PTTT", dataIndex: "paymentMethodName" },
-    { title: "Tổng thu", dataIndex: "totalReceipts", render: numCell, align: "right" },
-    { title: "Tổng chi", dataIndex: "totalExpenditures", render: numCell, align: "right" },
-    { title: "Dòng tiền ròng", dataIndex: "netCashFlow", render: numCell, align: "right" }
-  ];
-
-  // Convert filter form values into backend query params / Chuyển giá trị filter thành query params cho backend
-  const buildFilter = (values: {
-    dateRange?: [dayjs.Dayjs, dayjs.Dayjs];
-    shopCode?: string;
-    productCode?: string;
-  }): ReportFilter => {
-    const fromDate = (values.dateRange?.[0] ?? dayjs().subtract(30, "day")).format("YYYY-MM-DD");
-    const toDate = (values.dateRange?.[1] ?? dayjs()).format("YYYY-MM-DD");
-
-    return {
-      fromDate,
-      toDate,
-      shopCode: values.shopCode || undefined,
-      productCode: values.productCode || undefined,
-      page: 1,
-      pageSize: 100
-    };
-  };
-
-  // Load report data for a tab / Tải dữ liệu theo tab
-  const loadReportForTab = async (
-    tab: string,
-    values?: {
-      dateRange?: [dayjs.Dayjs, dayjs.Dayjs];
-      shopCode?: string;
-      productCode?: string;
+  const productOptions = useMemo(() => {
+    const unique = new Map<string, string>();
+    for (const row of reportData?.data ?? []) {
+      if (!row.productId) continue;
+      const label = row.productName ? `${row.productId} - ${row.productName}` : row.productId;
+      unique.set(row.productId, label);
     }
-  ) => {
-    const filter = buildFilter(values ?? form.getFieldsValue());
-    if (tab === "financial") {
-      const data = await fetchFinancialReport(filter);
-      setFinancialData(data);
-      return;
-    }
-    const data = await fetchFundReport(filter);
-    setFundData(data);
-  };
+    const dynamic = Array.from(unique.entries()).map(([value, label]) => ({ label, value }));
+    return [{ label: "Tất cả sản phẩm", value: FILTER_ALL_VALUE }, ...dynamic];
+  }, [reportData?.data]);
+
+  const paymentOptions = useMemo(() => {
+    const unique = new Set(
+      (reportData?.data ?? [])
+        .map((row) => row.paymentMethodName)
+        .filter((name): name is string => Boolean(name))
+    );
+    const dynamic = Array.from(unique).map((name) => ({ label: name, value: name }));
+    return [{ label: "Tất cả PTTT", value: FILTER_ALL_VALUE }, ...dynamic];
+  }, [reportData?.data]);
+
+  const buildFilter = useCallback(
+    (
+      values?: FilterFormValues,
+      paging?: { page?: number; pageSize?: number; view?: string }
+    ): ReportFilter => {
+      const formValues = values ?? form.getFieldsValue();
+      const fromDate = (formValues.dateRange?.[0] ?? dayjs().subtract(30, "day")).format(
+        "YYYY-MM-DD"
+      );
+      const toDate = (formValues.dateRange?.[1] ?? dayjs()).format("YYYY-MM-DD");
+      const resolvedPageSize = paging?.pageSize ?? pageSize;
+      const resolvedPage = resolvedPageSize === PAGE_SIZE_ALL ? DEFAULT_PAGE : (paging?.page ?? page);
+
+      return {
+        fromDate,
+        toDate,
+        view: paging?.view ?? viewConfig.view,
+        shopCode:
+          !formValues.shopCode || formValues.shopCode === FILTER_ALL_VALUE
+            ? undefined
+            : formValues.shopCode,
+        productId:
+          !formValues.productId || formValues.productId === FILTER_ALL_VALUE
+            ? undefined
+            : formValues.productId,
+        productLineCode: formValues.productLineCode || undefined,
+        orderId: formValues.orderId || undefined,
+        documentType: formValues.documentType || undefined,
+        orderStatus: formValues.orderStatus || undefined,
+        paymentMethodName:
+          !formValues.paymentMethodName || formValues.paymentMethodName === FILTER_ALL_VALUE
+            ? undefined
+            : formValues.paymentMethodName,
+        page: resolvedPage,
+        pageSize: resolvedPageSize
+      };
+    },
+    [form, page, pageSize, viewConfig.view]
+  );
+
+  const loadReport = useCallback(
+    async (
+      values?: FilterFormValues,
+      paging?: { page?: number; pageSize?: number; view?: string; category?: ReportCategory }
+    ) => {
+      const category = paging?.category ?? viewConfig.category;
+      const filter = buildFilter(values, paging);
+      const data = await fetchReport(category, filter);
+      setReportData(data);
+      if (filter.pageSize === PAGE_SIZE_ALL) {
+        setPage(DEFAULT_PAGE);
+      } else if (filter.page) {
+        setPage(filter.page);
+      }
+      if (filter.pageSize !== undefined) {
+        setPageSize(filter.pageSize);
+      }
+    },
+    [buildFilter, viewConfig.category]
+  );
 
   const handleSearch = async () => {
     try {
       setLoading(true);
-      await loadReportForTab(activeTab);
+      await loadReport(undefined, { page: DEFAULT_PAGE, pageSize });
     } catch (error) {
-      let detail = "Không tải được dữ liệu report từ backend.";
-      if (axios.isAxiosError(error)) {
-        const apiError = error.response?.data as { error?: string } | undefined;
-        if (apiError?.error) {
-          detail = apiError.error;
-        } else if (error.message) {
-          detail = error.message;
-        }
-      }
-      message.error(detail);
+      message.error(extractErrorMessage(error));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleTabChange = (tab: string) => {
-    setActiveTab(tab);
+  const handlePageChange = async (nextPage: number, nextPageSize: number) => {
+    try {
+      setLoading(true);
+      await loadReport(undefined, { page: nextPage, pageSize: nextPageSize });
+    } catch (error) {
+      message.error(extractErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewChange = (nextKey: ReportViewKey) => {
+    setActiveViewKey(nextKey);
+    setContentTab("detail");
+    setPage(DEFAULT_PAGE);
+    form.resetFields([
+      "shopCode",
+      "productId",
+      "productLineCode",
+      "orderId",
+      "documentType",
+      "orderStatus",
+      "paymentMethodName"
+    ]);
     void (async () => {
       try {
         setLoading(true);
-        await loadReportForTab(tab);
+        const cfg = getViewConfig(nextKey);
+        await loadReport(undefined, {
+          page: DEFAULT_PAGE,
+          pageSize,
+          view: cfg.view,
+          category: cfg.category
+        });
       } catch (error) {
-        let detail = "Không tải được dữ liệu report từ backend.";
-        if (axios.isAxiosError(error)) {
-          const apiError = error.response?.data as { error?: string } | undefined;
-          if (apiError?.error) {
-            detail = apiError.error;
-          } else if (error.message) {
-            detail = error.message;
-          }
-        }
-        message.error(detail);
+        message.error(extractErrorMessage(error));
       } finally {
         setLoading(false);
       }
     })();
   };
 
-  // Auto-load both reports on first render / Tự tải cả 2 báo cáo khi mở trang
   useEffect(() => {
-    const initialFilter = {
-      dateRange: [dayjs().subtract(30, "day"), dayjs()] as [dayjs.Dayjs, dayjs.Dayjs]
+    const initial: FilterFormValues = {
+      dateRange: [dayjs().subtract(30, "day"), dayjs()]
     };
     void (async () => {
       try {
         setLoading(true);
-        await Promise.all([
-          loadReportForTab("financial", initialFilter),
-          loadReportForTab("fund", initialFilter)
-        ]);
+        await loadReport(initial, { page: DEFAULT_PAGE, pageSize: DEFAULT_PAGE_SIZE });
       } catch (error) {
-        let detail = "Không tải được dữ liệu report từ backend.";
-        if (axios.isAxiosError(error)) {
-          const apiError = error.response?.data as { error?: string } | undefined;
-          if (apiError?.error) {
-            detail = apiError.error;
-          } else if (error.message) {
-            detail = error.message;
-          }
-        }
-        message.error(detail);
+        message.error(extractErrorMessage(error));
       } finally {
         setLoading(false);
       }
@@ -176,29 +204,44 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const financialSummary = useMemo(() => {
-    const rows = financialData?.data ?? [];
+  const summary = useMemo(() => {
+    const rows = reportData?.data ?? [];
+    if (viewConfig.category === "financial") {
+      return rows.reduce(
+        (acc, row) => {
+          acc.netRevenue += row.netRevenue ?? 0;
+          acc.grossProfit += row.grossProfit ?? 0;
+          return acc;
+        },
+        { netRevenue: 0, grossProfit: 0, totalReceipts: 0, netCashFlow: 0 }
+      );
+    }
     return rows.reduce(
       (acc, row) => {
-        acc.netRevenue += row.netRevenue;
-        acc.grossProfit += row.grossProfit;
+        acc.totalReceipts += row.totalReceipts ?? 0;
+        acc.netCashFlow += row.netCashFlow ?? 0;
         return acc;
       },
-      { netRevenue: 0, grossProfit: 0 }
+      { netRevenue: 0, grossProfit: 0, totalReceipts: 0, netCashFlow: 0 }
     );
-  }, [financialData?.data]);
+  }, [reportData?.data, viewConfig.category]);
 
-  const fundSummary = useMemo(() => {
-    const rows = fundData?.data ?? [];
-    return rows.reduce(
-      (acc, row) => {
-        acc.totalReceipts += row.totalReceipts;
-        acc.netCashFlow += row.netCashFlow;
-        return acc;
-      },
-      { totalReceipts: 0, netCashFlow: 0 }
-    );
-  }, [fundData?.data]);
+  const showFilter = (field: FilterField) => viewConfig.filters.includes(field);
+
+  const totalRows = reportData?.pagination?.total ?? 0;
+  const tablePageSize =
+    pageSize === PAGE_SIZE_ALL ? Math.max(reportData?.data?.length ?? 0, 1) : pageSize;
+
+  const paginationConfig: TablePaginationConfig = {
+    current: page,
+    pageSize: tablePageSize,
+    total: totalRows,
+    showSizeChanger: true,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    showTotal: (total, range) => `${range[0]}-${range[1]} / ${total} dòng`,
+    onChange: handlePageChange,
+    hideOnSinglePage: false
+  };
 
   return (
     <Layout className="page">
@@ -207,130 +250,74 @@ function App() {
           Kaizen Report Dashboard
         </Title>
       </Header>
-      <Content className="content">
-        <Card>
-          <Form
-            form={form}
-            layout="vertical"
-            initialValues={{
-              dateRange: [dayjs().subtract(30, "day"), dayjs()]
-            }}
-          >
-            <Row gutter={16}>
-              <Col xs={24} md={10}>
-                <Form.Item label="Khoảng ngày" name="dateRange">
-                  <RangePicker className="full-width" />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={6}>
-                <Form.Item label="Shop" name="shopCode">
-                  <Select allowClear options={shopOptions} placeholder="Chọn shop" />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={6}>
-                <Form.Item label="Sản phẩm" name="productCode">
-                  <Input placeholder="Tạm thời chưa áp dụng ở backend" />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={2} className="search-col">
-                <Button type="primary" onClick={handleSearch} loading={loading}>
-                  Lọc
-                </Button>
-              </Col>
-            </Row>
-          </Form>
-          <Alert
-            type="info"
-            showIcon
-            message="Filter sản phẩm cần batch report có ProductCode trong view tổng hợp (đề xuất bên dưới)."
+      <div className="page-body">
+        <aside className="report-sider">
+          <ReportViewSlicer activeKey={activeViewKey} onChange={handleViewChange} />
+        </aside>
+        <Content className="content">
+          <div className="view-meta">
+            <Title level={4} style={{ margin: 0 }}>
+              {viewConfig.label}
+            </Title>
+            <Text type="secondary">{viewConfig.description}</Text>
+          </div>
+
+          <Tabs
+            className="report-content-tabs"
+            activeKey={contentTab}
+            onChange={(key) => setContentTab(key as ContentTabKey)}
+            destroyInactiveTabPane={false}
+            items={[
+              {
+                key: "detail",
+                label: "Bảng chi tiết",
+                children: (
+                  <ReportDetailTab
+                    viewConfig={viewConfig}
+                    form={form}
+                    loading={loading}
+                    shopOptions={shopOptions}
+                    productOptions={productOptions}
+                    paymentOptions={paymentOptions}
+                    showFilter={showFilter}
+                    onSearch={handleSearch}
+                    summary={summary}
+                    columns={columns}
+                    reportData={reportData}
+                    paginationConfig={paginationConfig}
+                    rowKey={(row, index) => rowKeyForView(activeViewKey, row, index ?? 0)}
+                  />
+                )
+              },
+              {
+                key: "bi",
+                label: "Phân tích BI",
+                children: (
+                  <SupersetEmbedTab
+                    slug={viewConfig.supersetSlug}
+                    active={contentTab === "bi"}
+                  />
+                )
+              }
+            ]}
           />
-        </Card>
-
-        <Tabs
-          activeKey={activeTab}
-          onChange={handleTabChange}
-          items={[
-            {
-              key: "financial",
-              label: "Báo cáo tài chính",
-              children: (
-                <Space direction="vertical" size="middle" className="full-width">
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Card>
-                        <Statistic
-                          title="Doanh thu thuần"
-                          value={financialSummary.netRevenue}
-                          formatter={(v) => formatNumber(v as number)}
-                        />
-                      </Card>
-                    </Col>
-                    <Col span={12}>
-                      <Card>
-                        <Statistic
-                          title="Lợi nhuận gộp"
-                          value={financialSummary.grossProfit}
-                          formatter={(v) => formatNumber(v as number)}
-                        />
-                      </Card>
-                    </Col>
-                  </Row>
-                  <Table
-                    rowKey={(row) => `${row.reportDate}-${row.shopCode}`}
-                    columns={financialColumns}
-                    dataSource={financialData?.data ?? []}
-                    loading={loading}
-                    pagination={{ pageSize: 20, total: financialData?.pagination?.total }}
-                    scroll={{ x: 900 }}
-                  />
-                </Space>
-              )
-            },
-            {
-              key: "fund",
-              label: "Báo cáo quỹ",
-              children: (
-                <Space direction="vertical" size="middle" className="full-width">
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <Card>
-                        <Statistic
-                          title="Tổng thu"
-                          value={fundSummary.totalReceipts}
-                          formatter={(v) => formatNumber(v as number)}
-                        />
-                      </Card>
-                    </Col>
-                    <Col span={12}>
-                      <Card>
-                        <Statistic
-                          title="Dòng tiền ròng"
-                          value={fundSummary.netCashFlow}
-                          formatter={(v) => formatNumber(v as number)}
-                        />
-                      </Card>
-                    </Col>
-                  </Row>
-                  <Table
-                    rowKey={(row) => `${row.reportDate}-${row.shopCode}-${row.paymentMethodName}`}
-                    columns={fundColumns}
-                    dataSource={fundData?.data ?? []}
-                    loading={loading}
-                    pagination={{ pageSize: 20, total: fundData?.pagination?.total }}
-                    scroll={{ x: 900 }}
-                  />
-                </Space>
-              )
-            }
-          ]}
-        />
-
-        <Text type="secondary">
-          Template đề xuất: Ant Design Dashboard (cards + tabs + table), dễ mở rộng thành module report thực tế.
-        </Text>
-      </Content>
+        </Content>
+      </div>
     </Layout>
   );
+}
+
+function extractErrorMessage(error: unknown): string {
+  let detail = "Không tải được dữ liệu report từ backend.";
+  if (axios.isAxiosError(error)) {
+    const apiError = error.response?.data as { error?: string } | undefined;
+    if (apiError?.error) {
+      detail = apiError.error;
+    } else if (error.message) {
+      detail = error.message;
+    }
+  }
+  return detail;
 }
 
 export default App;

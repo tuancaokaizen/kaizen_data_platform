@@ -11,6 +11,15 @@ cp .env.example .env
 
 `VITE_API_BASE_URL` để trống → dùng Vite proxy (không lỗi CORS).
 
+### Tab Phân tích BI (Superset embed)
+
+- Tab **Bảng chi tiết** | **Phân tích BI** trong `App.tsx`
+- Slug dashboard: `src/config/biDashboardRegistry.ts` (gen từ `superset/config/dashboard_registry.yaml`)
+- Hook embed: `src/hooks/useSupersetEmbed.ts`
+- Vite proxy `/embedded`, `/static` → Superset — xem `vite.config.ts`
+
+Hướng dẫn deploy + nhúng: [`../docs/superset-and-embed.md`](../docs/superset-and-embed.md)
+
 ## Scripts
 
 | Lệnh | Mô tả |

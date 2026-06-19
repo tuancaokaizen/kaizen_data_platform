@@ -8,6 +8,10 @@ cd projects && ./run_local.sh
 
 → http://localhost:8092
 
+**Deploy toàn platform:** [docs/DEPLOY.md](../docs/DEPLOY.md)  
+**Publish Superset + BI:** [docs/publish-superset.md](docs/publish-superset.md)  
+**BI embed chi tiết:** [docs/superset-and-embed.md](docs/superset-and-embed.md)
+
 ---
 
 ## Đồng nghiệp — chỉ cần Tailscale (không kubectl, không forward tay)

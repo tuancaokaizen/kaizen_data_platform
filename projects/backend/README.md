@@ -20,6 +20,13 @@ Cần ClickHouse K3s reachable qua `kubectl port-forward -n databases svc/clickh
 - `GET /api/v1/reports/financial?fromDate=&toDate=&page=&pageSize=&shopCode=`
 - `GET /api/v1/reports/fund?fromDate=&toDate=&page=&pageSize=&shopCode=`
 
+### BI embed (Superset guest token)
+
+- `GET /api/v1/bi/embed-config`
+- `POST /api/v1/bi/guest-token` — body `{ "slug": "tc-tong-hop-cua-hang" }`
+
+Chi tiết: [`../docs/superset-and-embed.md`](../docs/superset-and-embed.md)
+
 ## Env (`.env.example`)
 
 | Var | Mặc định local |
@@ -27,3 +34,5 @@ Cần ClickHouse K3s reachable qua `kubectl port-forward -n databases svc/clickh
 | `API_PORT` | 8090 |
 | `CLICKHOUSE_HOST` | localhost |
 | `CLICKHOUSE_PORT` | 9000 |
+| `SUPERSET_HOST` | localhost:32288 (khi dùng BI embed) |
+| `SUPERSET_EMBED_DOMAIN` | http://localhost:8092 |

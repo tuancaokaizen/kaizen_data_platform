@@ -1,0 +1,30 @@
+{
+  "quy-chi-tiet-don-hang": {
+    "dashboardId": 1,
+    "embeddedUuid": "f3cdbac4-b137-4965-93ee-cd81e85f9cf7"
+  },
+  "quy-pttt-cua-hang": {
+    "dashboardId": 2,
+    "embeddedUuid": "c3687265-25c1-4e1e-abba-833c942e9386"
+  },
+  "quy-tong-hop-cua-hang": {
+    "dashboardId": 3,
+    "embeddedUuid": "2eed120e-1fac-49c3-98ac-9a007cd40c5f"
+  },
+  "tc-chi-tiet-don-hang": {
+    "dashboardId": 4,
+    "embeddedUuid": "055c2343-5abb-4920-8918-85d0dd4bf6e7"
+  },
+  "tc-chi-tiet-san-pham-cua-hang": {
+    "dashboardId": 5,
+    "embeddedUuid": "c3f916e7-d152-47f2-9b00-0f06dcb67d7e"
+  },
+  "tc-tong-hop-cua-hang": {
+    "dashboardId": 6,
+    "embeddedUuid": "fa70b6fb-4872-4a98-9f60-6dcf892723f7"
+  },
+  "tc-tong-hop-san-pham": {
+    "dashboardId": 7,
+    "embeddedUuid": "087d9ae6-6838-4bdf-a4a8-0b649b0e8553"
+  }
+}

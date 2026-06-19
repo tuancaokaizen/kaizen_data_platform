@@ -6,18 +6,95 @@ body {
 
 .page {
   min-height: 100vh;
+  background: #f3f5f8;
 }
 
 .header {
   display: flex;
   align-items: center;
+  padding-inline: 24px;
+}
+
+.page-body {
+  display: flex;
+  align-items: flex-start;
+  min-height: calc(100vh - 64px);
+}
+
+.report-sider {
+  flex: 0 0 280px;
+  width: 280px;
+  padding: 16px;
+  background: #fff;
+  border-right: 1px solid #e8e8e8;
+  box-sizing: border-box;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  min-height: calc(100vh - 64px);
 }
 
 .content {
-  padding: 16px;
+  flex: 1;
+  min-width: 0;
+  padding: 12px 16px 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+  box-sizing: border-box;
+}
+
+.view-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0 0;
+}
+
+.report-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.report-nav__heading {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8c8c8c;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.report-nav__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.report-nav__group--active {
+  background: #f0f7ff;
+  border-color: #91caff;
+}
+
+.report-nav__category {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #141414;
+  letter-spacing: 0.01em;
+}
+
+.report-nav__group--active .report-nav__category {
+  color: #0958d9;
+}
+
+.report-nav__select {
+  width: 100%;
 }
 
 .full-width {
@@ -27,4 +104,80 @@ body {
 .search-col {
   display: flex;
   align-items: end;
+}
+
+.stats-row {
+  margin-bottom: 0 !important;
+}
+
+.table-card .ant-card-body {
+  padding: 8px 12px 12px;
+}
+
+.content .ant-card-head {
+  min-height: 40px;
+  padding: 0 12px;
+}
+
+.content .ant-card-head-title {
+  font-size: 14px;
+  padding: 8px 0;
+}
+
+.content .ant-form-item {
+  margin-bottom: 12px;
+}
+
+.report-content-tabs .ant-tabs-nav {
+  margin-bottom: 12px;
+}
+
+.superset-embed-wrap {
+  position: relative;
+  min-height: 720px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.superset-embed-mount {
+  width: 100%;
+  min-height: 720px;
+}
+
+.superset-embed-mount iframe {
+  width: 100% !important;
+  min-height: 720px;
+  border: 0;
+}
+
+.superset-embed-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.85);
+  z-index: 2;
+}
+
+.superset-embed-error {
+  margin: 12px;
+}
+
+@media (max-width: 992px) {
+  .page-body {
+    flex-direction: column;
+  }
+
+  .report-sider {
+    flex: none;
+    width: 100%;
+    min-height: unset;
+    position: static;
+    border-right: none;
+    border-bottom: 1px solid #e8e8e8;
+    padding: 12px 16px;
+  }
 }

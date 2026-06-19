@@ -1,0 +1,71 @@
+id: db_tc_product
+title: Tổng hợp theo sản phẩm
+dataset: v_bao_cao_tai_chinh_theo_san_pham_tong_hop
+slug: tc-tong-hop-san-pham
+native_filters:
+- column: NgayBaoCao
+  type: filter_time
+  label: Khoảng ngày
+- column: MaSanPham
+  type: filter_select
+  label: Mã sản phẩm
+  multi: true
+  search: true
+- column: MaNganhHang
+  type: filter_select
+  label: Ngành hàng
+  multi: true
+layout:
+  row1_kpi:
+  - chart: kpi_dt
+    viz: big_number_total
+    metric: SUM(DoanhThuThuan)
+    title: Doanh thu thuần toàn hệ thống
+  - chart: kpi_sp
+    viz: big_number_total
+    metric: COUNT(DISTINCT MaSanPham)
+    title: Số sản phẩm có phát sinh
+  row2_portfolio:
+  - chart: treemap_san_pham
+    viz: treemap_v2
+    groupby:
+    - TenSanPham
+    metric: SUM(DoanhThuThuan)
+    title: Portfolio sản phẩm (treemap doanh thu)
+    row_limit: 50
+  - chart: pie_nganh
+    viz: pie
+    groupby:
+    - TenNganhHang
+    metric: SUM(DoanhThuThuan)
+    title: Thuốc vs TPCN
+  row3_rank:
+  - chart: bar_top20_ln
+    viz: echarts_timeseries_bar
+    x: TenSanPham
+    categorical: true
+    metric: SUM(LoiNhuanGop)
+    title: Top 20 SP — lợi nhuận gộp
+    row_limit: 20
+    orientation: horizontal
+  row4_trend:
+  - chart: line_nganh
+    viz: echarts_timeseries_line
+    x: NgayBaoCao
+    groupby:
+    - TenNganhHang
+    metric: SUM(DoanhThuThuan)
+    title: Xu hướng theo ngành hàng
+  row5_detail:
+  - chart: table_sp
+    viz: table
+    groupby:
+    - MaSanPham
+    - TenSanPham
+    - TenNganhHang
+    metrics:
+    - SUM(SoLuongBan)
+    - SUM(DoanhThuThuan)
+    - SUM(LoiNhuanGop)
+    - AVG(BienLoiNhuan)
+    title: Bảng tổng hợp sản phẩm

@@ -14,6 +14,10 @@ type Config struct {
 	CHUser       string
 	CHPassword   string
 	QueryTimeout time.Duration
+	SupersetHost       string
+	SupersetEmbedDomain string
+	SupersetUser       string
+	SupersetPass       string
 }
 
 func Load() Config {
@@ -26,6 +30,10 @@ func Load() Config {
 		CHUser:       getEnv("CLICKHOUSE_USER", "admin"),
 		CHPassword:   getEnv("CLICKHOUSE_PASSWORD", "kaizen123"),
 		QueryTimeout: time.Duration(timeoutSeconds) * time.Second,
+		SupersetHost:        getEnv("SUPERSET_HOST", "http://100.104.250.97:32288"),
+		SupersetEmbedDomain: getEnv("SUPERSET_EMBED_DOMAIN", ""),
+		SupersetUser:        getEnv("SUPERSET_USERNAME", "admin"),
+		SupersetPass:        getEnv("SUPERSET_PASSWORD", "admin"),
 	}
 }
 
