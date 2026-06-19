@@ -1,0 +1,28 @@
+database: kaizen_clickhouse_report
+schema: report
+time_column: NgayBaoCao
+time_filter:
+  type: filter_time
+  label: Khoảng ngày
+  default: Last 30 days
+chart_plugins:
+  kpi: big_number_total
+  line: echarts_timeseries_line
+  bar: echarts_timeseries_bar
+  bar_rank: echarts_timeseries_bar
+  pie: pie
+  treemap: treemap_v2
+  table: table
+  mixed: mixed_timeseries
+  heatmap: heatmap_v2
+layout_heights:
+  kpi: 36
+  full: 72
+  half: 58
+  third: 48
+  table: 78
+  heatmap: 68
+  bar_horizontal: 64
+filter_select:
+  multi: true
+  select_all: true

@@ -1,4 +1,8 @@
-from jobs.clickhouse_utils import run_clickhouse_setup, run_clickhouse_views_setup
+from jobs.clickhouse_utils import (
+    run_clickhouse_setup,
+    run_clickhouse_views_setup,
+    run_clickhouse_clear_serving,
+)
 
 # Shared spark_conf for Standalone Master resource settings
 spark_conf = {
@@ -181,6 +185,18 @@ def get_clickhouse_views_task():
     return {
         "task_id": "create_clickhouse_report_views",
         "python_callable": run_clickhouse_views_setup,
+        "retries": 0
+    }
+
+
+def get_clickhouse_clear_serving_task():
+    """
+    Generates ClickHouse PythonOperator to drop report views and hot/serving report tables.
+    Tạo PythonOperator xóa view + bảng report/serving trên ClickHouse.
+    """
+    return {
+        "task_id": "clear_clickhouse_serving",
+        "python_callable": run_clickhouse_clear_serving,
         "retries": 0
     }
 

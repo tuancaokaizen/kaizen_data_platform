@@ -1,0 +1,16 @@
+# Persistent storage for Superset metadata (SQLite at /app/superset_home)
+# Lưu metadata Superset — tránh mất dashboard ID / embed UUID khi restart pod
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: superset-data
+  namespace: apps
+  labels:
+    app: apache-superset
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi

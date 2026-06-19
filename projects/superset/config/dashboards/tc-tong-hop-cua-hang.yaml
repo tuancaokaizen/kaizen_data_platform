@@ -1,0 +1,77 @@
+id: db_tc_shop
+title: Tổng hợp theo cửa hàng
+dataset: v_bao_cao_tai_chinh_tong_hop
+slug: tc-tong-hop-cua-hang
+description: Doanh thu, chi phí, lợi nhuận theo ngày × cửa hàng
+native_filters:
+- column: NgayBaoCao
+  type: filter_time
+  label: Khoảng ngày
+  required: true
+- column: MaCuaHang
+  type: filter_select
+  label: Cửa hàng
+  multi: true
+  select_all: true
+  placeholder: Tất cả cửa hàng
+- column: TenCuaHang
+  type: filter_select
+  label: Tên cửa hàng
+  multi: true
+  search: true
+  visible: false
+layout:
+  row1_kpi:
+  - chart: kpi_doanh_thu_thuan
+    viz: big_number_total
+    metric: SUM(DoanhThuThuan)
+    title: Doanh thu thuần
+  - chart: kpi_loi_nhuan_gop
+    viz: big_number_total
+    metric: SUM(LoiNhuanGop)
+    title: Lợi nhuận gộp
+  - chart: kpi_sl_ban
+    viz: big_number_total
+    metric: SUM(SoLuongBan)
+    title: Số lượng bán
+    format: ',d'
+  row2_trend:
+  - chart: trend_doanh_thu
+    viz: echarts_timeseries_line
+    x: NgayBaoCao
+    metrics:
+    - SUM(DoanhThuThuan)
+    - SUM(LoiNhuanGop)
+    title: Xu hướng doanh thu & lợi nhuận
+    granularity: day
+  row3_compare:
+  - chart: bar_top_cua_hang
+    viz: echarts_timeseries_bar
+    x: TenCuaHang
+    categorical: true
+    metric: SUM(DoanhThuThuan)
+    title: Top cửa hàng theo doanh thu thuần
+    sort: desc
+    row_limit: 15
+    orientation: horizontal
+  - chart: pie_ty_le_tra_hang
+    viz: pie
+    groupby:
+    - TenCuaHang
+    metric: SUM(GiaTriTraHang)
+    title: Tỷ trọng giá trị trả hàng theo cửa hàng
+    row_limit: 10
+  row4_detail:
+  - chart: table_chi_tiet
+    viz: table
+    columns:
+    - NgayBaoCao
+    - MaCuaHang
+    - TenCuaHang
+    - SoLuongBan
+    - SoLuongTra
+    - DoanhThuThuan
+    - LoiNhuanGop
+    - BienLoiNhuan
+    title: Chi tiết theo ngày × cửa hàng
+    page_size: 50

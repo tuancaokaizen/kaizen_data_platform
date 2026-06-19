@@ -44,6 +44,7 @@ venv/
 ENV/
 .venv/
 .pytest_cache/
+*.egg-info/
 
 # Savepoints & Checkpoints
 .savepoints/

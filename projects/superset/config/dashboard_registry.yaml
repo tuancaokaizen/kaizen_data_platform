@@ -1,0 +1,34 @@
+# BI dashboard registry — single source of truth for titles + report menu mapping
+# Registry BI — nguồn sự thật cho tên hiển thị và ánh xạ menu báo cáo
+#
+# Sync frontend:  python -m superset_deploy export-registry
+# Sync embed UUID: python -m superset_deploy enable-embed
+dashboards:
+  - slug: tc-tong-hop-cua-hang
+    report_key: financial:shop
+    title: Tổng hợp theo cửa hàng
+    chart_label: TC cửa hàng
+  - slug: tc-chi-tiet-san-pham-cua-hang
+    report_key: financial:detail
+    title: Chi tiết theo sản phẩm và cửa hàng
+    chart_label: TC SP×CH
+  - slug: tc-tong-hop-san-pham
+    report_key: financial:product
+    title: Tổng hợp theo sản phẩm
+    chart_label: TC sản phẩm
+  - slug: tc-chi-tiet-don-hang
+    report_key: financial:order
+    title: Chi tiết theo đơn hàng
+    chart_label: TC đơn hàng
+  - slug: quy-pttt-cua-hang
+    report_key: fund:payment
+    title: Theo phương thức thanh toán và cửa hàng
+    chart_label: Quỹ PTTT
+  - slug: quy-tong-hop-cua-hang
+    report_key: fund:shop
+    title: Tổng hợp quỹ theo cửa hàng
+    chart_label: Quỹ cửa hàng
+  - slug: quy-chi-tiet-don-hang
+    report_key: fund:order
+    title: Chi tiết quỹ theo đơn hàng
+    chart_label: Quỹ đơn hàng

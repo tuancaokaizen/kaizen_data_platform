@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: superset-embed-config
+  namespace: apps
+data:
+  superset_config.py: |
+    # Enable embedded dashboards / Bật nhúng dashboard cho Embedded SDK
+    import os
+
+    FEATURE_FLAGS = {
+        **(FEATURE_FLAGS if "FEATURE_FLAGS" in globals() else {}),
+        "EMBEDDED_SUPERSET": True,
+    }
+
+    GUEST_TOKEN_JWT_SECRET = os.environ.get(
+        "GUEST_TOKEN_JWT_SECRET",
+        os.environ.get("SUPERSET_SECRET_KEY", "kaizen_report_dashboard_secret_key_123"),
+    )
+    GUEST_ROLE_NAME = "Gamma"
+    # Disable strict JWT audience check for dev proxy / Tắt kiểm tra audience khi dev qua proxy
+    GUEST_TOKEN_JWT_AUDIENCE = None
+
+    # Guest grants run via scripts/grant_guest_embed_permissions.sh (not on every worker boot)
+    # Cấp quyền guest chạy bằng script — tránh sync_role_definitions mỗi lần khởi động worker

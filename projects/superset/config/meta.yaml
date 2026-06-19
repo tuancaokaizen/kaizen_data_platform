@@ -1,0 +1,50 @@
+calculated_columns:
+- name: LoaiChungTuLabel
+  sql: CASE WHEN LoaiChungTu = 'SALE' THEN 'Bán hàng' WHEN LoaiChungTu = 'RETURN'
+    THEN 'Trả hàng' ELSE LoaiChungTu END
+  datasets:
+  - v_bao_cao_tai_chinh_theo_don_tong_hop
+- name: CoChenhLech
+  sql: CASE WHEN ChenhLechDoiSoat != 0 THEN 1 ELSE 0 END
+  datasets:
+  - v_bao_cao_quy_tong_hop
+  - v_bao_cao_quy_theo_shop_tong_hop
+  - v_bao_cao_quy_theo_don_tong_hop
+filter_matrix:
+- view: v_bao_cao_tai_chinh_tong_hop
+  filters:
+  - NgayBaoCao
+  - MaCuaHang
+- view: v_bao_cao_tai_chinh_chi_tiet_tong_hop
+  filters:
+  - NgayBaoCao
+  - MaCuaHang
+  - MaSanPham
+  - MaNganhHang
+- view: v_bao_cao_tai_chinh_theo_san_pham_tong_hop
+  filters:
+  - NgayBaoCao
+  - MaSanPham
+  - MaNganhHang
+- view: v_bao_cao_tai_chinh_theo_don_tong_hop
+  filters:
+  - NgayBaoCao
+  - MaCuaHang
+  - MaDonHang
+  - LoaiChungTu
+  - TrangThaiDon
+- view: v_bao_cao_quy_tong_hop
+  filters:
+  - NgayBaoCao
+  - MaCuaHang
+  - TenPhuongThucThanhToan
+- view: v_bao_cao_quy_theo_shop_tong_hop
+  filters:
+  - NgayBaoCao
+  - MaCuaHang
+- view: v_bao_cao_quy_theo_don_tong_hop
+  filters:
+  - NgayBaoCao
+  - MaCuaHang
+  - MaDonHang
+  - TenPhuongThucThanhToan

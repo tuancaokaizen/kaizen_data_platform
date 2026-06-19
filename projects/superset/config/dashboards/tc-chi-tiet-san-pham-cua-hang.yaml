@@ -1,0 +1,77 @@
+id: db_tc_detail
+title: Chi tiết theo sản phẩm và cửa hàng
+dataset: v_bao_cao_tai_chinh_chi_tiet_tong_hop
+slug: tc-chi-tiet-san-pham-cua-hang
+native_filters:
+- column: NgayBaoCao
+  type: filter_time
+  label: Khoảng ngày
+- column: MaCuaHang
+  type: filter_select
+  label: Cửa hàng
+  multi: true
+  select_all: true
+- column: MaSanPham
+  type: filter_select
+  label: Mã sản phẩm
+  multi: true
+  search: true
+- column: MaNganhHang
+  type: filter_select
+  label: Ngành hàng
+  multi: true
+  options:
+  - medicine
+  - supplement
+layout:
+  row1_kpi:
+  - chart: kpi_dt
+    viz: big_number_total
+    metric: SUM(DoanhThuThuan)
+    title: Doanh thu thuần
+  - chart: kpi_ln
+    viz: big_number_total
+    metric: SUM(LoiNhuanGop)
+    title: Lợi nhuận gộp
+  row2_mix:
+  - chart: pie_nganh_hang
+    viz: pie
+    groupby:
+    - TenNganhHang
+    metric: SUM(DoanhThuThuan)
+    title: Cơ cấu doanh thu theo ngành hàng
+  - chart: bar_top_san_pham
+    viz: echarts_timeseries_bar
+    x: TenSanPham
+    categorical: true
+    metric: SUM(LoiNhuanGop)
+    title: Top sản phẩm theo lợi nhuận
+    row_limit: 20
+    orientation: horizontal
+  row3_matrix:
+  - chart: heatmap_shop_nganh
+    viz: heatmap_v2
+    x: TenCuaHang
+    y: TenNganhHang
+    metric: SUM(DoanhThuThuan)
+    title: Ma trận doanh thu — Cửa hàng × Ngành hàng
+  row4_trend:
+  - chart: line_theo_nganh
+    viz: echarts_timeseries_line
+    x: NgayBaoCao
+    groupby:
+    - TenNganhHang
+    metric: SUM(DoanhThuThuan)
+    title: Xu hướng doanh thu theo ngành hàng
+  row5_detail:
+  - chart: table_detail
+    viz: table
+    columns:
+    - NgayBaoCao
+    - TenCuaHang
+    - TenSanPham
+    - TenNganhHang
+    - SoLuongBan
+    - DoanhThuThuan
+    - LoiNhuanGop
+    title: Bảng chi tiết

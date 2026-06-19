@@ -1,254 +1,392 @@
-# 🚀 Kaizen Data Platform - Kiến Trúc & Hướng Dẫn Vận Hành
+# Kaizen Data Platform — Kiến trúc & Hướng dẫn vận hành
 
-**Kaizen Data Platform** là hệ thống xử lý dữ liệu thời gian thực và phân tích lô quy mô lớn, được xây dựng theo mô hình **Event-Driven Streaming & Modern Lakehouse Architecture**. Hệ thống kết hợp Apache Flink (xử lý luồng), Apache Airflow (điều phối), Apache Spark (xử lý lô), cùng các kho lưu trữ PostgreSQL, Elasticsearch và Nessie/Iceberg Catalog.
+**Kaizen Data Platform** là hệ thống xử lý dữ liệu thời gian thực và phân tích lô quy mô lớn, theo mô hình **Event-Driven Streaming & Modern Lakehouse Architecture**. Stack chính: Apache Flink (streaming), Apache Airflow (orchestration), Apache Spark (batch), PostgreSQL, Elasticsearch, Nessie/Iceberg, **ClickHouse** (serving/report hot layer) và **Report Dashboard** (Go API + React UI chạy local).
 
 ---
 
-## 🗺️ 1. Kiến Trúc Hệ Thống & Luồng Dữ Liệu (Data Flow)
+## Mục lục
 
-Kiến trúc dữ liệu được tích hợp toàn diện qua hai luồng bổ trợ: **Real-time Event Streaming (Flink)** và **Batch Ingestion & DW Lakehouse (Spark & Nessie)**.
+1. [Kiến trúc & luồng dữ liệu](#1-kiến-trúc--luồng-dữ-liệu)
+2. [Cấu trúc repository](#2-cấu-trúc-repository)
+3. [Yêu cầu môi trường](#3-yêu-cầu-môi-trường)
+4. [Clone & thiết lập lần đầu](#4-clone--thiết-lập-lần-đầu)
+5. [Quick Start — Data platform](#5-quick-start--data-platform)
+6. [Report Dashboard (local UI)](#6-report-dashboard-local-ui)
+7. [Lakehouse DW (Nessie / Iceberg)](#7-lakehouse-dw-nessie--iceberg)
+8. [Bảo trì & partition](#8-bảo-trì--partition)
+9. [Flink streaming](#9-flink-streaming)
+10. [Script deploy & tham chiếu](#10-script-deploy--tham-chiếu)
+
+> **Hướng dẫn deploy tất cả features:** **[docs/DEPLOY.md](docs/DEPLOY.md)** — thứ tự greenfield, từng component, DAG, ports, checklist hàng ngày.
+
+---
+
+## 1. Kiến trúc & luồng dữ liệu
+
+Hai luồng chính: **Real-time (Flink)** và **Batch Lakehouse (Spark + Airflow)**. Sau transform DW, dữ liệu serving được đẩy sang **ClickHouse** để phục vụ báo cáo qua **Report Dashboard**.
 
 ```mermaid
 flowchart TD
-    %% Styles & Classes Configuration
-    classDef airflow fill:#eafaf1,stroke:#2ecc71,stroke-width:2px,color:#196f3d;
-    classDef flink fill:#ebf5fb,stroke:#2980b9,stroke-width:2px,color:#1b4f72;
-    classDef kafka fill:#fef9e7,stroke:#f39c12,stroke-width:2px,color:#7e5109;
-    classDef postgres fill:#f5eef8,stroke:#8e44ad,stroke-width:2px,color:#4a235a;
-    classDef elastic fill:#fdedec,stroke:#e74c3c,stroke-width:2px,color:#78281f;
-    classDef spark fill:#fcf3cf,stroke:#f1c40f,stroke-width:2px,color:#7d6608;
-    classDef nessie fill:#e8f8f5,stroke:#117a65,stroke-width:2px,color:#0e6251;
+    classDef airflow fill:#eafaf1,stroke:#2ecc71,stroke-width:2px;
+    classDef flink fill:#ebf5fb,stroke:#2980b9,stroke-width:2px;
+    classDef kafka fill:#fef9e7,stroke:#f39c12,stroke-width:2px;
+    classDef postgres fill:#f5eef8,stroke:#8e44ad,stroke-width:2px;
+    classDef elastic fill:#fdedec,stroke:#e74c3c,stroke-width:2px;
+    classDef spark fill:#fcf3cf,stroke:#f1c40f,stroke-width:2px;
+    classDef nessie fill:#e8f8f5,stroke:#117a65,stroke-width:2px;
+    classDef clickhouse fill:#fdebd0,stroke:#d35400,stroke-width:2px;
+    classDef ui fill:#ebdef0,stroke:#7d3c98,stroke-width:2px;
 
-    %% Nodes Definitions
-    PG_RAW[("PostgreSQL DB<br/>(Raw Source)")]
+    PG_RAW[("PostgreSQL")]
     class PG_RAW postgres;
 
-    %% Phase 1: Real-time Flow
-    subgraph S_STREAM ["⚡ Real-time Event Streaming (Flink)"]
+    subgraph STREAM ["Real-time (Flink)"]
         OP["OrderProducerJob"]
         PP["PaymentProducerJob"]
-        T_ORDER{{"topic: order-bundles"}}
-        T_PAY{{"topic: payment-bundles"}}
         KC["KaizenConsumerJob"]
+        T_ORDER{{"order-bundles"}}
+        T_PAY{{"payment-bundles"}}
     end
     class OP,PP,KC flink;
     class T_ORDER,T_PAY kafka;
 
-    %% Phase 2: Batch Lakehouse Flow
-    subgraph S_AIRFLOW ["🔄 Orchestration (Airflow DAGs)"]
-        DAG_M["spark_master_data_ingest_pipeline"]
-        DAG_I["spark_transaction_data_ingest_pipeline"]
-        DAG_T["spark_dw_transform_pipeline"]
-        DAG_MA["spark_dw_maintenance_pipeline"]
+    subgraph ORCH ["Orchestration (Airflow)"]
+        DAG_M["spark_master_data_ingest"]
+        DAG_I["spark_transaction_data_ingest"]
+        DAG_T["spark_dw_transform"]
+        DAG_SIL["sil_daily_pipeline"]
+        DAG_MA["spark_dw_maintenance"]
     end
-    class DAG_M,DAG_I,DAG_T,DAG_MA airflow;
+    class DAG_M,DAG_I,DAG_T,DAG_SIL,DAG_MA airflow;
 
-    subgraph S_SPARK ["⚙️ Batch Processing (Spark Scala)"]
+    subgraph BATCH ["Batch (Spark)"]
         INGEST["GenericIngestJob"]
         TRANS["ProcessDim* / ProcessFact*"]
+        SRV["ProcessSrv*Report"]
+        PUSH["PushServingToClickHouseJob"]
         MAINT["IcebergMaintenanceJob"]
     end
-    class INGEST,TRANS,MAINT spark;
+    class INGEST,TRANS,SRV,PUSH,MAINT spark;
 
-    subgraph S_NESSIE ["❄️ Lakehouse Storage (Nessie / Iceberg)"]
-        STG[("nessie.stg.*<br/>(Staging Overwrite)")]
-        FND[("nessie.fnd.*<br/>(Foundation Layer)")]
-        DW[("nessie.dw.*<br/>(Warehouse Dim & Fact)")]
+    subgraph LAKE ["Nessie / Iceberg"]
+        STG[("nessie.stg.*")]
+        FND[("nessie.fnd.*")]
+        DW[("nessie.dw.*")]
+        SRV_TBL[("nessie.srv.*")]
     end
-    class STG,FND,DW nessie;
+    class STG,FND,DW,SRV_TBL nessie;
 
-    ES[("Elasticsearch Cluster<br/>(Search Indices)")]
+    CH[("ClickHouse report.*")]
+    class CH clickhouse;
+
+    UI["Report Dashboard<br/>Go :8090 + React :8092"]
+    class UI ui;
+
+    ES[("Elasticsearch")]
     class ES elastic;
 
-    %% Connections
-    %% Real-time
-    PG_RAW -.->|Dynamic ID Load| OP & PP
-    OP -->|Produce| T_ORDER
-    PP -->|Produce| T_PAY
-    T_ORDER & T_PAY ==>|Consume| KC
-    KC -->|Write Back Transactions| PG_RAW
-    KC -->|Index Nested Docs| ES
+    PG_RAW -.-> OP & PP
+    OP --> T_ORDER
+    PP --> T_PAY
+    T_ORDER & T_PAY --> KC
+    KC --> PG_RAW
+    KC --> ES
 
-    %% Ingestion
-    DAG_M & DAG_I -->|Trigger Ingestion| INGEST
-    PG_RAW -->|JDBC Read| INGEST
-    INGEST -->|Write Overwrite| STG
-    STG -->|Merge/Overwrite| FND
+    DAG_M & DAG_I --> INGEST
+    PG_RAW --> INGEST
+    INGEST --> STG --> FND
+    DAG_T --> TRANS
+    FND --> TRANS --> DW
+    TRANS --> SRV --> SRV_TBL
+    SRV_TBL --> PUSH --> CH
+    DAG_MA --> MAINT
+    MAINT --> FND & DW & STG
 
-    %% Transformation
-    DAG_T -->|Trigger Sequential DW| TRANS
-    FND -->|spark.table Read| TRANS
-    TRANS -->|Write Overwrite| STG
-    STG -->|Merge/Overwrite| DW
-
-    %% Maintenance
-    DAG_MA -->|Daily Scheduled| MAINT
-    MAINT -->|Compaction / Expire Snapshots / Orphan Clean| FND & DW & STG
+    CH --> UI
 ```
+
+**Luồng báo cáo:** Spark transform → `nessie.srv.*` → `PushServingToClickHouseJob` → ClickHouse `report.*` → Go API → React UI.
 
 ---
 
-## 📂 2. Cấu Trúc Mã Nguồn (Repository Layout)
+## 2. Cấu trúc repository
 
-Mã nguồn được tổ chức module hóa theo tiêu chuẩn dự án lớn:
-
-```bash
-implements_new_dataplatform/
-├── dags/                        # Module điều phối và sinh dữ liệu nền (Airflow)
-│   ├── jobs/                    # Kịch bản sinh dữ liệu & Cấu hình bảng
-│   │   ├── table_configs.yaml   # Cấu hình Metadata của tất cả các bảng (FND & Ingest)
-│   │   └── spark_generic_ingest.py # Khởi tạo Task KubernetesPodOperator động cho Spark
-│   ├── pipelines/               # Khai báo cấu trúc các DAG lập lịch Airflow
-│   │   ├── spark_master_data_ingest_pipeline.py  # Ingestion Master Data (Full)
-│   │   ├── spark_transaction_data_ingest_pipeline.py # Ingestion Giao dịch (Incremental)
-│   │   ├── spark_dw_transform_pipeline.py        # DAG biến đổi Dimensions & Facts DW
-│   │   ├── spark_dw_partition_realignment_pipeline.py # DAG quy hoạch phân hoạch 1 lần
-│   │   └── spark_dw_maintenance_pipeline.py      # DAG chạy nén file bảo trì hàng ngày
-│   └── deploy_airflow.sh        # Script đồng bộ DAGs lên Kubernetes (qua MinIO)
+```text
+kaizen_data_platform/
+├── dags/                              # Airflow DAGs & jobs (sync lên MinIO)
+│   ├── jobs/                          # Python jobs, table_configs.yaml, clickhouse_utils
+│   ├── pipelines/                     # DAG definitions
+│   ├── schema_manager/clickhouse/     # DDL bundled cho Airflow (sync cùng DAGs)
+│   ├── deploy_airflow.sh              # Upload DAGs → MinIO bucket airflow
+│   └── config.k3s-new                 # kubeconfig (gitignore — copy thủ công)
 │
 ├── projects/
-│   ├── stream-processing/       # Module xử lý luồng thời gian thực (Apache Flink - Java)
-│   │   ├── src/main/java/
-│   │   │   └── com/kaizen/flink/
-│   │   │       ├── entrypoint/
-│   │   │       │   ├── KaizenConsumerJob.java # Consumer tích hợp ghi Postgres & ES
-│   │   │       │   ├── OrderProducerJob.java  # Producer sinh đơn hàng Pareto -> Kafka
-│   │   │       │   └── PaymentProducerJob.java # Producer sinh giao dịch thanh toán -> Kafka
-│   │   │       ├── simulate/
-│   │   │       │   ├── IdPool.java            # Bộ đệm RAM lưu ID để đảm bảo tính toàn vẹn
-│   │   │       │   ├── OrderSimulator.java    # Bộ giả lập đơn hàng phân phối Pareto
-│   │   │       │   └── PaymentSimulator.java  # Bộ giả lập giao dịch thanh toán
-│   │   │       ├── model/                 # POJO Java biểu diễn dữ liệu (Order, Payment,...)
-│   │   │       ├── utils/                 # Hàm tiện ích kết nối JDBC & Serialize JSON
-│   │   │       ├── config/                # Nạp cấu hình từ file config.ini
-│   │   │       ├── source/                # Cấu hình KafkaSourceBuilder
-│   │   │       └── sink/                  # Cấu hình KafkaSink & EsSink
-│   │   ├── src/main/resources/  # File cấu hình config.ini & log4j2
-│   │   └── deploy_stream.sh     # Script quản lý Flink (build, upload, start, stop, clean)
-│   │
-│   └── batch-processing/        # Module xử lý lô phân tích (Apache Spark - Scala)
-│       ├── src/main/scala/
-│       │   ├── com/kaizen/spark/ingest/
-│       │   │   └── GenericIngestJob.scala  # Job Ingestion đa tham số dùng chung
-│       │   ├── com/kaizen/spark/processing/
-│       │   │   ├── ProcessDimProduct.scala  # Biến đổi chiều Product
-│       │   │   ├── ProcessDimCustomer.scala # Biến đổi chiều Customer
-│       │   │   ├── ProcessDimShop.scala     # Biến đổi chiều Shop
-│       │   │   ├── ProcessDimEmployee.scala # Biến đổi chiều Employee
-│       │   │   ├── ProcessDimPromotion.scala # Biến đổi chiều Promotion (SCD1 Watermark)
-│       │   │   ├── ProcessDimVoucher.scala  # Biến đổi chiều Voucher (Denormalized SCD1)
-│       │   │   ├── ProcessFactSalesTransaction.scala # Biến đổi Fact bán hàng
-│       │   │   ├── ProcessFactReturnTransaction.scala # Biến đổi Fact trả hàng
-│       │   │   └── ProcessFactPaymentTransaction.scala # Biến đổi Fact thanh toán (SUCCESS only)
-│       │   ├── com/kaizen/spark/utility/
-│       │   │   ├── PartitionRealignmentJob.scala # Phân hoạch lại dữ liệu lịch sử
-│       │   │   └── IcebergMaintenanceJob.scala   # Nén file compaction & dọn dẹp snapshots
-│       │   └── com/kaizen/spark/utils/
-│       │       └── SparkIOUtils.scala       # Thư viện I/O dùng chung (Kryo, Merge, Watermark)
-│       └── deploy_batch.sh      # Script đóng gói và upload Spark JAR lên MinIO
+│   ├── stream-processing/             # Flink (Java) + deploy_stream.sh
+│   ├── batch-processing/                # Spark (Scala) + deploy_batch.sh
+│   ├── backend/                         # Go Report API
+│   ├── frontend/                        # React + Vite Report UI
+│   └── run_local.sh                     # Một lệnh: CH + backend + frontend
 │
-├── schema_manager/              # Quản lý cấu trúc dữ liệu toàn hệ thống
-│   ├── postgres_source/         # Các script DDL SQL khởi tạo bảng PostgreSQL
-│   └── clean_data.sh            # Script dọn dẹp (truncate DB & clear ES document)
+├── schema_manager/                    # DDL toàn hệ thống
+│   ├── postgres_source/               # PostgreSQL DDL
+│   ├── elasticsearch/                 # ES index mappings
+│   └── clickhouse/                    # ClickHouse DDL + views (source of truth)
 │
-└── .gitignore                   # Cấu hình bỏ qua các file build/cache/credentials cục bộ
+├── clean_data.sh                      # Reset PG + ES (local, gitignore)
+├── check_*.sh, clear_*.sh, ...        # Ops/monitor scripts (local, gitignore)
+└── .gitignore
+```
+
+Chi tiết schema: xem [schema_manager/README.md](schema_manager/README.md).  
+Chi tiết Report UI: xem [projects/README.md](projects/README.md).
+
+---
+
+## 3. Yêu cầu môi trường
+
+### Dev chính (build + deploy K3s)
+
+| Tool | Dùng cho |
+|------|----------|
+| **kubectl** + **kubeconfig** | Port-forward, deploy Flink/Spark pods |
+| **Gradle** + **JDK 17+** | Build batch/stream JAR (không có `gradlew` trong repo) |
+| **Go 1.21+** | Build Report API |
+| **Node.js 18+** / **npm** | Frontend dev server |
+| **mc** hoặc **aws cli** | Upload JAR/DAGs lên MinIO |
+
+### Đồng nghiệp (chỉ xem report)
+
+| Tool | Dùng cho |
+|------|----------|
+| **Tailscale** (cùng tailnet) | Kết nối ClickHouse qua NodePort |
+| **Go** + **Node.js** | Chạy `./run_local.sh` |
+| Không cần kubectl / kubeconfig | Dùng `backend/.env.tailscale.example` |
+
+### Không có trong git (tự tạo khi build)
+
+| Bị ignore | Tạo lại bằng |
+|-----------|--------------|
+| `**/.env` | Copy từ `.env.example` hoặc `.env.tailscale.example` |
+| `**/build/`, `*.jar` | `gradle build`, `go build` |
+| `node_modules/`, `dist/` | `npm install` |
+| `dags/config.k3s-new` | Admin cung cấp riêng |
+
+---
+
+## 4. Clone & thiết lập lần đầu
+
+```bash
+git clone <repo-url> kaizen_data_platform
+cd kaizen_data_platform
+
+# kubeconfig — bắt buộc cho dev deploy (không có trong git)
+cp /path/to/kubeconfig dags/config.k3s-new
+# hoặc: cp ... ~/.kube/config.k3s-new
+
+# Report UI — dev có kubectl
+cd projects
+cp backend/.env.example backend/.env    # localhost:9000, auto port-forward
+./run_local.sh                            # → http://localhost:8092
+```
+
+**Đồng nghiệp (Tailscale only):**
+
+```bash
+cd projects/backend
+cp .env.tailscale.example .env   # CLICKHOUSE_HOST=100.104.250.97, PORT=30900
+cd .. && ./run_local.sh
 ```
 
 ---
 
-## 🛠️ 3. Hướng Dẫn Vận Hành Hệ Thống (Quick Start Playbook)
+## 5. Quick Start — Data platform
 
-Thực hiện tuần tự các bước dưới đây trên terminal của máy host để khởi chạy hệ thống:
+Thực hiện tuần tự trên máy dev (đã có kubeconfig):
 
-### Bước 1: Dọn dẹp dữ liệu cũ (Reset)
+### Bước 1: Dọn dẹp dữ liệu cũ (tùy chọn)
+
 ```bash
-cd schema_manager
-./clean_data.sh
+./clean_data.sh          # script ở root repo (local, không track git)
 ```
 
-### Bước 2: Biên dịch và Khởi chạy Flink Streaming
+### Bước 2: Flink streaming
+
 ```bash
-cd ../projects/stream-processing
+cd projects/stream-processing
 ./deploy_stream.sh stream
 ```
 
-### Bước 3: Biên dịch Spark Batch & Upload Airflow DAGs
+### Bước 3: Spark batch + Airflow DAGs
+
 ```bash
-# 1. Build & deploy Spark Scala Jar lên MinIO
+# Build & upload Spark JAR → MinIO bucket spark
 cd ../batch-processing
 ./deploy_batch.sh deploy
 
-# 2. Upload Airflow DAGs lên MinIO
+# Upload DAGs → MinIO bucket airflow
 cd ../../dags
 ./deploy_airflow.sh upload
 ```
 
-### Bước 4: Chạy luồng phân tích trên Airflow UI
-1. Truy cập Airflow Web UI.
-2. Trigger **`master_data_pipeline`** để sinh dữ liệu nền.
-3. Kích hoạt **`spark_master_data_ingest_pipeline`** để nạp dữ liệu Master vào tầng Foundation (`fnd`).
-4. **`spark_dw_transform_pipeline`** sẽ biến đổi dữ liệu thô sang các chiều và sự kiện trong kho DW (`dw.dim_*` và `dw.fact_*`) theo thứ tự tuần tự hóa tối ưu.
+### Bước 4: Chạy pipeline trên Airflow UI
+
+1. Trigger **`master_data_pipeline`** — sinh master data PostgreSQL.
+2. **`spark_master_data_ingest_pipeline`** — ingest master → `nessie.fnd.*`.
+3. **`spark_transaction_data_ingest_pipeline`** — ingest giao dịch incremental.
+4. **`spark_dw_transform_pipeline`** — transform DW + serving + push ClickHouse.
+5. Hoặc để **`sil_daily_pipeline`** chạy tự động lúc 00:30 (ingest → transform).
+
+### Bước 5: Xem báo cáo
+
+```bash
+cd projects && ./run_local.sh
+```
+
+Mở http://localhost:8092 — tab Financial Report & Fund Report.
 
 ---
 
-## ❄️ 4. Thiết Kế Tầng Data Warehouse Lakehouse (Nessie / Iceberg)
+## 6. Report Dashboard (local UI)
 
-### A. Tầng Foundation (`nessie.fnd.*`)
-Được nạp gia tăng (Incremental Ingestion) từ PostgreSQL bằng `GenericIngestJob` dựa trên watermark cột `ModifiedDate`/`CreatedDate` hoặc bộ lọc khoảng thời gian `[fromDate, toDate)` của Airflow.
+UI **không deploy lên K3s** — chạy local, đọc data từ ClickHouse trên cluster.
 
-### B. Tầng Warehouse (`nessie.dw.*`)
-Các bảng Dimension và Fact được xử lý tuần tự để tránh nghẽn tài nguyên cluster:
-`Product >> Customer >> Shop >> Employee >> Promotion >> Voucher >> Sales Fact >> Returns Fact >> Payments Fact`.
+| Thành phần | Port | Mô tả |
+|------------|------|--------|
+| Frontend (Vite + React) | **8092** | Bảng báo cáo, format số |
+| Backend (Go API) | **8090** | Query ClickHouse `report.*` |
+| ClickHouse (kubectl forward) | **9000** | Native protocol — dev chính |
+| ClickHouse (Tailscale NodePort) | **30900** | `clickhouse-shared` — đồng nghiệp |
 
-* **`dim_voucher` (SCD Type 1 - Watermark):** Ghép nối phi bình thường hóa (denormalize) từ `VoucherSeries`, `Voucher` và `Promotion` với `VoucherSeriesCode` làm khóa chính để liên kết trực tiếp với Fact giao dịch.
-* **`fact_payment_transaction` (SCD Type 1 - Incremental):** Chỉ lấy các giao dịch thanh toán thành công (`Status = 'SUCCESS'`). Bộ lọc thời gian quét cả hai cột `CreatedDate` hoặc `ModifiedDate` để tránh bỏ sót các cập nhật giao dịch muộn.
-  ```scala
-  .filter((col("CreatedDate") >= fromTs && col("CreatedDate") < toTs) || 
-          (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs))
-  ```
+**Kết nối ClickHouse (chọn một):**
 
----
+| Ai | Cách | Config |
+|----|------|--------|
+| Dev có kubectl | `./run_local.sh` tự port-forward | `backend/.env` → `localhost:9000` |
+| Đồng nghiệp Tailscale | Nối thẳng NodePort | `cp .env.tailscale.example .env` |
+| LAN (không Tailscale) | NodePort IP LAN | `SKIP_K8S_FORWARD=1`, host + port 30900 |
 
-## ⚙️ 5. Quy Hoạch Partition & Bảo Trì Định Kỳ (Maintenance)
+```text
+[Mac local]  run_local.sh
+  frontend :8092  →  backend :8090  →  ClickHouse (K3s)
+                                         ↑
+                    Tailscale: 100.104.250.97:30900 (clickhouse-shared)
+```
 
-Hệ thống được thiết kế tự động chống phân mảnh file và giải phóng dung lượng lưu trữ:
+Hướng dẫn chi tiết: **[projects/README.md](projects/README.md)**
 
-### A. Quy hoạch Phân hoạch Lịch sử (Partition Realignment)
-Chạy DAG **`spark_dw_partition_realignment_pipeline`** một lần duy nhất. Job này sẽ tự động:
-1. Tiến hóa phân hoạch (Partition Evolution) cho các bảng giao dịch FND và DW theo Ngày (`days(TransactionDate)` hoặc `days(CreatedDate)`).
-2. Viết lại toàn bộ dữ liệu lịch sử vào các thư mục phân hoạch ngày tương ứng bằng lệnh:
-   ```sql
-   CALL nessie.system.rewrite_data_files(table => 'tên_bảng')
-   ```
-
-### B. Bảo trì & Chống phân mảnh hàng ngày (Daily Maintenance)
-DAG **`spark_dw_maintenance_pipeline`** tự động chạy vào lúc **2:00 AM hàng ngày** để:
-1. **Nén file (Compaction):** Gộp các file Parquet phân mảnh nhỏ phát sinh trong ngày thành các file lớn tối ưu ~512MB trên MinIO.
-2. **Xóa snapshot cũ (Expire Snapshots):** Giữ lại tối đa 5 snapshot gần nhất đối với các bảng DW/FND và **chỉ 1 snapshot gần nhất** đối với các bảng tạm Staging (`nessie.stg.*`), giải phóng toàn bộ các file cũ của các lần ghi đè trước đó.
-3. **Dọn dẹp file mồ côi (Remove Orphan Files):** Xóa vật lý các tệp tin rác không còn được tham chiếu khỏi hệ thống lưu trữ đối tượng.
+**Phân tích BI (Superset):** `./publish_superset.sh --force --embed` — xem [projects/docs/publish-superset.md](projects/docs/publish-superset.md)
 
 ---
 
-## ⚡ 6. Chi Tiết Công Nghệ Xử Lý Luồng Thời Gian Thực (Flink Event Streaming)
+## 7. Lakehouse DW (Nessie / Iceberg)
 
-Kiến trúc streaming được xây dựng trên Apache Flink (Java) để giả lập và tiêu thụ các luồng dữ liệu mua hàng và thanh toán liên tục:
+### Tầng Foundation (`nessie.fnd.*`)
 
-### A. Giả lập đơn hàng phân phối Pareto (`OrderProducerJob`)
-* **Nhiệm vụ:** Đọc danh sách ID khách hàng và sản phẩm từ PostgreSQL vào `IdPool` khi khởi động. Sau đó giả lập liên tục dữ liệu đơn hàng và đẩy lên Kafka topic `order-bundles`.
-* **Phân phối Pareto (80/20 Rule):** Job sử dụng thuật toán phân phối Pareto để lựa chọn khách hàng và sản phẩm. Điều này mô phỏng chính xác môi trường thực tế nơi:
-  * **80% giao dịch** được thực hiện bởi **20% nhóm khách hàng trung thành**.
-  * **80% doanh thu** đến từ **20% danh mục sản phẩm hot**.
-* **Đóng gói cấu trúc:** Gộp thông tin đơn hàng và danh sách chi tiết mặt hàng (`OrderItem`) thành một cấu trúc JSON lồng nhau (nested JSON) trước khi đẩy vào Kafka.
+Ingest incremental từ PostgreSQL qua `GenericIngestJob`, watermark `ModifiedDate`/`CreatedDate` hoặc khoảng `[fromDate, toDate)` từ Airflow params.
 
-### B. Giả lập luồng thanh toán giao dịch (`PaymentProducerJob`)
-* **Nhiệm vụ:** Đọc danh sách ID đơn hàng/đơn trả hiện có, sinh ngẫu nhiên các giao dịch thanh toán tương ứng và đẩy lên Kafka topic `payment-bundles`.
-* **Đa hình thanh toán:** Sinh giao dịch thanh toán đơn hàng (Order Payment) hoặc giao dịch hoàn tiền (Return Payment) sử dụng các loại hình thanh toán ngẫu nhiên (Tiền mặt, thẻ tín dụng, ví điện tử) lấy từ danh mục Master Data.
+### Tầng Warehouse (`nessie.dw.*`)
 
-### C. Bộ tiêu thụ hợp nhất & Đồng bộ hóa (`KaizenConsumerJob`)
-Đây là bộ não của luồng streaming, thực hiện tiêu thụ đồng thời cả hai topic từ Kafka và phân phối ghi xuống các Storage Sinks:
-1. **Ghi nhận quan hệ PostgreSQL (JDBC Sink):**
-   * Bóc tách các gói JSON lồng nhau và thực hiện ghi song song vào các bảng quan hệ tương ứng (`Order`, `OrderItem`, `Payment`, `Transaction`, v.v.).
-   * **Cơ chế chống lỗi khóa ngoại (FK Constraint Integrity):** Flink kiểm tra sự tồn tại của đơn hàng gốc (`OrderId`) trước khi lưu vết thanh toán (`OrderPayment`). Nếu đơn hàng chưa được nạp (out-of-order event do trễ mạng), Flink sẽ tự động **bỏ qua bản tin thanh toán** đó. Hệ thống simulator sẽ tự động sinh lại bản tin thanh toán ở giây tiếp theo khi đơn hàng gốc đã được ghi nhận thành công, bảo vệ cơ sở dữ liệu khỏi các ràng buộc rác hoặc xung đột khóa ngoại.
-2. **Chỉ mục tìm kiếm Elasticsearch (Elasticsearch Sink):**
-   * Ghi trực tiếp các gói JSON dạng tài liệu lồng nhau (Nested Document) vào Elasticsearch indices `orders` và `payment-bundles`. Điều này tối ưu hóa việc tìm kiếm và truy vấn báo cáo tổng hợp sau này trên giao diện tìm kiếm mà không cần thực hiện các phép join SQL phức tạp.
+Transform tuần tự để tránh nghẽn cluster:
 
+`Product → Customer → Shop → Employee → Promotion → Voucher → Sales → Returns → Payments → Promotion Cost → COGS`
+
+### Tầng Serving (`nessie.srv.*`) + ClickHouse
+
+- `ProcessSrvFinancialReport`, `ProcessSrvFundReport` — aggregate serving trên Iceberg.
+- `PushServingToClickHouseJob` — đẩy window 1 tháng sang ClickHouse hot layer (`report` database).
+- DDL: `schema_manager/clickhouse/` — bảng native + views tiếng Việt.
+
+**Ví dụ filter fact payment (chỉ SUCCESS):**
+
+```scala
+.filter((col("CreatedDate") >= fromTs && col("CreatedDate") < toTs) ||
+        (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs))
+```
+
+---
+
+## 8. Bảo trì & partition
+
+### Partition realignment (một lần)
+
+DAG **`spark_dw_partition_realignment_pipeline`** — partition evolution theo ngày + rewrite data files:
+
+```sql
+CALL nessie.system.rewrite_data_files(table => 'tên_bảng')
+```
+
+### Daily maintenance (02:00 AM)
+
+DAG **`spark_dw_maintenance_pipeline`**:
+
+1. **Compaction** — gộp file Parquet nhỏ (~512MB).
+2. **Expire snapshots** — giữ 5 snapshot (DW/FND), 1 snapshot (`stg.*`).
+3. **Remove orphan files** — dọn file mồ côi trên object storage.
+
+---
+
+## 9. Flink streaming
+
+| Job | Vai trò |
+|-----|---------|
+| `OrderProducerJob` | Giả lập đơn hàng Pareto 80/20 → Kafka `order-bundles` |
+| `PaymentProducerJob` | Giả lập thanh toán → Kafka `payment-bundles` |
+| `KaizenConsumerJob` | Consume → ghi PostgreSQL (JDBC) + Elasticsearch (nested docs) |
+
+**FK integrity:** Consumer bỏ qua payment nếu order chưa tồn tại; simulator sinh lại ở tick sau.
+
+Deploy: `projects/stream-processing/deploy_stream.sh {build|upload|stream|stop|clean}`
+
+---
+
+## 10. Script deploy & tham chiếu
+
+### Script có trong git (sau `git pull`)
+
+| Script | Mô tả |
+|--------|--------|
+| `projects/run_local.sh` | Report UI full stack |
+| `projects/backend/deploy_backend.sh` | `build` / `run` / `clean` Go API |
+| `projects/frontend/deploy_frontend.sh` | `run` / `build` / `clean` React |
+| `projects/batch-processing/deploy_batch.sh` | Build Spark JAR + upload MinIO |
+| `projects/stream-processing/deploy_stream.sh` | Build Flink JAR + deploy cluster |
+| `dags/deploy_airflow.sh` | Sync DAGs + schema ClickHouse lên MinIO |
+| `dags/patch_airflow_dag_sync.sh` | Patch sync DAG |
+
+### Script ops ở root (local, không track git)
+
+`clean_data.sh`, `check_nessie.sh`, `check_spark_cluster.sh`, `clear_nessie_*.sh`, … — giữ backup riêng hoặc copy từ máy dev chính sau clone mới.
+
+### Services ClickHouse trên K3s (namespace `databases`)
+
+| Service | Type | Port dùng |
+|---------|------|-----------|
+| `clickhouse-service` | ClusterIP | 9000 / 8123 (trong cluster, port-forward) |
+| `clickhouse-shared` | NodePort | **30900** (native) / 30123 (HTTP) — Tailscale/LAN |
+
+### Airflow DAGs chính
+
+| DAG | Mô tả |
+|-----|--------|
+| `master_data_pipeline` | Sinh master data PG |
+| `incremental_data_pipeline` | Sinh giao dịch incremental |
+| `spark_master_data_ingest_pipeline` | Ingest master → FND |
+| `spark_transaction_data_ingest_pipeline` | Ingest transaction → FND |
+| `spark_dw_transform_pipeline` | DW + serving + push ClickHouse |
+| `sil_daily_pipeline` | Daily 00:30: ingest → transform |
+| `spark_dw_maintenance_pipeline` | Compaction + snapshot cleanup |
+| `spark_dw_partition_realignment_pipeline` | Partition realignment (once) |
+| `spark_transaction_simulation_pipeline` | Mô phỏng giao dịch batch |
+
+---
+
+## Liên kết nhanh
+
+| Tài liệu | Nội dung |
+|----------|----------|
+| **[docs/DEPLOY.md](docs/DEPLOY.md)** | **Hướng dẫn deploy toàn bộ platform** |
+| [projects/docs/publish-superset.md](projects/docs/publish-superset.md) | Publish Superset + BI embed |
+| [projects/README.md](projects/README.md) | Report UI, Tailscale, ports |
+| [schema_manager/README.md](schema_manager/README.md) | DDL Postgres, ES, ClickHouse |
+| [projects/backend/README.md](projects/backend/README.md) | Go API endpoints |
+| [projects/frontend/README.md](projects/frontend/README.md) | Frontend dev |

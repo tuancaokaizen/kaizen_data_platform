@@ -1,0 +1,80 @@
+id: db_quy_pttt
+title: Theo phương thức thanh toán và cửa hàng
+dataset: v_bao_cao_quy_tong_hop
+slug: quy-pttt-cua-hang
+native_filters:
+- column: NgayBaoCao
+  type: filter_time
+  label: Khoảng ngày
+- column: MaCuaHang
+  type: filter_select
+  label: Cửa hàng
+  multi: true
+  select_all: true
+- column: TenPhuongThucThanhToan
+  type: filter_select
+  label: Phương thức thanh toán
+  multi: true
+  search: true
+layout:
+  row1_kpi:
+  - chart: kpi_thu
+    viz: big_number_total
+    metric: SUM(TongThu)
+    title: Tổng thu
+  - chart: kpi_rong
+    viz: big_number_total
+    metric: SUM(DongTienRong)
+    title: Dòng tiền ròng
+  - chart: kpi_chenh_lech
+    viz: big_number_total
+    metric: SUM(ChenhLechDoiSoat)
+    title: Chênh lệch đối soát
+    conditional_formatting:
+    - if: '!= 0'
+      color: red
+  row2_mix:
+  - chart: pie_pttt
+    viz: pie
+    groupby:
+    - TenPhuongThucThanhToan
+    metric: SUM(TongThu)
+    title: Cơ cấu thu theo PTTT
+  - chart: bar_pttt_rong
+    viz: echarts_timeseries_bar
+    x: TenPhuongThucThanhToan
+    categorical: true
+    metric: SUM(DongTienRong)
+    title: Dòng tiền ròng theo PTTT
+    orientation: horizontal
+  row3_trend:
+  - chart: mixed_thu_chi
+    viz: mixed_timeseries
+    x: NgayBaoCao
+    metrics:
+    - SUM(TongThu)
+    - SUM(TongChi)
+    - SUM(DongTienRong)
+    title: Thu — Chi — Ròng theo thời gian
+  row4_shop:
+  - chart: bar_shop_rong
+    viz: echarts_timeseries_bar
+    x: TenCuaHang
+    categorical: true
+    metric: SUM(DongTienRong)
+    title: Top cửa hàng — dòng tiền ròng
+    sort: desc
+    row_limit: 12
+    orientation: horizontal
+  row5_alert:
+  - chart: table_doi_soat
+    viz: table
+    filter_sql: ChenhLechDoiSoat != 0
+    columns:
+    - NgayBaoCao
+    - TenCuaHang
+    - TenPhuongThucThanhToan
+    - ChenhLechDoiSoat
+    - TongThu
+    - TongChi
+    title: Bảng chênh lệch đối soát

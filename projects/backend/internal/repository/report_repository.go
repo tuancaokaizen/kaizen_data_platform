@@ -6,6 +6,7 @@ import (
 	"time"
 
 	clickhouse "github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
 type ReportRepository struct {
@@ -17,10 +18,21 @@ func NewReportRepository(conn clickhouse.Conn, queryTimeout time.Duration) *Repo
 	return &ReportRepository{conn: conn, queryTimeout: queryTimeout}
 }
 
-type FinancialRow struct {
+// ReportRow is a unified row shape for all report views / Dòng báo cáo thống nhất cho mọi view
+type ReportRow struct {
 	ReportDate         time.Time `json:"reportDate"`
-	ShopCode           string    `json:"shopCode"`
-	ShopName           string    `json:"shopName"`
+	ShopCode           string    `json:"shopCode,omitempty"`
+	ShopName           string    `json:"shopName,omitempty"`
+	ProductId          string    `json:"productId,omitempty"`
+	ProductName        string    `json:"productName,omitempty"`
+	ProductLineCode    string    `json:"productLineCode,omitempty"`
+	ProductLineName    string    `json:"productLineName,omitempty"`
+	DocumentType       string    `json:"documentType,omitempty"`
+	OrderId            string    `json:"orderId,omitempty"`
+	ReturnId           string    `json:"returnId,omitempty"`
+	EmployeeSaleId     string    `json:"employeeSaleId,omitempty"`
+	OrderStatus        string    `json:"orderStatus,omitempty"`
+	PaymentMethodName  string    `json:"paymentMethodName,omitempty"`
 	SalesQuantity      int64     `json:"salesQuantity"`
 	ReturnQuantity     int64     `json:"returnQuantity"`
 	GrossRevenue       float64   `json:"grossRevenue"`
@@ -31,23 +43,6 @@ type FinancialRow struct {
 	TotalCost          float64   `json:"totalCost"`
 	GrossProfit        float64   `json:"grossProfit"`
 	ProfitMargin       float64   `json:"profitMargin"`
-}
-
-type FinancialSummary struct {
-	TotalSalesQuantity  int64   `json:"totalSalesQuantity"`
-	TotalReturnQuantity int64   `json:"totalReturnQuantity"`
-	TotalGrossRevenue   float64 `json:"totalGrossRevenue"`
-	TotalReturnAmount   float64 `json:"totalReturnAmount"`
-	TotalNetRevenue     float64 `json:"totalNetRevenue"`
-	TotalCost           float64 `json:"totalCost"`
-	TotalGrossProfit    float64 `json:"totalGrossProfit"`
-}
-
-type FundRow struct {
-	ReportDate         time.Time `json:"reportDate"`
-	ShopCode           string    `json:"shopCode"`
-	ShopName           string    `json:"shopName"`
-	PaymentMethodName  string    `json:"paymentMethodName"`
 	TotalReceipts      float64   `json:"totalReceipts"`
 	TotalExpenditures  float64   `json:"totalExpenditures"`
 	NetCashFlow        float64   `json:"netCashFlow"`
@@ -56,51 +51,74 @@ type FundRow struct {
 	ReconciliationDiff float64   `json:"reconciliationDiff"`
 }
 
-type FundSummary struct {
-	TotalReceipts      float64 `json:"totalReceipts"`
-	TotalExpenditures  float64 `json:"totalExpenditures"`
-	TotalNetCashFlow   float64 `json:"totalNetCashFlow"`
-	TotalOrderAmount   float64 `json:"totalOrderAmount"`
-	TotalReturnAmount  float64 `json:"totalReturnAmount"`
-	ReconciliationDiff float64 `json:"reconciliationDiff"`
+type ReportSummary struct {
+	TotalSalesQuantity  int64   `json:"totalSalesQuantity"`
+	TotalReturnQuantity int64   `json:"totalReturnQuantity"`
+	TotalGrossRevenue   float64 `json:"totalGrossRevenue"`
+	TotalReturnAmount   float64 `json:"totalReturnAmount"`
+	TotalNetRevenue     float64 `json:"totalNetRevenue"`
+	TotalCost           float64 `json:"totalCost"`
+	TotalGrossProfit    float64 `json:"totalGrossProfit"`
+	TotalReceipts       float64 `json:"totalReceipts"`
+	TotalExpenditures   float64 `json:"totalExpenditures"`
+	TotalNetCashFlow    float64 `json:"totalNetCashFlow"`
+	TotalOrderAmount    float64 `json:"totalOrderAmount"`
+	TotalReturnAmtFund  float64 `json:"totalReturnAmountFund"`
+	ReconciliationDiff  float64 `json:"reconciliationDiff"`
+}
+
+func normalizeFinancialView(view string) string {
+	switch view {
+	case FinancialViewDetail, FinancialViewProduct, FinancialViewOrder:
+		return view
+	default:
+		return FinancialViewShop
+	}
+}
+
+func normalizeFundView(view string) string {
+	switch view {
+	case FundViewShop, FundViewOrder:
+		return view
+	default:
+		return FundViewPayment
+	}
 }
 
 func (r *ReportRepository) GetFinancialReport(
 	ctx context.Context,
 	fromDate time.Time,
 	toDate time.Time,
-	shopCode string,
+	view string,
+	filter FinancialFilter,
 	page int,
 	pageSize int,
-) ([]FinancialRow, int64, error) {
+) ([]ReportRow, int64, error) {
+	view = normalizeFinancialView(view)
+	spec := financialViewSpecFor(view)
+
 	queryCtx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
-	// Build dynamic where clause against Vietnamese view columns / Tạo where clause theo cột tiếng Việt của view
 	where := "`NgayBaoCao` >= ? AND `NgayBaoCao` <= ?"
 	args := []any{fromDate, toDate}
-	if shopCode != "" {
-		where += " AND `MaCuaHang` = ?"
-		args = append(args, shopCode)
-	}
+	where, args = appendFinancialFilters(view, filter, where, args)
 
-	countSQL := fmt.Sprintf("SELECT count() FROM report.v_bao_cao_tai_chinh_tong_hop WHERE %s", where)
+	countSQL := fmt.Sprintf("SELECT count() FROM %s WHERE %s", spec.table, where)
 	var total uint64
 	if err := r.conn.QueryRow(queryCtx, countSQL, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	offset := (page - 1) * pageSize
-	dataSQL := fmt.Sprintf(`
-		SELECT
-			`+"`NgayBaoCao`, `MaCuaHang`, `TenCuaHang`, `SoLuongBan`, `SoLuongTra`,"+`
-			`+"`DoanhThuGop`, `GiaTriTraHang`, `DoanhThuThuan`, `TongGiaVon`,"+`
-			`+"`TongChiPhiKhuyenMai`, `TongChiPhi`, `LoiNhuanGop`, `BienLoiNhuan`"+`
-		FROM report.v_bao_cao_tai_chinh_tong_hop
-		WHERE %s
-		ORDER BY `+"`NgayBaoCao` DESC, `MaCuaHang`"+`
-		LIMIT ? OFFSET ?`, where)
-	args = append(args, pageSize, offset)
+	dataSQL := fmt.Sprintf(
+		"SELECT %s FROM %s WHERE %s ORDER BY %s",
+		spec.columns, spec.table, where, spec.orderBy,
+	)
+	if pageSize > 0 {
+		offset := (page - 1) * pageSize
+		dataSQL += " LIMIT ? OFFSET ?"
+		args = append(args, pageSize, offset)
+	}
 
 	rows, err := r.conn.Query(queryCtx, dataSQL, args...)
 	if err != nil {
@@ -108,14 +126,17 @@ func (r *ReportRepository) GetFinancialReport(
 	}
 	defer rows.Close()
 
-	result := make([]FinancialRow, 0, pageSize)
+	capacity := pageSize
+	if capacity <= 0 {
+		capacity = int(total)
+		if capacity == 0 {
+			capacity = 64
+		}
+	}
+	result := make([]ReportRow, 0, capacity)
 	for rows.Next() {
-		var row FinancialRow
-		if err := rows.Scan(
-			&row.ReportDate, &row.ShopCode, &row.ShopName, &row.SalesQuantity, &row.ReturnQuantity,
-			&row.GrossRevenue, &row.ReturnAmount, &row.NetRevenue, &row.TotalCogs,
-			&row.TotalPromotionCost, &row.TotalCost, &row.GrossProfit, &row.ProfitMargin,
-		); err != nil {
+		row, err := scanFinancialRow(view, rows)
+		if err != nil {
 			return nil, 0, err
 		}
 		result = append(result, row)
@@ -127,26 +148,27 @@ func (r *ReportRepository) GetFinancialSummary(
 	ctx context.Context,
 	fromDate time.Time,
 	toDate time.Time,
-	shopCode string,
-) (FinancialSummary, error) {
+	view string,
+	filter FinancialFilter,
+) (ReportSummary, error) {
+	view = normalizeFinancialView(view)
+	spec := financialViewSpecFor(view)
+
 	queryCtx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
 	where := "`NgayBaoCao` >= ? AND `NgayBaoCao` <= ?"
 	args := []any{fromDate, toDate}
-	if shopCode != "" {
-		where += " AND `MaCuaHang` = ?"
-		args = append(args, shopCode)
-	}
+	where, args = appendFinancialFilters(view, filter, where, args)
 
 	query := fmt.Sprintf(`
 		SELECT
 			sum(`+"`SoLuongBan`"+`), sum(`+"`SoLuongTra`"+`), sum(`+"`DoanhThuGop`"+`),
 			sum(`+"`GiaTriTraHang`"+`), sum(`+"`DoanhThuThuan`"+`), sum(`+"`TongChiPhi`"+`), sum(`+"`LoiNhuanGop`"+`)
-		FROM report.v_bao_cao_tai_chinh_tong_hop
-		WHERE %s`, where)
+		FROM %s
+		WHERE %s`, spec.table, where)
 
-	var summary FinancialSummary
+	var summary ReportSummary
 	err := r.conn.QueryRow(queryCtx, query, args...).Scan(
 		&summary.TotalSalesQuantity,
 		&summary.TotalReturnQuantity,
@@ -163,41 +185,36 @@ func (r *ReportRepository) GetFundReport(
 	ctx context.Context,
 	fromDate time.Time,
 	toDate time.Time,
-	shopCode string,
-	paymentMethodName string,
+	view string,
+	filter FundFilter,
 	page int,
 	pageSize int,
-) ([]FundRow, int64, error) {
+) ([]ReportRow, int64, error) {
+	view = normalizeFundView(view)
+	spec := fundViewSpecFor(view)
+
 	queryCtx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
 	where := "`NgayBaoCao` >= ? AND `NgayBaoCao` <= ?"
 	args := []any{fromDate, toDate}
-	if shopCode != "" {
-		where += " AND `MaCuaHang` = ?"
-		args = append(args, shopCode)
-	}
-	if paymentMethodName != "" {
-		where += " AND `TenPhuongThucThanhToan` = ?"
-		args = append(args, paymentMethodName)
-	}
+	where, args = appendFundFilters(view, filter, where, args)
 
-	countSQL := fmt.Sprintf("SELECT count() FROM report.v_bao_cao_quy_tong_hop WHERE %s", where)
+	countSQL := fmt.Sprintf("SELECT count() FROM %s WHERE %s", spec.table, where)
 	var total uint64
 	if err := r.conn.QueryRow(queryCtx, countSQL, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	offset := (page - 1) * pageSize
-	dataSQL := fmt.Sprintf(`
-		SELECT
-			`+"`NgayBaoCao`, `MaCuaHang`, `TenCuaHang`, `TenPhuongThucThanhToan`,"+`
-			`+"`TongThu`, `TongChi`, `DongTienRong`, `TongTienDonHang`, `TongTienHoanTra`, `ChenhLechDoiSoat`"+`
-		FROM report.v_bao_cao_quy_tong_hop
-		WHERE %s
-		ORDER BY `+"`NgayBaoCao` DESC, `MaCuaHang`, `TenPhuongThucThanhToan`"+`
-		LIMIT ? OFFSET ?`, where)
-	args = append(args, pageSize, offset)
+	dataSQL := fmt.Sprintf(
+		"SELECT %s FROM %s WHERE %s ORDER BY %s",
+		spec.columns, spec.table, where, spec.orderBy,
+	)
+	if pageSize > 0 {
+		offset := (page - 1) * pageSize
+		dataSQL += " LIMIT ? OFFSET ?"
+		args = append(args, pageSize, offset)
+	}
 
 	rows, err := r.conn.Query(queryCtx, dataSQL, args...)
 	if err != nil {
@@ -205,14 +222,17 @@ func (r *ReportRepository) GetFundReport(
 	}
 	defer rows.Close()
 
-	result := make([]FundRow, 0, pageSize)
+	capacity := pageSize
+	if capacity <= 0 {
+		capacity = int(total)
+		if capacity == 0 {
+			capacity = 64
+		}
+	}
+	result := make([]ReportRow, 0, capacity)
 	for rows.Next() {
-		var row FundRow
-		if err := rows.Scan(
-			&row.ReportDate, &row.ShopCode, &row.ShopName, &row.PaymentMethodName,
-			&row.TotalReceipts, &row.TotalExpenditures, &row.NetCashFlow,
-			&row.TotalOrderAmount, &row.TotalReturnAmount, &row.ReconciliationDiff,
-		); err != nil {
+		row, err := scanFundRow(view, rows)
+		if err != nil {
 			return nil, 0, err
 		}
 		result = append(result, row)
@@ -224,38 +244,95 @@ func (r *ReportRepository) GetFundSummary(
 	ctx context.Context,
 	fromDate time.Time,
 	toDate time.Time,
-	shopCode string,
-	paymentMethodName string,
-) (FundSummary, error) {
+	view string,
+	filter FundFilter,
+) (ReportSummary, error) {
+	view = normalizeFundView(view)
+	spec := fundViewSpecFor(view)
+
 	queryCtx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
 	where := "`NgayBaoCao` >= ? AND `NgayBaoCao` <= ?"
 	args := []any{fromDate, toDate}
-	if shopCode != "" {
-		where += " AND `MaCuaHang` = ?"
-		args = append(args, shopCode)
-	}
-	if paymentMethodName != "" {
-		where += " AND `TenPhuongThucThanhToan` = ?"
-		args = append(args, paymentMethodName)
-	}
+	where, args = appendFundFilters(view, filter, where, args)
 
 	query := fmt.Sprintf(`
 		SELECT
 			sum(`+"`TongThu`"+`), sum(`+"`TongChi`"+`), sum(`+"`DongTienRong`"+`),
 			sum(`+"`TongTienDonHang`"+`), sum(`+"`TongTienHoanTra`"+`), sum(`+"`ChenhLechDoiSoat`"+`)
-		FROM report.v_bao_cao_quy_tong_hop
-		WHERE %s`, where)
+		FROM %s
+		WHERE %s`, spec.table, where)
 
-	var summary FundSummary
+	var summary ReportSummary
 	err := r.conn.QueryRow(queryCtx, query, args...).Scan(
 		&summary.TotalReceipts,
 		&summary.TotalExpenditures,
 		&summary.TotalNetCashFlow,
 		&summary.TotalOrderAmount,
-		&summary.TotalReturnAmount,
+		&summary.TotalReturnAmtFund,
 		&summary.ReconciliationDiff,
 	)
 	return summary, err
+}
+
+func scanFinancialRow(view string, rows driver.Rows) (ReportRow, error) {
+	var row ReportRow
+	var err error
+
+	switch view {
+	case FinancialViewDetail:
+		err = rows.Scan(
+			&row.ReportDate, &row.ShopCode, &row.ShopName, &row.ProductId, &row.ProductName,
+			&row.ProductLineCode, &row.ProductLineName, &row.SalesQuantity, &row.ReturnQuantity,
+			&row.GrossRevenue, &row.ReturnAmount, &row.NetRevenue, &row.TotalCogs,
+			&row.TotalPromotionCost, &row.TotalCost, &row.GrossProfit, &row.ProfitMargin,
+		)
+	case FinancialViewProduct:
+		err = rows.Scan(
+			&row.ReportDate, &row.ProductId, &row.ProductName, &row.ProductLineCode, &row.ProductLineName,
+			&row.SalesQuantity, &row.ReturnQuantity, &row.GrossRevenue, &row.ReturnAmount, &row.NetRevenue,
+			&row.TotalCogs, &row.TotalPromotionCost, &row.TotalCost, &row.GrossProfit, &row.ProfitMargin,
+		)
+	case FinancialViewOrder:
+		err = rows.Scan(
+			&row.ReportDate, &row.ShopCode, &row.ShopName, &row.DocumentType, &row.OrderId, &row.ReturnId,
+			&row.EmployeeSaleId, &row.OrderStatus, &row.SalesQuantity, &row.ReturnQuantity,
+			&row.GrossRevenue, &row.ReturnAmount, &row.NetRevenue, &row.TotalCogs,
+			&row.TotalPromotionCost, &row.TotalCost, &row.GrossProfit, &row.ProfitMargin,
+		)
+	default:
+		err = rows.Scan(
+			&row.ReportDate, &row.ShopCode, &row.ShopName, &row.SalesQuantity, &row.ReturnQuantity,
+			&row.GrossRevenue, &row.ReturnAmount, &row.NetRevenue, &row.TotalCogs,
+			&row.TotalPromotionCost, &row.TotalCost, &row.GrossProfit, &row.ProfitMargin,
+		)
+	}
+	return row, err
+}
+
+func scanFundRow(view string, rows driver.Rows) (ReportRow, error) {
+	var row ReportRow
+	var err error
+
+	switch view {
+	case FundViewShop:
+		err = rows.Scan(
+			&row.ReportDate, &row.ShopCode, &row.ShopName, &row.TotalReceipts, &row.TotalExpenditures,
+			&row.NetCashFlow, &row.TotalOrderAmount, &row.TotalReturnAmount, &row.ReconciliationDiff,
+		)
+	case FundViewOrder:
+		err = rows.Scan(
+			&row.ReportDate, &row.OrderId, &row.ReturnId, &row.ShopCode, &row.ShopName, &row.PaymentMethodName,
+			&row.TotalReceipts, &row.TotalExpenditures, &row.NetCashFlow, &row.TotalOrderAmount,
+			&row.TotalReturnAmount, &row.ReconciliationDiff,
+		)
+	default:
+		err = rows.Scan(
+			&row.ReportDate, &row.ShopCode, &row.ShopName, &row.PaymentMethodName,
+			&row.TotalReceipts, &row.TotalExpenditures, &row.NetCashFlow, &row.TotalOrderAmount,
+			&row.TotalReturnAmount, &row.ReconciliationDiff,
+		)
+	}
+	return row, err
 }

@@ -1,6 +1,6 @@
 package com.kaizen.spark.processing
 
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
 import com.kaizen.spark.config.SparkConfig
 import com.kaizen.spark.utils.SparkIOUtils
@@ -32,12 +32,10 @@ object ProcessSrvFundReport {
       SparkIOUtils.ensureNamespaceExists(spark, "nessie.stg")
       SparkIOUtils.ensureNamespaceExists(spark, "nessie.serving")
 
-      val targetTable = "nessie.serving.fund_report"
-      val stgTable = "nessie.stg.fund_report"
+      println(
+        s"Generating Serving Fund Reports (shop+PTTT / shop / order) for range: $fromTs to $toTs"
+      )
 
-      println(s"Generating Serving Fund Report for range: $fromTs to $toTs")
-
-      // Load DW and Foundation tables
       val factPayment = spark
         .table("nessie.dw.fact_payment_transaction")
         .filter(col("CreatedDate") >= fromTs && col("CreatedDate") < toTs)
@@ -46,12 +44,9 @@ object ProcessSrvFundReport {
       val dimShop = spark.table("nessie.dw.dim_shop")
       val paymentMethodFnd = spark.table("nessie.fnd.payment_method")
 
-      // 1. Giao dịch thực tế (Dòng tiền - Cash Flow)
-      // Chỉ lấy các giao dịch thanh toán thành công (PaymentStatus = 'SUCCESS')
-      val validPayments = factPayment
-        .filter(col("PaymentStatus") === "SUCCESS")
+      val validPayments = factPayment.filter(col("PaymentStatus") === "SUCCESS")
 
-      // Aggregation 1: Dòng tiền thực tế (Cash Flow) theo ngày, cửa hàng, phương thức thanh toán
+      // Detail grain: ReportDate + Shop + PaymentMethod / Chi tiết: ngày + shop + PTTT
       val cashFlowPaymentWithShop = validPayments
         .join(orderFnd, validPayments("OrderId") === orderFnd("Id"), "inner")
         .select(
@@ -73,8 +68,6 @@ object ProcessSrvFundReport {
           sum("ExpenditureAmt").as("TotalExpenditures")
         )
 
-      // 2. Doanh thu và hoàn trả hạch toán hóa đơn (Invoice / Order / Return)
-      // Phân bổ TotalPayment của Order theo tỷ lệ đóng góp của từng phương thức thanh toán trong transaction
       val ptTotalReceipt = validPayments
         .filter(col("PaymentType") === 1)
         .groupBy("PaymentId")
@@ -108,7 +101,6 @@ object ProcessSrvFundReport {
         .groupBy("ReportDate", "ShopCode", "PaymentMethodId")
         .agg(sum("OrderAllocatedAmt").as("TotalOrderAmount"))
 
-      // Tiền hoàn trả hạch toán (Return) phân bổ theo phương thức thanh toán
       val ptTotalExpenditure = validPayments
         .filter(col("PaymentType") === 2)
         .groupBy("PaymentId")
@@ -143,8 +135,7 @@ object ProcessSrvFundReport {
         .groupBy("ReportDate", "ShopCode", "PaymentMethodId")
         .agg(sum("ReturnAllocatedAmt").as("TotalReturnAmount"))
 
-      // 3. Union distinct keys (ReportDate, ShopCode, PaymentMethodId) từ cả 3 nguồn
-      val allKeys = cashFlowAgg
+      val paymentKeys = cashFlowAgg
         .select("ReportDate", "ShopCode", "PaymentMethodId")
         .union(
           orderInvoiceAgg.select("ReportDate", "ShopCode", "PaymentMethodId")
@@ -154,89 +145,305 @@ object ProcessSrvFundReport {
         )
         .distinct()
 
-      // Ghép dữ liệu và bổ sung thông tin hiển thị
-      val reportDf = allKeys
-        .join(
-          cashFlowAgg,
-          Seq("ReportDate", "ShopCode", "PaymentMethodId"),
-          "left"
-        )
-        .join(
-          orderInvoiceAgg,
-          Seq("ReportDate", "ShopCode", "PaymentMethodId"),
-          "left"
-        )
-        .join(
-          returnInvoiceAgg,
-          Seq("ReportDate", "ShopCode", "PaymentMethodId"),
-          "left"
-        )
-        .join(dimShop, Seq("ShopCode"), "left")
-        .join(
-          paymentMethodFnd,
-          allKeys("PaymentMethodId") === paymentMethodFnd("Id"),
-          "left"
-        )
+      val paymentReportDf = withFundMetrics(
+        paymentKeys
+          .join(
+            cashFlowAgg,
+            Seq("ReportDate", "ShopCode", "PaymentMethodId"),
+            "left"
+          )
+          .join(
+            orderInvoiceAgg,
+            Seq("ReportDate", "ShopCode", "PaymentMethodId"),
+            "left"
+          )
+          .join(
+            returnInvoiceAgg,
+            Seq("ReportDate", "ShopCode", "PaymentMethodId"),
+            "left"
+          )
+          .join(dimShop, Seq("ShopCode"), "left")
+          .join(
+            paymentMethodFnd,
+            paymentKeys("PaymentMethodId") === paymentMethodFnd("Id"),
+            "left"
+          )
+          .select(
+            paymentKeys("ReportDate"),
+            paymentKeys("ShopCode"),
+            coalesce(dimShop("ShopName"), lit("Unknown")).as("ShopName"),
+            coalesce(paymentMethodFnd("Name"), lit("Unknown"))
+              .as("PaymentMethodName"),
+            coalesce(col("TotalReceipts"), lit(0.0)).as("TotalReceipts"),
+            coalesce(col("TotalExpenditures"), lit(0.0)).as("TotalExpenditures"),
+            coalesce(col("TotalOrderAmount"), lit(0.0)).as("TotalOrderAmount"),
+            coalesce(col("TotalReturnAmount"), lit(0.0)).as("TotalReturnAmount")
+          )
+      )
+
+      // Shop aggregate — rollup from payment detail / Gom theo cửa hàng
+      val shopReportDf = withFundMetrics(
+        paymentReportDf
+          .groupBy(col("ReportDate"), col("ShopCode"), col("ShopName"))
+          .agg(
+            sum(col("TotalReceipts")).as("TotalReceipts"),
+            sum(col("TotalExpenditures")).as("TotalExpenditures"),
+            sum(col("TotalOrderAmount")).as("TotalOrderAmount"),
+            sum(col("TotalReturnAmount")).as("TotalReturnAmount")
+          )
+      )
+
+      // Order grain: OrderId + PaymentMethod (+ ReturnId for refunds) / Grain theo đơn
+      val cashFlowByOrder = validPayments
+        .join(orderFnd, validPayments("OrderId") === orderFnd("Id"), "inner")
         .select(
-          allKeys("ReportDate"),
-          allKeys("ShopCode"),
-          coalesce(dimShop("ShopName"), lit("Unknown")).as("ShopName"),
-          coalesce(paymentMethodFnd("Name"), lit("Unknown"))
-            .as("PaymentMethodName"),
-          coalesce(col("TotalReceipts"), lit(0.0)).as("TotalReceipts"),
-          coalesce(col("TotalExpenditures"), lit(0.0)).as("TotalExpenditures"),
-          (coalesce(col("TotalReceipts"), lit(0.0)) - coalesce(
-            col("TotalExpenditures"),
-            lit(0.0)
-          )).as("NetCashFlow"),
-          coalesce(col("TotalOrderAmount"), lit(0.0)).as("TotalOrderAmount"),
-          coalesce(col("TotalReturnAmount"), lit(0.0)).as("TotalReturnAmount"),
-          ((coalesce(col("TotalReceipts"), lit(0.0)) - coalesce(
-            col("TotalExpenditures"),
-            lit(0.0)
-          )) -
-            (coalesce(col("TotalOrderAmount"), lit(0.0)) - coalesce(
-              col("TotalReturnAmount"),
-              lit(0.0)
-            ))).as("ReconciliationDiff")
+          orderFnd("Id").as("OrderId"),
+          coalesce(validPayments("ReturnId"), lit("")).as("ReturnId"),
+          orderFnd("ShopCode").as("ShopCode"),
+          validPayments("PaymentMethodId").as("PaymentMethodId"),
+          to_date(
+            coalesce(
+              orderFnd("TransactionDate"),
+              validPayments("CreatedDate")
+            )
+          ).as("ReportDate"),
+          when(col("PaymentType") === 1, col("Amount"))
+            .otherwise(lit(0.0))
+            .as("ReceiptAmt"),
+          when(col("PaymentType") === 2, col("Amount"))
+            .otherwise(lit(0.0))
+            .as("ExpenditureAmt")
+        )
+        .groupBy(
+          "ReportDate",
+          "OrderId",
+          "ReturnId",
+          "ShopCode",
+          "PaymentMethodId"
+        )
+        .agg(
+          sum("ReceiptAmt").as("TotalReceipts"),
+          sum("ExpenditureAmt").as("TotalExpenditures")
         )
 
-      // Write to Iceberg Serving
-      val targetExists = SparkIOUtils.tableExists(spark, targetTable)
-      if (!targetExists) {
-        println(
-          s"Target table '$targetTable' does not exist. Initializing table..."
+      val orderLevelInvoiceDetails = orderFnd
+        .filter(col("Status").isin("Completed", "Returned"))
+        .join(
+          orderPaymentSplitRatio,
+          orderFnd("Id") === orderPaymentSplitRatio("OrderId"),
+          "inner"
         )
-        SparkIOUtils.writeToIceberg(spark, reportDf, stgTable, "overwrite")
-        val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
-        SparkIOUtils.writeToIceberg(spark, stgDf, targetTable, "overwrite")
-      } else {
-        println(s"Merging report records into target table '$targetTable'...")
-        SparkIOUtils.writeToIceberg(spark, reportDf, stgTable, "overwrite")
-        val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
-        SparkIOUtils.mergeIcebergTable(
-          spark,
-          stgDf,
-          targetTable,
-          Seq("ReportDate", "ShopCode", "PaymentMethodName")
+        .select(
+          orderFnd("Id").as("OrderId"),
+          lit("").as("ReturnId"),
+          orderFnd("ShopCode").as("ShopCode"),
+          orderPaymentSplitRatio("PaymentMethodId").as("PaymentMethodId"),
+          to_date(orderFnd("TransactionDate")).as("ReportDate"),
+          (orderFnd("TotalPayment") * orderPaymentSplitRatio("SplitRatio"))
+            .as("OrderAllocatedAmt")
         )
-      }
-      println(s"✔ Serving Fund Report generation completed for: $targetTable")
+
+      val orderInvoiceByOrder = orderLevelInvoiceDetails
+        .groupBy(
+          "ReportDate",
+          "OrderId",
+          "ReturnId",
+          "ShopCode",
+          "PaymentMethodId"
+        )
+        .agg(sum("OrderAllocatedAmt").as("TotalOrderAmount"))
+
+      val returnInvoiceByOrder = returnFnd
+        .join(
+          returnPaymentSplitRatio,
+          returnFnd("Id") === returnPaymentSplitRatio("ReturnId"),
+          "inner"
+        )
+        .join(orderFnd, returnFnd("OrderId") === orderFnd("Id"), "inner")
+        .select(
+          returnFnd("OrderId").as("OrderId"),
+          returnFnd("Id").as("ReturnId"),
+          orderFnd("ShopCode").as("ShopCode"),
+          returnPaymentSplitRatio("PaymentMethodId").as("PaymentMethodId"),
+          to_date(returnFnd("CreatedDate")).as("ReportDate"),
+          (returnFnd("ReturnAmount") * returnPaymentSplitRatio("SplitRatio"))
+            .as("ReturnAllocatedAmt")
+        )
+        .groupBy(
+          "ReportDate",
+          "OrderId",
+          "ReturnId",
+          "ShopCode",
+          "PaymentMethodId"
+        )
+        .agg(sum("ReturnAllocatedAmt").as("TotalReturnAmount"))
+
+      val orderKeys = cashFlowByOrder
+        .select(
+          "ReportDate",
+          "OrderId",
+          "ReturnId",
+          "ShopCode",
+          "PaymentMethodId"
+        )
+        .union(
+          orderInvoiceByOrder.select(
+            "ReportDate",
+            "OrderId",
+            "ReturnId",
+            "ShopCode",
+            "PaymentMethodId"
+          )
+        )
+        .union(
+          returnInvoiceByOrder.select(
+            "ReportDate",
+            "OrderId",
+            "ReturnId",
+            "ShopCode",
+            "PaymentMethodId"
+          )
+        )
+        .distinct()
+
+      val orderReportDf = withFundMetrics(
+        orderKeys
+          .join(
+            cashFlowByOrder,
+            Seq(
+              "ReportDate",
+              "OrderId",
+              "ReturnId",
+              "ShopCode",
+              "PaymentMethodId"
+            ),
+            "left"
+          )
+          .join(
+            orderInvoiceByOrder,
+            Seq(
+              "ReportDate",
+              "OrderId",
+              "ReturnId",
+              "ShopCode",
+              "PaymentMethodId"
+            ),
+            "left"
+          )
+          .join(
+            returnInvoiceByOrder,
+            Seq(
+              "ReportDate",
+              "OrderId",
+              "ReturnId",
+              "ShopCode",
+              "PaymentMethodId"
+            ),
+            "left"
+          )
+          .join(dimShop, Seq("ShopCode"), "left")
+          .join(
+            paymentMethodFnd,
+            orderKeys("PaymentMethodId") === paymentMethodFnd("Id"),
+            "left"
+          )
+          .select(
+            orderKeys("ReportDate"),
+            orderKeys("OrderId"),
+            orderKeys("ReturnId"),
+            orderKeys("ShopCode"),
+            coalesce(dimShop("ShopName"), lit("Unknown")).as("ShopName"),
+            coalesce(paymentMethodFnd("Name"), lit("Unknown"))
+              .as("PaymentMethodName"),
+            coalesce(col("TotalReceipts"), lit(0.0)).as("TotalReceipts"),
+            coalesce(col("TotalExpenditures"), lit(0.0)).as("TotalExpenditures"),
+            coalesce(col("TotalOrderAmount"), lit(0.0)).as("TotalOrderAmount"),
+            coalesce(col("TotalReturnAmount"), lit(0.0)).as("TotalReturnAmount")
+          )
+      )
+
+      writeServingTable(
+        spark,
+        paymentReportDf,
+        "nessie.serving.fund_report",
+        "nessie.stg.fund_report",
+        Seq("ReportDate", "ShopCode", "PaymentMethodName")
+      )
+      writeServingTable(
+        spark,
+        shopReportDf,
+        "nessie.serving.fund_report_shop",
+        "nessie.stg.fund_report_shop",
+        Seq("ReportDate", "ShopCode")
+      )
+      writeServingTable(
+        spark,
+        orderReportDf,
+        "nessie.serving.fund_report_order",
+        "nessie.stg.fund_report_order",
+        Seq("OrderId", "ReturnId", "PaymentMethodName")
+      )
+
+      println("✔ Serving Fund Reports (shop+PTTT / shop / order) completed.")
     }
 
     jobResult match {
       case Success(_) =>
         println(s"✔ [$jobName] completed successfully.")
-        Try {
-          SparkIOUtils.expireTableSnapshots(spark, "nessie.stg.fund_report")
-          SparkIOUtils.expireTableSnapshots(spark, "nessie.serving.fund_report")
-        }
+        Seq(
+          "nessie.stg.fund_report",
+          "nessie.stg.fund_report_shop",
+          "nessie.stg.fund_report_order",
+          "nessie.serving.fund_report",
+          "nessie.serving.fund_report_shop",
+          "nessie.serving.fund_report_order"
+        ).foreach(t => Try(SparkIOUtils.expireTableSnapshots(spark, t)))
         spark.stop()
       case Failure(e) =>
         System.err.println(s"❌ [$jobName] failed with error:")
         e.printStackTrace()
         spark.stop()
         throw e
+    }
+  }
+
+  private def withFundMetrics(df: DataFrame): DataFrame = {
+    df
+      .withColumn(
+        "NetCashFlow",
+        coalesce(col("TotalReceipts"), lit(0.0)) - coalesce(
+          col("TotalExpenditures"),
+          lit(0.0)
+        )
+      )
+      .withColumn(
+        "ReconciliationDiff",
+        col("NetCashFlow") -
+          (coalesce(col("TotalOrderAmount"), lit(0.0)) - coalesce(
+            col("TotalReturnAmount"),
+            lit(0.0)
+          ))
+      )
+  }
+
+  private def writeServingTable(
+      spark: SparkSession,
+      reportDf: DataFrame,
+      targetTable: String,
+      stgTable: String,
+      mergeKeys: Seq[String]
+  ): Unit = {
+    val targetExists = SparkIOUtils.tableExists(spark, targetTable)
+    if (!targetExists) {
+      println(s"Initializing target table '$targetTable'...")
+      SparkIOUtils.writeToIceberg(spark, reportDf, stgTable, "overwrite")
+      val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
+      SparkIOUtils.writeToIceberg(spark, stgDf, targetTable, "overwrite")
+    } else {
+      println(s"Merging into '$targetTable'...")
+      SparkIOUtils.writeToIceberg(spark, reportDf, stgTable, "overwrite")
+      val stgDf = SparkIOUtils.readFromIceberg(spark, stgTable)
+      SparkIOUtils.mergeIcebergTable(spark, stgDf, targetTable, mergeKeys)
     }
   }
 

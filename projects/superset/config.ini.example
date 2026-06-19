@@ -1,0 +1,22 @@
+# Superset deploy — copy thành config.ini nếu cần (optional; ưu tiên config/.env)
+# MinIO localhost:31900 → deploy script auto kubectl port-forward
+
+[superset]
+host = http://localhost:32288
+username = admin
+password = CHANGE_ME
+
+[minio]
+endpoint = http://localhost:31900
+access_key = CHANGE_ME
+secret_key = CHANGE_ME
+bucket_name = superset
+assets_prefix = assets/
+
+[clickhouse]
+superset_host = clickhouse-service.databases.svc.cluster.local
+superset_port = 8123
+superset_driver = connect
+database = report
+username = admin
+password = CHANGE_ME

@@ -24,7 +24,7 @@ func (h *ReportHandler) Healthz(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *ReportHandler) GetFinancialReport(w http.ResponseWriter, r *http.Request) {
-	query, err := buildReportQuery(r, false)
+	query, err := buildReportQuery(r)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
@@ -38,6 +38,7 @@ func (h *ReportHandler) GetFinancialReport(w http.ResponseWriter, r *http.Reques
 
 	response.JSON(w, http.StatusOK, map[string]any{
 		"data": data,
+		"view": query.View,
 		"pagination": map[string]any{
 			"page":     query.Page,
 			"pageSize": query.PageSize,
@@ -47,7 +48,7 @@ func (h *ReportHandler) GetFinancialReport(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *ReportHandler) GetFinancialSummary(w http.ResponseWriter, r *http.Request) {
-	query, err := buildReportQuery(r, false)
+	query, err := buildReportQuery(r)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
@@ -59,11 +60,11 @@ func (h *ReportHandler) GetFinancialSummary(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]any{"data": summary})
+	response.JSON(w, http.StatusOK, map[string]any{"data": summary, "view": query.View})
 }
 
 func (h *ReportHandler) GetFundReport(w http.ResponseWriter, r *http.Request) {
-	query, err := buildReportQuery(r, true)
+	query, err := buildReportQuery(r)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
@@ -77,6 +78,7 @@ func (h *ReportHandler) GetFundReport(w http.ResponseWriter, r *http.Request) {
 
 	response.JSON(w, http.StatusOK, map[string]any{
 		"data": data,
+		"view": query.View,
 		"pagination": map[string]any{
 			"page":     query.Page,
 			"pageSize": query.PageSize,
@@ -86,7 +88,7 @@ func (h *ReportHandler) GetFundReport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ReportHandler) GetFundSummary(w http.ResponseWriter, r *http.Request) {
-	query, err := buildReportQuery(r, true)
+	query, err := buildReportQuery(r)
 	if err != nil {
 		response.Error(w, http.StatusBadRequest, err.Error())
 		return
@@ -98,10 +100,10 @@ func (h *ReportHandler) GetFundSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]any{"data": summary})
+	response.JSON(w, http.StatusOK, map[string]any{"data": summary, "view": query.View})
 }
 
-func buildReportQuery(r *http.Request, includePaymentMethod bool) (service.ReportQuery, error) {
+func buildReportQuery(r *http.Request) (service.ReportQuery, error) {
 	// Parse and validate required date range / Parse và validate khoảng ngày bắt buộc
 	fromDate, err := time.Parse(dateLayout, r.URL.Query().Get("fromDate"))
 	if err != nil {
@@ -112,27 +114,48 @@ func buildReportQuery(r *http.Request, includePaymentMethod bool) (service.Repor
 		return service.ReportQuery{}, err
 	}
 
-	// Apply safe defaults for pagination / Áp dụng mặc định an toàn cho phân trang
 	page := parseIntOrDefault(r.URL.Query().Get("page"), 1)
 	pageSize := parseIntOrDefault(r.URL.Query().Get("pageSize"), 50)
 	if page <= 0 {
 		page = 1
 	}
-	if pageSize <= 0 || pageSize > 500 {
+	// pageSize=0 means fetch all rows / pageSize=0 nghĩa là lấy toàn bộ dòng
+	if pageSize != 0 && (pageSize < 0 || pageSize > 500) {
 		pageSize = 50
 	}
 
-	query := service.ReportQuery{
-		FromDate: fromDate,
-		ToDate:   toDate,
-		ShopCode: r.URL.Query().Get("shopCode"),
-		Page:     page,
-		PageSize: pageSize,
+	productId := r.URL.Query().Get("productId")
+	if productId == "" {
+		// Backward compatible alias / Alias tương thích cũ
+		productId = r.URL.Query().Get("productCode")
 	}
-	if includePaymentMethod {
-		query.PaymentMethodName = r.URL.Query().Get("paymentMethodName")
+
+	view := r.URL.Query().Get("view")
+	if view == "" {
+		view = defaultViewForPath(r.URL.Path)
 	}
-	return query, nil
+
+	return service.ReportQuery{
+		FromDate:          fromDate,
+		ToDate:            toDate,
+		View:              view,
+		ShopCode:          r.URL.Query().Get("shopCode"),
+		ProductId:         productId,
+		ProductLineCode:   r.URL.Query().Get("productLineCode"),
+		OrderId:           r.URL.Query().Get("orderId"),
+		DocumentType:      r.URL.Query().Get("documentType"),
+		OrderStatus:       r.URL.Query().Get("orderStatus"),
+		PaymentMethodName: r.URL.Query().Get("paymentMethodName"),
+		Page:              page,
+		PageSize:          pageSize,
+	}, nil
+}
+
+func defaultViewForPath(path string) string {
+	if path == "/api/v1/reports/fund" || path == "/api/v1/reports/fund/summary" {
+		return "payment"
+	}
+	return "shop"
 }
 
 func parseIntOrDefault(raw string, fallback int) int {

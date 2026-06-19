@@ -1,0 +1,73 @@
+id: db_tc_order
+title: Chi tiết theo đơn hàng
+dataset: v_bao_cao_tai_chinh_theo_don_tong_hop
+slug: tc-chi-tiet-don-hang
+native_filters:
+- column: NgayBaoCao
+  type: filter_time
+  label: Khoảng ngày
+  default: Last 7 days
+- column: MaCuaHang
+  type: filter_select
+  label: Cửa hàng
+  multi: true
+  select_all: true
+- column: MaDonHang
+  type: filter_select
+  label: Mã đơn hàng
+  multi: true
+  search: true
+- column: LoaiChungTu
+  type: filter_select
+  label: Loại chứng từ
+  multi: true
+  options:
+  - SALE
+  - RETURN
+- column: TrangThaiDon
+  type: filter_select
+  label: Trạng thái đơn
+  multi: true
+  search: true
+layout:
+  row1_kpi:
+  - chart: kpi_so_don
+    viz: big_number_total
+    metric: COUNT(DISTINCT MaDonHang)
+    title: Số đơn hàng
+  - chart: kpi_dt
+    viz: big_number_total
+    metric: SUM(DoanhThuThuan)
+    title: Doanh thu thuần
+  row2_breakdown:
+  - chart: pie_loai_chung_tu
+    viz: pie
+    groupby:
+    - LoaiChungTu
+    metric: SUM(DoanhThuThuan)
+    title: Bán hàng vs Trả hàng (doanh thu)
+  - chart: bar_trang_thai
+    viz: echarts_timeseries_bar
+    x: TrangThaiDon
+    categorical: true
+    metric: COUNT(DISTINCT MaDonHang)
+    title: Số đơn theo trạng thái
+  row3_trend:
+  - chart: line_don_ngay
+    viz: echarts_timeseries_line
+    x: NgayBaoCao
+    metric: COUNT(DISTINCT MaDonHang)
+    title: Số đơn theo ngày
+  row4_detail:
+  - chart: table_don
+    viz: table
+    columns:
+    - NgayBaoCao
+    - MaDonHang
+    - LoaiChungTu
+    - TrangThaiDon
+    - TenCuaHang
+    - DoanhThuThuan
+    - LoiNhuanGop
+    title: Chi tiết đơn hàng
+    page_size: 100

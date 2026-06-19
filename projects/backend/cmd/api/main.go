@@ -14,6 +14,7 @@ import (
 	"github.com/kaizen/backend-report-api/internal/http/middleware"
 	"github.com/kaizen/backend-report-api/internal/repository"
 	"github.com/kaizen/backend-report-api/internal/service"
+	supersetClient "github.com/kaizen/backend-report-api/internal/superset"
 )
 
 func main() {
@@ -32,6 +33,10 @@ func main() {
 	reportSvc := service.NewReportService(reportRepo)
 	reportHTTP := reportHandler.NewReportHandler(reportSvc)
 
+	superset := supersetClient.NewClient(cfg.SupersetHost, cfg.SupersetUser, cfg.SupersetPass)
+	biSvc := service.NewBIService(superset, cfg.SupersetEmbedDomain)
+	biHTTP := reportHandler.NewBIHandler(biSvc)
+
 	// Register API routes / Đăng ký route API
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", reportHTTP.Healthz)
@@ -39,6 +44,8 @@ func main() {
 	mux.HandleFunc("/api/v1/reports/financial/summary", reportHTTP.GetFinancialSummary)
 	mux.HandleFunc("/api/v1/reports/fund", reportHTTP.GetFundReport)
 	mux.HandleFunc("/api/v1/reports/fund/summary", reportHTTP.GetFundSummary)
+	mux.HandleFunc("/api/v1/bi/embed-config", biHTTP.GetEmbedConfig)
+	mux.HandleFunc("/api/v1/bi/guest-token", biHTTP.PostGuestToken)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,

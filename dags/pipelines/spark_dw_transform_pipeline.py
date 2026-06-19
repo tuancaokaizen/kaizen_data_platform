@@ -144,25 +144,48 @@ with DAG(
     )
     ch_fact_cogs_transaction = PythonOperator(**get_clickhouse_dw_task("fact_cogs_transaction"))
 
-    # 10. Transform Financial Report in Serving Layer
+    # 10. Transform Financial Reports in Serving Layer (detail / shop / product grains)
+    FINANCIAL_REPORT_TABLES = [
+        "financial_report",
+        "financial_report_detail",
+        "financial_report_product",
+        "financial_report_order",
+    ]
+    FUND_REPORT_TABLES = [
+        "fund_report",
+        "fund_report_shop",
+        "fund_report_order",
+    ]
+
     transform_serving_financial_report = KubernetesPodOperator(
         **get_transformer_task(
             task_id="transform_serving_financial_report",
             transformer_class="com.kaizen.spark.processing.ProcessSrvFinancialReport"
         )
     )
-    ch_financial_serving = PythonOperator(**get_clickhouse_serving_task("financial_report"))
-    ch_financial_report = PythonOperator(**get_clickhouse_report_task("financial_report"))
 
-    # 11. Transform Fund Report in Serving Layer
+    financial_ch_tail = transform_serving_financial_report
+    for table_name in FINANCIAL_REPORT_TABLES:
+        ch_serving = PythonOperator(**get_clickhouse_serving_task(table_name))
+        ch_report = PythonOperator(**get_clickhouse_report_task(table_name))
+        financial_ch_tail >> ch_serving >> ch_report
+        financial_ch_tail = ch_report
+
+    # 11. Transform Fund Reports in Serving Layer (payment / shop / product / detail grains)
     transform_serving_fund_report = KubernetesPodOperator(
         **get_transformer_task(
             task_id="transform_serving_fund_report",
             transformer_class="com.kaizen.spark.processing.ProcessSrvFundReport"
         )
     )
-    ch_fund_serving = PythonOperator(**get_clickhouse_serving_task("fund_report"))
-    ch_fund_report = PythonOperator(**get_clickhouse_report_task("fund_report"))
+    financial_ch_tail >> transform_serving_fund_report
+
+    fund_ch_tail = transform_serving_fund_report
+    for table_name in FUND_REPORT_TABLES:
+        ch_serving = PythonOperator(**get_clickhouse_serving_task(table_name))
+        ch_report = PythonOperator(**get_clickhouse_report_task(table_name))
+        fund_ch_tail >> ch_serving >> ch_report
+        fund_ch_tail = ch_report
 
     # 12. Push Serving Reports (1-month) to ClickHouse Hot Layer
     push_serving_to_clickhouse = KubernetesPodOperator(**get_push_serving_task())
@@ -183,7 +206,6 @@ with DAG(
             transform_payment_transactions >> ch_fact_payment_transaction >>
             transform_promotion_cost >> ch_fact_promotion_cost >>
             transform_cogs >> ch_fact_cogs_transaction >>
-            transform_serving_financial_report >> ch_financial_serving >> ch_financial_report >>
-            transform_serving_fund_report >> ch_fund_serving >> ch_fund_report >>
-            push_serving_to_clickhouse >> ch_report_views
+            transform_serving_financial_report
     )
+    fund_ch_tail >> push_serving_to_clickhouse >> ch_report_views
