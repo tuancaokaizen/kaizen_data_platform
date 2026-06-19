@@ -35,3 +35,23 @@ export async function fetchReport(
   });
   return response.data;
 }
+
+export type FinancialDetailFilterOptions = {
+  view: string;
+  shops: { shopCode: string; shopName: string }[];
+  products: { productId: string; productName: string }[];
+};
+
+/** Distinct shop/product values for financial detail view (not paginated) */
+export async function fetchFinancialDetailFilterOptions(
+  fromDate: string,
+  toDate: string
+): Promise<FinancialDetailFilterOptions> {
+  const response = await apiClient.get<FinancialDetailFilterOptions>(
+    "/api/v1/reports/financial/filter-options",
+    {
+      params: { view: "detail", fromDate, toDate }
+    }
+  );
+  return response.data;
+}
