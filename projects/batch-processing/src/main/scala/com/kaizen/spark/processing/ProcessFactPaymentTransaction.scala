@@ -82,7 +82,8 @@ object ProcessFactPaymentTransaction {
             paymentFnd("Status").as("PaymentStatus"),
             coalesce(orderPaymentFnd("OrderId"), returnPaymentFnd("OrderId"))
               .as("OrderId"),
-            returnPaymentFnd("ReturnId").as("ReturnId"),
+            coalesce(returnPaymentFnd("ReturnId"), lit(null).cast("string"))
+              .as("ReturnId"),
             transactionFnd("Amount").as("Amount"),
             transactionFnd("CreatedDate").as("CreatedDate"),
             transactionFnd("ModifiedDate").as("ModifiedDate")

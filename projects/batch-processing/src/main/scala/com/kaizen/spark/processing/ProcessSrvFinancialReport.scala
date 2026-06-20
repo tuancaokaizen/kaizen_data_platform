@@ -56,7 +56,7 @@ object ProcessSrvFinancialReport {
         .table("nessie.dw.fact_promotion_cost")
         .filter(col("CreatedDate") >= fromTs && col("CreatedDate") < toTs)
 
-      val dimShop = spark.table("nessie.dw.dim_shop")
+      val dimShop = spark.table("nessie.dw.dim_shop").dropDuplicates("ShopCode")
       val dimProduct = spark.table("nessie.dw.dim_product")
       val orderFnd = spark
         .table("nessie.fnd.order")

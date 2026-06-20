@@ -74,9 +74,14 @@ object PushServingToClickHouseJob {
           return
         }
         println(s"Reading from $icebergTable (ReportDate >= $fromDate)...")
-        val df = SparkIOUtils
+        var df = SparkIOUtils
           .readFromIceberg(spark, icebergTable)
           .filter(col("ReportDate") >= to_date(lit(fromDate)))
+        // Iceberg may carry merge-only columns not present in ClickHouse report DDL
+        // Bỏ cột chỉ phục vụ MERGE trên Nessie, không có trong bảng report ClickHouse
+        if (df.columns.contains("PaymentMethodId")) {
+          df = df.drop("PaymentMethodId")
+        }
 
         truncateTable(clickhouseTable)
         println(s"Writing to ClickHouse table $clickhouseTable...")
