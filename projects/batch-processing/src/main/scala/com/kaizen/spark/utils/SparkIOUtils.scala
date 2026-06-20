@@ -2,6 +2,19 @@ package com.kaizen.spark.utils
 
 import org.apache.spark.sql.{Column, DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.{
+  BooleanType,
+  DataType,
+  DateType,
+  DecimalType,
+  DoubleType,
+  FloatType,
+  IntegerType,
+  LongType,
+  ShortType,
+  StringType,
+  TimestampType
+}
 import com.kaizen.spark.config.SparkConfig
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -475,6 +488,92 @@ object SparkIOUtils {
     }
   }
 
+  /** True for numeric Spark types used in merge dedupe aggregation / Kiểu số để SUM khi gộp dup */
+  private def isNumericMergeField(dataType: DataType): Boolean = dataType match {
+    case _: IntegerType | _: LongType | _: ShortType | _: DoubleType |
+        _: FloatType | _: DecimalType =>
+      true
+    case _ => false
+  }
+
+  /** Collapse duplicate merge keys in source (SUM metrics, FIRST dimensions).
+    * Gộp dòng trùng merge key trước MERGE — tránh SparkException nhiều source match 1 target.
+    */
+  def dedupeMergeSource(sourceDf: DataFrame, joinKeys: Seq[String]): DataFrame = {
+    val hasDuplicateKeys = sourceDf
+      .groupBy(joinKeys.map(col): _*)
+      .count()
+      .filter(col("count") > 1)
+      .limit(1)
+      .count() > 0
+
+    if (!hasDuplicateKeys) {
+      return sourceDf
+    }
+
+    val duplicateKeyGroups = sourceDf
+      .groupBy(joinKeys.map(col): _*)
+      .count()
+      .filter(col("count") > 1)
+      .count()
+    println(
+      s"WARNING: Collapsing $duplicateKeyGroups duplicate merge-key group(s) before MERGE (keys: ${joinKeys.mkString(", ")})."
+    )
+
+    val nonKeyColumns = sourceDf.columns.filterNot(joinKeys.contains)
+    if (nonKeyColumns.isEmpty) {
+      return sourceDf.dropDuplicates(joinKeys)
+    }
+
+    val aggExprs = nonKeyColumns.map { columnName =>
+      val field = sourceDf.schema(columnName)
+      if (isNumericMergeField(field.dataType)) {
+        sum(col(columnName)).as(columnName)
+      } else {
+        first(col(columnName), ignoreNulls = true).as(columnName)
+      }
+    }
+
+    sourceDf.groupBy(joinKeys.map(col): _*).agg(aggExprs.head, aggExprs.tail: _*)
+  }
+
+  /** Map Spark type to Iceberg SQL type for ALTER TABLE / Map kiểu Spark sang DDL Iceberg */
+  private def sparkTypeToIcebergSql(dataType: DataType): String = dataType match {
+    case StringType => "string"
+    case IntegerType => "int"
+    case LongType => "long"
+    case ShortType => "short"
+    case DoubleType => "double"
+    case FloatType => "float"
+    case d: DecimalType => s"decimal(${d.precision},${d.scale})"
+    case DateType => "date"
+    case TimestampType => "timestamp"
+    case BooleanType => "boolean"
+    case _ => "string"
+  }
+
+  /** Add missing merge-key columns on brownfield Iceberg targets / Thêm cột merge key thiếu trên bảng cũ */
+  private def ensureMergeKeyColumnsOnTarget(
+      spark: SparkSession,
+      targetTable: String,
+      sourceDf: DataFrame,
+      joinKeys: Seq[String]
+  ): Unit = {
+    val targetColumnSet = readFromIceberg(spark, targetTable).columns.toSet
+    joinKeys.filterNot(targetColumnSet.contains).foreach { key =>
+      if (!sourceDf.columns.contains(key)) {
+        throw new IllegalArgumentException(
+          s"Merge key '$key' is missing from source DataFrame for $targetTable"
+        )
+      }
+      val sqlType = sparkTypeToIcebergSql(sourceDf.schema(key).dataType)
+      println(
+        s"Evolving target schema: ALTER TABLE $targetTable ADD COLUMN $key $sqlType"
+      )
+      spark.sql(s"ALTER TABLE $targetTable ADD COLUMN $key $sqlType")
+    }
+  }
+
   /** Performs Iceberg MERGE INTO target using join keys from a source
     * DataFrame.
     */
@@ -484,9 +583,12 @@ object SparkIOUtils {
       targetTable: String,
       joinKeys: Seq[String]
   ): Unit = {
+    val dedupedSource = dedupeMergeSource(sourceDf, joinKeys)
+    ensureMergeKeyColumnsOnTarget(spark, targetTable, dedupedSource, joinKeys)
+
     // Align source columns to target schema / Chỉ merge cột có trong cả source và target
     val targetColumns = readFromIceberg(spark, targetTable).columns
-    val sourceColumnSet = sourceDf.columns.toSet
+    val sourceColumnSet = dedupedSource.columns.toSet
     val alignedColumns = targetColumns.filter(sourceColumnSet.contains)
     val missingInSource = targetColumns.filterNot(sourceColumnSet.contains)
     if (missingInSource.nonEmpty) {
@@ -494,7 +596,14 @@ object SparkIOUtils {
         s"WARNING: Target columns missing in source will not be updated: ${missingInSource.mkString(", ")}"
       )
     }
-    val alignedSource = sourceDf.select(alignedColumns.map(col): _*)
+    val missingJoinKeysInAligned =
+      joinKeys.filterNot(alignedColumns.contains)
+    if (missingJoinKeysInAligned.nonEmpty) {
+      throw new IllegalStateException(
+        s"Merge keys not present in aligned source/target columns for $targetTable: ${missingJoinKeysInAligned.mkString(", ")}"
+      )
+    }
+    val alignedSource = dedupedSource.select(alignedColumns.map(col): _*)
 
     val tempViewName =
       s"merge_source_${java.util.UUID.randomUUID().toString.replace("-", "")}"

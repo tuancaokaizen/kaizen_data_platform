@@ -2,6 +2,7 @@ from jobs.clickhouse_utils import (
     run_clickhouse_setup,
     run_clickhouse_views_setup,
     run_clickhouse_clear_serving,
+    ensure_all_report_base_tables,
 )
 
 # Shared spark_conf for Standalone Master resource settings
@@ -185,6 +186,18 @@ def get_clickhouse_views_task():
     return {
         "task_id": "create_clickhouse_report_views",
         "python_callable": run_clickhouse_views_setup,
+        "retries": 0
+    }
+
+
+def get_clickhouse_ensure_report_task():
+    """
+    Ensures report.* ReplacingMergeTree tables exist before Spark push / hot view deploy.
+    Tạo bảng report.* trước push Spark — tránh UNKNOWN_TABLE sau clear serving.
+    """
+    return {
+        "task_id": "ensure_clickhouse_report_tables",
+        "python_callable": ensure_all_report_base_tables,
         "retries": 0
     }
 

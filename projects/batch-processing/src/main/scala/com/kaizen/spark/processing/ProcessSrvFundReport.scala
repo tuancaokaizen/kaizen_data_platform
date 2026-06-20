@@ -40,18 +40,59 @@ object ProcessSrvFundReport {
         .filter(col("CreatedDate") >= fromTs && col("CreatedDate") < toTs)
       val orderFnd = spark.table("nessie.fnd.order")
       val returnFnd = spark.table("nessie.fnd.return")
-      val dimShop = spark.table("nessie.dw.dim_shop")
-      val paymentMethodFnd = spark.table("nessie.fnd.payment_method")
+      val dimShop = spark.table("nessie.dw.dim_shop").dropDuplicates("ShopCode")
+      val paymentMethodFnd =
+        spark.table("nessie.fnd.payment_method").dropDuplicates("Id")
 
       val validPayments = factPayment.filter(col("PaymentStatus") === "SUCCESS")
 
-      // Detail grain: ReportDate + Shop + PaymentMethod / Chi tiết: ngày + shop + PTTT
-      val cashFlowPaymentWithShop = validPayments
-        .join(orderFnd, validPayments("OrderId") === orderFnd("Id"), "inner")
+      // Resolve ReturnId for refund payments so cash + doc share the same grain key
+      // Gắn ReturnId phiếu chi qua return_payment — tránh tách 2 dòng ± cùng số tiền
+      val returnPaymentFnd = spark
+        .table("nessie.fnd.return_payment")
         .select(
-          to_date(validPayments("CreatedDate")).as("ReportDate"),
+          col("PaymentId"),
+          col("ReturnId").as("ReturnPaymentReturnId")
+        )
+
+      val enrichedPayments = validPayments
+        .join(returnPaymentFnd, Seq("PaymentId"), "left")
+        .withColumn(
+          "GrainReturnId",
+          when(
+            col("PaymentType") === 2,
+            coalesce(col("ReturnId"), col("ReturnPaymentReturnId"), lit(""))
+          ).otherwise(lit(""))
+        )
+
+      // Option A: all fund metrics use payment CreatedDate (cash date) / Mọi metric quỹ theo ngày giao dịch payment
+      val receiptPayments = enrichedPayments.filter(col("PaymentType") === 1)
+      val expenditurePayments = enrichedPayments.filter(col("PaymentType") === 2)
+
+      val receiptPaymentTotals = receiptPayments
+        .groupBy("PaymentId")
+        .agg(sum("Amount").as("PaymentTotalAmt"))
+
+      val expenditurePaymentTotals = expenditurePayments
+        .groupBy("PaymentId")
+        .agg(sum("Amount").as("PaymentTotalAmt"))
+
+      // Per-payment document total — avoids double-counting order.TotalPayment on multi-payment / Tổng phiếu theo PaymentId
+      val paymentFndSuccess = spark
+        .table("nessie.fnd.payment")
+        .filter(col("Status") === "SUCCESS")
+        .select(
+          col("Id").as("PaymentHeaderId"),
+          col("TotalPayment").cast("double").as("PaymentHeaderTotal")
+        )
+
+      // Detail grain: ReportDate + Shop + PaymentMethod / Chi tiết: ngày + shop + PTTT
+      val cashFlowPaymentWithShop = enrichedPayments
+        .join(orderFnd, enrichedPayments("OrderId") === orderFnd("Id"), "inner")
+        .select(
+          to_date(enrichedPayments("CreatedDate")).as("ReportDate"),
           orderFnd("ShopCode").as("ShopCode"),
-          validPayments("PaymentMethodId").as("PaymentMethodId"),
+          enrichedPayments("PaymentMethodId").as("PaymentMethodId"),
           when(col("PaymentType") === 1, col("Amount"))
             .otherwise(lit(0.0))
             .as("ReceiptAmt"),
@@ -67,70 +108,63 @@ object ProcessSrvFundReport {
           sum("ExpenditureAmt").as("TotalExpenditures")
         )
 
-      val ptTotalReceipt = validPayments
-        .filter(col("PaymentType") === 1)
-        .groupBy("PaymentId")
-        .agg(sum("Amount").as("PaymentTotalAmt"))
-
-      val orderPaymentSplitRatio = validPayments
-        .filter(col("PaymentType") === 1)
-        .join(ptTotalReceipt, Seq("PaymentId"), "inner")
-        .select(
-          col("OrderId"),
-          col("PaymentMethodId"),
-          (col("Amount") / col("PaymentTotalAmt")).as("SplitRatio")
-        )
-
-      val orderInvoiceDetails = orderFnd
-        .filter(col("Status").isin("Completed", "Returned"))
+      // Order document side — allocated per payment header on cash date / Giá trị đơn theo phiếu thu, ngày payment
+      val orderDocLines = receiptPayments
+        .join(receiptPaymentTotals, Seq("PaymentId"), "inner")
         .join(
-          orderPaymentSplitRatio,
-          orderFnd("Id") === orderPaymentSplitRatio("OrderId"),
+          paymentFndSuccess,
+          receiptPayments("PaymentId") === paymentFndSuccess("PaymentHeaderId"),
+          "inner"
+        )
+        .join(
+          orderFnd.filter(col("Status").isin("Completed", "Returned")),
+          receiptPayments("OrderId") === orderFnd("Id"),
           "inner"
         )
         .select(
-          to_date(orderFnd("TransactionDate")).as("ReportDate"),
+          to_date(receiptPayments("CreatedDate")).as("ReportDate"),
           orderFnd("ShopCode").as("ShopCode"),
-          orderPaymentSplitRatio("PaymentMethodId").as("PaymentMethodId"),
-          (orderFnd("TotalPayment") * orderPaymentSplitRatio("SplitRatio"))
-            .as("OrderAllocatedAmt")
+          receiptPayments("PaymentMethodId").as("PaymentMethodId"),
+          receiptPayments("OrderId").as("OrderId"),
+          lit("").as("ReturnId"),
+          (
+            col("PaymentHeaderTotal") *
+              (receiptPayments("Amount") / col("PaymentTotalAmt"))
+          ).as("OrderAllocatedAmt")
         )
 
-      val orderInvoiceAgg = orderInvoiceDetails
+      val orderInvoiceAgg = orderDocLines
         .groupBy("ReportDate", "ShopCode", "PaymentMethodId")
         .agg(sum("OrderAllocatedAmt").as("TotalOrderAmount"))
 
-      val ptTotalExpenditure = validPayments
-        .filter(col("PaymentType") === 2)
-        .groupBy("PaymentId")
-        .agg(sum("Amount").as("PaymentTotalAmt"))
-
-      val returnPaymentSplitRatio = validPayments
-        .filter(col("PaymentType") === 2)
-        .join(ptTotalExpenditure, Seq("PaymentId"), "inner")
-        .select(
-          col("OrderId"),
-          col("ReturnId"),
-          col("PaymentMethodId"),
-          (col("Amount") / col("PaymentTotalAmt")).as("SplitRatio")
-        )
-
-      val returnInvoiceDetails = returnFnd
+      // Return document side — allocated per refund payment on cash date / Giá trị trả theo phiếu chi, ngày payment
+      val returnDocLines = expenditurePayments
+        .filter(col("GrainReturnId") =!= lit(""))
+        .join(expenditurePaymentTotals, Seq("PaymentId"), "inner")
         .join(
-          returnPaymentSplitRatio,
-          returnFnd("Id") === returnPaymentSplitRatio("ReturnId"),
+          paymentFndSuccess,
+          expenditurePayments("PaymentId") === paymentFndSuccess("PaymentHeaderId"),
+          "inner"
+        )
+        .join(
+          returnFnd,
+          expenditurePayments("GrainReturnId") === returnFnd("Id"),
           "inner"
         )
         .join(orderFnd, returnFnd("OrderId") === orderFnd("Id"), "inner")
         .select(
-          to_date(returnFnd("CreatedDate")).as("ReportDate"),
+          to_date(expenditurePayments("CreatedDate")).as("ReportDate"),
           orderFnd("ShopCode").as("ShopCode"),
-          returnPaymentSplitRatio("PaymentMethodId").as("PaymentMethodId"),
-          (returnFnd("ReturnAmount") * returnPaymentSplitRatio("SplitRatio"))
-            .as("ReturnAllocatedAmt")
+          expenditurePayments("PaymentMethodId").as("PaymentMethodId"),
+          returnFnd("OrderId").as("OrderId"),
+          expenditurePayments("GrainReturnId").as("ReturnId"),
+          (
+            col("PaymentHeaderTotal") *
+              (expenditurePayments("Amount") / col("PaymentTotalAmt"))
+          ).as("ReturnAllocatedAmt")
         )
 
-      val returnInvoiceAgg = returnInvoiceDetails
+      val returnInvoiceAgg = returnDocLines
         .groupBy("ReportDate", "ShopCode", "PaymentMethodId")
         .agg(sum("ReturnAllocatedAmt").as("TotalReturnAmount"))
 
@@ -170,6 +204,7 @@ object ProcessSrvFundReport {
           .select(
             paymentKeys("ReportDate"),
             paymentKeys("ShopCode"),
+            paymentKeys("PaymentMethodId").as("PaymentMethodId"),
             coalesce(dimShop("ShopName"), lit("Unknown")).as("ShopName"),
             coalesce(paymentMethodFnd("Name"), lit("Unknown"))
               .as("PaymentMethodName"),
@@ -183,8 +218,9 @@ object ProcessSrvFundReport {
       // Shop aggregate — rollup from payment detail / Gom theo cửa hàng
       val shopReportDf = withFundMetrics(
         paymentReportDf
-          .groupBy(col("ReportDate"), col("ShopCode"), col("ShopName"))
+          .groupBy(col("ReportDate"), col("ShopCode"))
           .agg(
+            first(col("ShopName"), ignoreNulls = true).as("ShopName"),
             sum(col("TotalReceipts")).as("TotalReceipts"),
             sum(col("TotalExpenditures")).as("TotalExpenditures"),
             sum(col("TotalOrderAmount")).as("TotalOrderAmount"),
@@ -192,26 +228,18 @@ object ProcessSrvFundReport {
           )
       )
 
-      // Order grain: OrderId + PaymentMethod (+ ReturnId for refunds) / Grain theo đơn
-      val cashFlowByOrder = validPayments
-        .join(orderFnd, validPayments("OrderId") === orderFnd("Id"), "inner")
+      // Order grain — sale rows (ReturnId="") + return rows built in one pass per payment
+      // Grain đơn: bán (ReturnId="") + hoàn (expenditure + doc cùng dòng payment)
+      val saleCashByOrder = enrichedPayments
+        .filter(col("PaymentType") === 1)
+        .join(orderFnd, enrichedPayments("OrderId") === orderFnd("Id"), "inner")
         .select(
           orderFnd("Id").as("OrderId"),
-          coalesce(validPayments("ReturnId"), lit("")).as("ReturnId"),
+          lit("").as("ReturnId"),
           orderFnd("ShopCode").as("ShopCode"),
-          validPayments("PaymentMethodId").as("PaymentMethodId"),
-          to_date(
-            coalesce(
-              orderFnd("TransactionDate"),
-              validPayments("CreatedDate")
-            )
-          ).as("ReportDate"),
-          when(col("PaymentType") === 1, col("Amount"))
-            .otherwise(lit(0.0))
-            .as("ReceiptAmt"),
-          when(col("PaymentType") === 2, col("Amount"))
-            .otherwise(lit(0.0))
-            .as("ExpenditureAmt")
+          enrichedPayments("PaymentMethodId").as("PaymentMethodId"),
+          to_date(enrichedPayments("CreatedDate")).as("ReportDate"),
+          enrichedPayments("Amount").as("ReceiptAmt")
         )
         .groupBy(
           "ReportDate",
@@ -220,29 +248,9 @@ object ProcessSrvFundReport {
           "ShopCode",
           "PaymentMethodId"
         )
-        .agg(
-          sum("ReceiptAmt").as("TotalReceipts"),
-          sum("ExpenditureAmt").as("TotalExpenditures")
-        )
+        .agg(sum("ReceiptAmt").as("TotalReceipts"))
 
-      val orderLevelInvoiceDetails = orderFnd
-        .filter(col("Status").isin("Completed", "Returned"))
-        .join(
-          orderPaymentSplitRatio,
-          orderFnd("Id") === orderPaymentSplitRatio("OrderId"),
-          "inner"
-        )
-        .select(
-          orderFnd("Id").as("OrderId"),
-          lit("").as("ReturnId"),
-          orderFnd("ShopCode").as("ShopCode"),
-          orderPaymentSplitRatio("PaymentMethodId").as("PaymentMethodId"),
-          to_date(orderFnd("TransactionDate")).as("ReportDate"),
-          (orderFnd("TotalPayment") * orderPaymentSplitRatio("SplitRatio"))
-            .as("OrderAllocatedAmt")
-        )
-
-      val orderInvoiceByOrder = orderLevelInvoiceDetails
+      val orderInvoiceByOrder = orderDocLines
         .groupBy(
           "ReportDate",
           "OrderId",
@@ -252,32 +260,42 @@ object ProcessSrvFundReport {
         )
         .agg(sum("OrderAllocatedAmt").as("TotalOrderAmount"))
 
-      val returnInvoiceByOrder = returnFnd
+      // Return: cash + document from the SAME payment line / Hoàn: thu+chi+doc trên cùng 1 payment
+      val returnOrderBase = expenditurePayments
+        .filter(col("GrainReturnId") =!= lit(""))
+        .join(expenditurePaymentTotals, Seq("PaymentId"), "inner")
         .join(
-          returnPaymentSplitRatio,
-          returnFnd("Id") === returnPaymentSplitRatio("ReturnId"),
+          paymentFndSuccess,
+          expenditurePayments("PaymentId") === paymentFndSuccess("PaymentHeaderId"),
+          "inner"
+        )
+        .join(
+          returnFnd,
+          expenditurePayments("GrainReturnId") === returnFnd("Id"),
           "inner"
         )
         .join(orderFnd, returnFnd("OrderId") === orderFnd("Id"), "inner")
         .select(
+          to_date(expenditurePayments("CreatedDate")).as("ReportDate"),
           returnFnd("OrderId").as("OrderId"),
-          returnFnd("Id").as("ReturnId"),
+          expenditurePayments("GrainReturnId").as("ReturnId"),
           orderFnd("ShopCode").as("ShopCode"),
-          returnPaymentSplitRatio("PaymentMethodId").as("PaymentMethodId"),
-          to_date(returnFnd("CreatedDate")).as("ReportDate"),
-          (returnFnd("ReturnAmount") * returnPaymentSplitRatio("SplitRatio"))
-            .as("ReturnAllocatedAmt")
+          expenditurePayments("PaymentMethodId").as("PaymentMethodId"),
+          expenditurePayments("Amount").cast("double").as("ExpenditureAmt"),
+          (
+            col("PaymentHeaderTotal") *
+              (expenditurePayments("Amount") / col("PaymentTotalAmt"))
+          ).as("ReturnAllocatedAmt")
         )
-        .groupBy(
-          "ReportDate",
-          "OrderId",
-          "ReturnId",
-          "ShopCode",
-          "PaymentMethodId"
-        )
-        .agg(sum("ReturnAllocatedAmt").as("TotalReturnAmount"))
 
-      val orderKeys = cashFlowByOrder
+      val returnOrderMetrics = returnOrderBase
+        .groupBy("ReportDate", "OrderId", "ReturnId", "ShopCode", "PaymentMethodId")
+        .agg(
+          sum("ExpenditureAmt").as("TotalExpenditures"),
+          sum("ReturnAllocatedAmt").as("TotalReturnAmount")
+        )
+
+      val saleOrderKeys = saleCashByOrder
         .select(
           "ReportDate",
           "OrderId",
@@ -294,71 +312,62 @@ object ProcessSrvFundReport {
             "PaymentMethodId"
           )
         )
-        .union(
-          returnInvoiceByOrder.select(
-            "ReportDate",
-            "OrderId",
-            "ReturnId",
-            "ShopCode",
-            "PaymentMethodId"
-          )
-        )
         .distinct()
 
+      val saleOrderPart = saleOrderKeys
+        .join(
+          saleCashByOrder,
+          Seq("ReportDate", "OrderId", "ReturnId", "ShopCode", "PaymentMethodId"),
+          "left"
+        )
+        .join(
+          orderInvoiceByOrder,
+          Seq("ReportDate", "OrderId", "ReturnId", "ShopCode", "PaymentMethodId"),
+          "left"
+        )
+        .join(dimShop, Seq("ShopCode"), "left")
+        .join(
+          paymentMethodFnd,
+          saleOrderKeys("PaymentMethodId") === paymentMethodFnd("Id"),
+          "left"
+        )
+        .select(
+          saleOrderKeys("ReportDate"),
+          saleOrderKeys("OrderId"),
+          saleOrderKeys("ReturnId"),
+          saleOrderKeys("ShopCode"),
+          saleOrderKeys("PaymentMethodId").as("PaymentMethodId"),
+          coalesce(dimShop("ShopName"), lit("Unknown")).as("ShopName"),
+          coalesce(paymentMethodFnd("Name"), lit("Unknown")).as("PaymentMethodName"),
+          coalesce(col("TotalReceipts"), lit(0.0)).as("TotalReceipts"),
+          lit(0.0).as("TotalExpenditures"),
+          coalesce(col("TotalOrderAmount"), lit(0.0)).as("TotalOrderAmount"),
+          lit(0.0).as("TotalReturnAmount")
+        )
+
+      val returnOrderPart = returnOrderMetrics
+        .join(dimShop, Seq("ShopCode"), "left")
+        .join(
+          paymentMethodFnd,
+          returnOrderMetrics("PaymentMethodId") === paymentMethodFnd("Id"),
+          "left"
+        )
+        .select(
+          col("ReportDate"),
+          col("OrderId"),
+          col("ReturnId"),
+          col("ShopCode"),
+          col("PaymentMethodId"),
+          coalesce(dimShop("ShopName"), lit("Unknown")).as("ShopName"),
+          coalesce(paymentMethodFnd("Name"), lit("Unknown")).as("PaymentMethodName"),
+          lit(0.0).as("TotalReceipts"),
+          coalesce(col("TotalExpenditures"), lit(0.0)).as("TotalExpenditures"),
+          lit(0.0).as("TotalOrderAmount"),
+          coalesce(col("TotalReturnAmount"), lit(0.0)).as("TotalReturnAmount")
+        )
+
       val orderReportDf = withFundMetrics(
-        orderKeys
-          .join(
-            cashFlowByOrder,
-            Seq(
-              "ReportDate",
-              "OrderId",
-              "ReturnId",
-              "ShopCode",
-              "PaymentMethodId"
-            ),
-            "left"
-          )
-          .join(
-            orderInvoiceByOrder,
-            Seq(
-              "ReportDate",
-              "OrderId",
-              "ReturnId",
-              "ShopCode",
-              "PaymentMethodId"
-            ),
-            "left"
-          )
-          .join(
-            returnInvoiceByOrder,
-            Seq(
-              "ReportDate",
-              "OrderId",
-              "ReturnId",
-              "ShopCode",
-              "PaymentMethodId"
-            ),
-            "left"
-          )
-          .join(dimShop, Seq("ShopCode"), "left")
-          .join(
-            paymentMethodFnd,
-            orderKeys("PaymentMethodId") === paymentMethodFnd("Id"),
-            "left"
-          )
-          .select(
-            orderKeys("ReportDate"),
-            orderKeys("OrderId"),
-            orderKeys("ReturnId"),
-            orderKeys("ShopCode"),
-            coalesce(dimShop("ShopName"), lit("Unknown")).as("ShopName"),
-            coalesce(paymentMethodFnd("Name"), lit("Unknown"))
-              .as("PaymentMethodName"),
-            coalesce(col("TotalReceipts"), lit(0.0)).as("TotalReceipts"),
-            coalesce(col("TotalExpenditures"), lit(0.0)).as("TotalExpenditures"),
-            coalesce(col("TotalOrderAmount"), lit(0.0)).as("TotalOrderAmount"),
-            coalesce(col("TotalReturnAmount"), lit(0.0)).as("TotalReturnAmount")
-          )
+        saleOrderPart.unionByName(returnOrderPart)
       )
 
       writeServingTable(
@@ -366,7 +375,7 @@ object ProcessSrvFundReport {
         paymentReportDf,
         "nessie.serving.fund_report",
         "nessie.stg.fund_report",
-        Seq("ReportDate", "ShopCode", "PaymentMethodName")
+        Seq("ReportDate", "ShopCode", "PaymentMethodId")
       )
       writeServingTable(
         spark,
@@ -380,7 +389,7 @@ object ProcessSrvFundReport {
         orderReportDf,
         "nessie.serving.fund_report_order",
         "nessie.stg.fund_report_order",
-        Seq("OrderId", "ReturnId", "PaymentMethodName")
+        Seq("ReportDate", "OrderId", "ReturnId", "PaymentMethodId")
       )
 
       println("✔ Serving Fund Reports (shop+PTTT / shop / order) completed.")

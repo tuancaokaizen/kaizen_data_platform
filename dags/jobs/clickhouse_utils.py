@@ -222,8 +222,33 @@ def run_clickhouse_setup(table_name, layer=None):
         raise last_err
 
 
+# Active hot-layer report tables (ReplacingMergeTree) / Bảng report hot dùng cho push + view
+REPORT_BASE_TABLES = [
+    "financial_report",
+    "financial_report_detail",
+    "financial_report_product",
+    "financial_report_order",
+    "fund_report",
+    "fund_report_shop",
+    "fund_report_order",
+]
+
+
+def ensure_all_report_base_tables():
+    """Create report.* native tables if missing (e.g. after clear_clickhouse_serving).
+    Tạo bảng report.* nếu thiếu — tránh view/push fail với UNKNOWN_TABLE."""
+    print(f"Ensuring {len(REPORT_BASE_TABLES)} ClickHouse report base table(s) exist...")
+    for table_name in REPORT_BASE_TABLES:
+        run_clickhouse_setup(table_name, layer="report")
+    print("All ClickHouse report base tables are ready.")
+
+
 def run_clickhouse_views_setup():
     """Deploy hot/cold report views with Vietnamese column aliases / Triển khai view báo cáo hot-cold có alias tiếng Việt."""
+    # Views reference report.* — tables may have been dropped by clear_clickhouse_serving
+    # View tham chiếu report.* — bảng có thể đã bị xóa bởi clear_clickhouse_serving
+    ensure_all_report_base_tables()
+
     import requests
     import os
     import configparser
