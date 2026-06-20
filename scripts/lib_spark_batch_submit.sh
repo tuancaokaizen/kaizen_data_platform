@@ -37,8 +37,9 @@ curl -sSf -o \"\$JAR\" http://minio.storage.svc.cluster.local:9000/spark/jobs/ka
   --conf 'spark.sql.catalog.nessie.io-impl=org.apache.iceberg.hadoop.HadoopFileIO' \
   --conf 'spark.sql.catalog.nessie.warehouse=s3a://iceberg-data' \
   --conf 'spark.sql.catalog.nessie.gc-enabled=true' \
-  --conf 'spark.sql.session.timeZone=Asia/Ho_Chi_Minh' \
-  --conf 'spark.driver.extraJavaOptions=-Duser.timezone=Asia/Ho_Chi_Minh' \
+  --conf 'spark.sql.session.timeZone=UTC' \
+  --conf 'spark.driver.extraJavaOptions=-Duser.timezone=UTC' \
+  --conf 'spark.executor.extraJavaOptions=-Duser.timezone=UTC' \
   \"\$JAR\"
 "
 }

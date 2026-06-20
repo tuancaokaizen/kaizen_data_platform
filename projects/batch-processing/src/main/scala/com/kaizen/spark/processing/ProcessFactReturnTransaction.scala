@@ -22,10 +22,9 @@ object ProcessFactReturnTransaction {
     val config = new SparkConfig()
 
     val fromTs =
-      formatTimestamp(fromDate.getOrElse("1970-01-01"), isEndOfDay = false)
-    val toTs = formatTimestamp(
-      toDate.getOrElse(java.time.LocalDate.now().plusDays(1).toString),
-      isEndOfDay = false
+      SparkIOUtils.formatIcebergDateBoundary(fromDate.getOrElse("1970-01-01"))
+    val toTs = SparkIOUtils.formatIcebergDateBoundary(
+      toDate.getOrElse(java.time.LocalDate.now().plusDays(1).toString)
     )
 
     val jobResult = Try {
@@ -137,12 +136,4 @@ object ProcessFactReturnTransaction {
     }
   }
 
-  private def formatTimestamp(dateStr: String, isEndOfDay: Boolean): String = {
-    val trimmed = dateStr.trim
-    if (trimmed.length == 10) {
-      if (isEndOfDay) s"$trimmed 23:59:59" else s"$trimmed 00:00:00"
-    } else {
-      trimmed
-    }
-  }
 }

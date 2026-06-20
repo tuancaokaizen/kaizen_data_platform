@@ -1,11 +1,25 @@
 package com.kaizen.spark.utils
 
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.{Column, DataFrame, SparkSession}
 import org.apache.spark.sql.functions._
 import com.kaizen.spark.config.SparkConfig
 import scala.annotation.tailrec
+import scala.collection.mutable
 
 object SparkIOUtils {
+
+  /** Business timezone for Postgres bounds / Múi giờ nghiệp vụ VN trên Postgres */
+  val BusinessTimeZone: String = "Asia/Ho_Chi_Minh"
+
+  /** Iceberg/Nessie stores VN wall-clock digits as UTC literal / Nessie lưu số giờ VN dạng UTC literal */
+  val IcebergStorageTimeZone: String = "UTC"
+
+  /** Fixed offset for timestamptz SQL literals (Vietnam has no DST) / Offset cố định +07 */
+  private val BusinessTimeZoneOffset: String = "+07"
+
+  /** Cache column metadata per table within one JVM / Cache metadata cột theo bảng */
+  private val postgresColumnMetadataCache =
+    mutable.Map.empty[String, Seq[(String, String, String)]]
 
   /** Parses command-line arguments formatted as --key value into a Map.
     * Example: Array("--sourceTable", "public.Geography") -> Map("sourceTable"
@@ -44,24 +58,29 @@ object SparkIOUtils {
     */
   def createSparkSession(jobName: String): SparkSession = {
     java.util.TimeZone.setDefault(
-      java.util.TimeZone.getTimeZone("Asia/Ho_Chi_Minh")
+      java.util.TimeZone.getTimeZone(IcebergStorageTimeZone)
     )
-    System.setProperty("user.timezone", "Asia/Ho_Chi_Minh")
+    System.setProperty("user.timezone", IcebergStorageTimeZone)
 
     val builder = SparkSession
       .builder()
       .appName(jobName)
       .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
       .config("spark.sql.shuffle.partitions", "4")
-      .config("spark.sql.session.timeZone", "Asia/Ho_Chi_Minh")
+      .config("spark.sql.session.timeZone", IcebergStorageTimeZone)
 
-    if (
-      sys.props.contains("spark.master") || sys.env.contains("SPARK_MASTER")
-    ) {
-      builder.getOrCreate()
-    } else {
-      builder.config("spark.master", "local[*]").getOrCreate()
-    }
+    val spark =
+      if (
+        sys.props.contains("spark.master") || sys.env.contains("SPARK_MASTER")
+      ) {
+        builder.getOrCreate()
+      } else {
+        builder.config("spark.master", "local[*]").getOrCreate()
+      }
+
+    // Lake layer uses UTC literal wall-clock matching Postgres (+7) display / Nessie lưu số giờ như Postgres
+    spark.conf.set("spark.sql.session.timeZone", IcebergStorageTimeZone)
+    spark
   }
 
   /** Ensures Nessie/Iceberg namespace exists
@@ -91,6 +110,250 @@ object SparkIOUtils {
     else s""""$trimmed""""
   }
 
+  /** True when string already carries an explicit timezone / Chuỗi đã có offset hoặc Z */
+  private def hasExplicitTimeZone(ts: String): Boolean = {
+    val trimmed = ts.trim
+    trimmed.endsWith("Z") || trimmed.matches(".+[+-]\\d{2}(:\\d{2})?$")
+  }
+
+  /** Append +07 to naive timestamps so PG timestamptz bounds match VN calendar days.
+    * Gắn +07 cho literal không timezone để filter khớp ngày VN trên timestamptz.
+    */
+  def toPostgresTimestamptzLiteral(ts: String): String = {
+    val trimmed = ts.trim
+    if (trimmed.isEmpty || hasExplicitTimeZone(trimmed)) trimmed
+    else if (trimmed.length == 10) s"$trimmed 00:00:00$BusinessTimeZoneOffset"
+    else s"$trimmed$BusinessTimeZoneOffset"
+  }
+
+  /** Format date bounds for Postgres JDBC (+07 timestamptz) / Mốc ngày cho filter Postgres */
+  def formatBusinessDateBoundary(
+      dateStr: String,
+      isEndOfDay: Boolean = false
+  ): String = {
+    val trimmed = dateStr.trim
+    val normalized =
+      if (trimmed.length == 10) {
+        if (isEndOfDay) s"$trimmed 23:59:59" else s"$trimmed 00:00:00"
+      } else trimmed
+    toPostgresTimestamptzLiteral(normalized)
+  }
+
+  /** Format date bounds for Iceberg/Nessie (naive wall-clock, no offset) / Mốc ngày filter trên Nessie */
+  def formatIcebergDateBoundary(
+      dateStr: String,
+      isEndOfDay: Boolean = false
+  ): String = {
+    val trimmed = dateStr.trim
+    if (trimmed.length == 10) {
+      if (isEndOfDay) s"$trimmed 23:59:59" else s"$trimmed 00:00:00"
+    } else {
+      trimmed
+    }
+  }
+
+  /** Parse schema.table refs like payment."Transaction" / Parse tham chiếu bảng Postgres */
+  private def parsePostgresTable(tableRef: String): (String, String) = {
+    val pattern =
+      """^(?:"([^"]+)"|([^".]+))\.(?:"([^"]+)"|([^".]+))$""".r
+    tableRef.trim match {
+      case pattern(qSchema, uSchema, qTable, uTable) =>
+        (
+          Option(qSchema).filter(_.nonEmpty).orElse(Option(uSchema)).get,
+          Option(qTable).filter(_.nonEmpty).orElse(Option(uTable)).get
+        )
+      case other =>
+        throw new IllegalArgumentException(
+          s"Invalid PostgreSQL table reference: $other"
+        )
+    }
+  }
+
+  /** Escape single quotes for SQL literals / Escape dấu nháy đơn trong SQL */
+  private def escapeSqlLiteral(value: String): String =
+    value.replace("'", "''")
+
+  /** True when Postgres column is timestamptz / Kiểm tra cột timestamptz trên Postgres */
+  private def isPostgresTimestamptz(dataType: String, udtName: String): Boolean = {
+    val normalizedType = Option(dataType).map(_.toLowerCase).getOrElse("")
+    val normalizedUdt = Option(udtName).map(_.toLowerCase).getOrElse("")
+    normalizedType == "timestamp with time zone" || normalizedUdt == "timestamptz"
+  }
+
+  /** Load ordered column names + data types from information_schema.
+    * Lấy metadata cột từ information_schema theo thứ tự ordinal.
+    */
+  private def loadPostgresColumnMetadata(
+      spark: SparkSession,
+      config: SparkConfig,
+      tableRef: String
+  ): Seq[(String, String, String)] = {
+    postgresColumnMetadataCache.getOrElseUpdate(
+      tableRef, {
+        val (schema, tableName) = parsePostgresTable(tableRef)
+        val metaQuery =
+          s"""(SELECT column_name, data_type, udt_name
+             | FROM information_schema.columns
+             | WHERE table_schema = '${escapeSqlLiteral(schema)}'
+             |   AND table_name = '${escapeSqlLiteral(tableName)}'
+             | ORDER BY ordinal_position) AS pg_column_metadata""".stripMargin
+
+        spark.read
+          .format("jdbc")
+          .option("url", getPostgresJdbcUrl(config))
+          .option("dbtable", metaQuery)
+          .option("user", config.get("postgres", "username"))
+          .option("password", config.get("postgres", "password"))
+          .option("driver", "org.postgresql.Driver")
+          .option(
+            "sessionInitStatement",
+            s"SET TIME ZONE '$BusinessTimeZone'"
+          )
+          .load()
+          .collect()
+          .map(row => (row.getString(0), row.getString(1), row.getString(2)))
+          .toSeq
+      }
+    )
+  }
+
+  /** Spark parse pattern for VN offset timestamps / Pattern parse timestamp có offset +07 */
+  private val BusinessTimestampParsePattern: String =
+    "yyyy-MM-dd HH:mm:ss.SSSSSSX"
+
+  /** Render timestamptz as VN local string to avoid JDBC TZ bugs / Xuất timestamptz dạng chuỗi giờ VN */
+  private def projectPostgresColumn(
+      columnName: String,
+      dataType: String,
+      udtName: String
+  ): String = {
+    val quoted = quoteColumn(columnName)
+    if (isPostgresTimestamptz(dataType, udtName)) {
+      s"to_char($quoted AT TIME ZONE '$BusinessTimeZone', 'YYYY-MM-DD HH24:MI:SS.US') AS $quoted"
+    } else {
+      quoted
+    }
+  }
+
+  /** Parse VN local timestamp strings from JDBC into Spark timestamps.
+    * Chỉ parse với offset +07 — KHÔNG dùng to_utc_timestamp (tránh trừ lệch 7h).
+    */
+  private def parseBusinessTimestampStrings(
+      df: DataFrame,
+      timestamptzColumns: Seq[String]
+  ): DataFrame = {
+    timestamptzColumns.foldLeft(df) { (acc, columnName) =>
+      acc.withColumn(
+        columnName,
+        to_timestamp(
+          concat(col(columnName), lit(BusinessTimeZoneOffset)),
+          BusinessTimestampParsePattern
+        )
+      )
+    }
+  }
+
+  /** True when Postgres column is naive timestamp / Cột timestamp không timezone trên Postgres */
+  private def isPostgresNaiveTimestamp(
+      dataType: String,
+      udtName: String
+  ): Boolean = {
+    val normalizedType = Option(dataType).map(_.toLowerCase).getOrElse("")
+    val normalizedUdt = Option(udtName).map(_.toLowerCase).getOrElse("")
+    normalizedType == "timestamp without time zone" || normalizedUdt == "timestamp"
+  }
+
+  /** Fix naive JDBC timestamps misread as UTC on executors / Sửa timestamp naive bị JDBC đọc sai UTC */
+  private def normalizeNaiveTimestampColumns(
+      df: DataFrame,
+      naiveTimestampColumns: Set[String]
+  ): DataFrame = {
+    naiveTimestampColumns.foldLeft(df) { (acc, columnName) =>
+      acc.withColumn(
+        columnName,
+        to_utc_timestamp(col(columnName), BusinessTimeZone)
+      )
+    }
+  }
+
+  /** Store VN wall-clock digits so Nessie/Trino matches Postgres (+7) display.
+    * Lưu số giờ VN (vd 00:03 ngày 04/6) thay vì instant UTC (17:03 ngày 03/6).
+    */
+  private def toIcebergWallClockStorage(column: Column): Column = {
+    to_timestamp(
+      concat(
+        date_format(from_utc_timestamp(column, BusinessTimeZone), "yyyy-MM-dd HH:mm:ss.SSSSSS"),
+        lit("Z")
+      ),
+      BusinessTimestampParsePattern
+    )
+  }
+
+  private def applyIcebergWallClockStorage(
+      df: DataFrame,
+      timestampColumns: Seq[String]
+  ): DataFrame = {
+    if (timestampColumns.isEmpty) {
+      df
+    } else {
+      println(
+        s"Storing timestamp columns as Postgres-aligned wall clock in Nessie: ${timestampColumns.mkString(", ")}"
+      )
+      timestampColumns.foldLeft(df) { (acc, columnName) =>
+        acc.withColumn(columnName, toIcebergWallClockStorage(col(columnName)))
+      }
+    }
+  }
+
+  /** Build JDBC subquery with timezone-safe projections / Tạo subquery JDBC chuẩn múi giờ */
+  private def buildPostgresSelectSubquery(
+      tableRef: String,
+      columns: Seq[(String, String, String)],
+      whereClause: Option[String]
+  ): String = {
+    if (columns.isEmpty) {
+      throw new IllegalArgumentException(
+        s"No columns found in information_schema for PostgreSQL table: $tableRef"
+      )
+    }
+    val timestamptzColumns =
+      columns.filter { case (_, dataType, udtName) =>
+        isPostgresTimestamptz(dataType, udtName)
+      }.map { case (name, _, _) => name }
+    if (timestamptzColumns.nonEmpty) {
+      println(
+        s"Converting timestamptz columns to VN local strings for JDBC read: ${timestamptzColumns.mkString(", ")}"
+      )
+    }
+    val projections =
+      columns.map { case (name, dataType, udtName) =>
+        projectPostgresColumn(name, dataType, udtName)
+      }.mkString(", ")
+    val whereSql = whereClause.map(clause => s" WHERE $clause").getOrElse("")
+    s"(SELECT $projections FROM $tableRef$whereSql) AS temp_table"
+  }
+
+  /** Shared JDBC reader options for PostgreSQL / Tuỳ chọn JDBC dùng chung */
+  private def postgresJdbcReader(
+      spark: SparkSession,
+      config: SparkConfig,
+      dbTable: String
+  ): DataFrame = {
+    spark.read
+      .format("jdbc")
+      .option("url", getPostgresJdbcUrl(config))
+      .option("dbtable", dbTable)
+      .option("user", config.get("postgres", "username"))
+      .option("password", config.get("postgres", "password"))
+      .option("driver", "org.postgresql.Driver")
+      // Align PG session TZ with business calendar / Đồng bộ session PG với lịch VN
+      .option(
+        "sessionInitStatement",
+        s"SET TIME ZONE '$BusinessTimeZone'"
+      )
+      .load()
+  }
+
   /** Read table from PostgreSQL (supports SQL wrapping for incremental loads
     * based on watermark). Supports multiple watermark columns separated by
     * comma (treated as OR condition).
@@ -103,39 +366,53 @@ object SparkIOUtils {
       minTimestamp: Option[String] = None,
       maxTimestamp: Option[String] = None
   ): DataFrame = {
-    val jdbcUrl = getPostgresJdbcUrl(config)
-    val dbTable = (watermarkCol, minTimestamp, maxTimestamp) match {
+    val columnMetadata = loadPostgresColumnMetadata(spark, config, table)
+    val timestamptzColumns = columnMetadata.collect {
+      case (name, dataType, udtName)
+          if isPostgresTimestamptz(dataType, udtName) =>
+        name
+    }
+    val naiveTimestampColumns = columnMetadata.collect {
+      case (name, dataType, udtName)
+          if isPostgresNaiveTimestamp(dataType, udtName) =>
+        name
+    }.toSet
+    val normalizedMin = minTimestamp.map(toPostgresTimestamptzLiteral)
+    val normalizedMax = maxTimestamp.map(toPostgresTimestamptzLiteral)
+    val whereClause = (watermarkCol, normalizedMin, normalizedMax) match {
       case (Some(colsStr), Some(minTs), Some(maxTs)) =>
-        val conditions = colsStr
-          .split(",")
-          .map(quoteColumn)
-          .map { qCol =>
-            s"($qCol >= '$minTs' AND $qCol < '$maxTs')"
-          }
-          .mkString(" OR ")
-        s"""(SELECT * FROM $table WHERE $conditions) as temp_table"""
+        Some(
+          colsStr
+            .split(",")
+            .map(quoteColumn)
+            .map { qCol =>
+              s"($qCol >= '$minTs'::timestamptz AND $qCol < '$maxTs'::timestamptz)"
+            }
+            .mkString(" OR ")
+        )
       case (Some(colsStr), Some(minTs), None) =>
-        val conditions = colsStr
-          .split(",")
-          .map(quoteColumn)
-          .map { qCol =>
-            s"$qCol > '$minTs'"
-          }
-          .mkString(" OR ")
-        s"""(SELECT * FROM $table WHERE $conditions) as temp_table"""
+        Some(
+          colsStr
+            .split(",")
+            .map(quoteColumn)
+            .map { qCol =>
+              s"$qCol > '$minTs'::timestamptz"
+            }
+            .mkString(" OR ")
+        )
       case _ =>
-        table
+        None
     }
 
+    val dbTable =
+      buildPostgresSelectSubquery(table, columnMetadata, whereClause)
+
     println(s"Reading from PostgreSQL table/query: $dbTable")
-    spark.read
-      .format("jdbc")
-      .option("url", jdbcUrl)
-      .option("dbtable", dbTable)
-      .option("user", config.get("postgres", "username"))
-      .option("password", config.get("postgres", "password"))
-      .option("driver", "org.postgresql.Driver")
-      .load()
+    val rawDf = postgresJdbcReader(spark, config, dbTable)
+    val parsedDf = parseBusinessTimestampStrings(rawDf, timestamptzColumns)
+    val naiveDf = normalizeNaiveTimestampColumns(parsedDf, naiveTimestampColumns)
+    val allTimestampColumns = timestamptzColumns ++ naiveTimestampColumns.toSeq
+    applyIcebergWallClockStorage(naiveDf, allTimestampColumns)
   }
 
   /** Writes DataFrame to Iceberg.

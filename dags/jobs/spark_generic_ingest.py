@@ -24,9 +24,9 @@ spark_conf = {
     "spark.executor.cores": "1",
     "spark.cores.max": "2",
     "spark.driver.memory": "1g",
-    "spark.sql.session.timeZone": "Asia/Ho_Chi_Minh",
-    "spark.driver.extraJavaOptions": "-Duser.timezone=Asia/Ho_Chi_Minh",
-    "spark.executor.extraJavaOptions": "-Duser.timezone=Asia/Ho_Chi_Minh"
+    "spark.sql.session.timeZone": "UTC",
+    "spark.driver.extraJavaOptions": "-Duser.timezone=UTC",
+    "spark.executor.extraJavaOptions": "-Duser.timezone=UTC"
 }
 
 import yaml
