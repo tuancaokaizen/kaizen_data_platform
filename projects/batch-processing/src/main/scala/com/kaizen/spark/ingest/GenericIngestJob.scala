@@ -59,8 +59,9 @@ object GenericIngestJob {
           if (fromDateOpt.isDefined || toDateOpt.isDefined) {
             val fromDate = fromDateOpt.getOrElse("1970-01-01")
             val toDate = toDateOpt.getOrElse(java.time.LocalDate.now().toString)
-            val formattedFrom = formatTimestamp(fromDate, isEndOfDay = false)
-            val formattedTo = formatTimestamp(toDate, isEndOfDay = false)
+            val formattedFrom =
+              SparkIOUtils.formatBusinessDateBoundary(fromDate)
+            val formattedTo = SparkIOUtils.formatBusinessDateBoundary(toDate)
             println(
               s"[$jobName] Manual date range specified. Ingesting from $formattedFrom to $formattedTo..."
             )
@@ -198,15 +199,6 @@ object GenericIngestJob {
         e.printStackTrace()
         spark.stop()
         throw e
-    }
-  }
-
-  private def formatTimestamp(dateStr: String, isEndOfDay: Boolean): String = {
-    val trimmed = dateStr.trim
-    if (trimmed.length == 10) {
-      if (isEndOfDay) s"$trimmed 23:59:59" else s"$trimmed 00:00:00"
-    } else {
-      trimmed
     }
   }
 
