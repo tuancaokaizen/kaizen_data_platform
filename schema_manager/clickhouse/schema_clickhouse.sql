@@ -141,3 +141,57 @@ CREATE TABLE IF NOT EXISTS report.fund_report_order (
     ReconciliationDiff Float64
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (OrderId, ReturnId, PaymentMethodName);
+
+-- ============================================================================
+-- Realtime business-by-order (Flink stream) / Tình hình KD theo đơn realtime
+-- Hot only — cold lives in serving.biz_rt_order (Iceberg) via MigrateBizRtToColdJob
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS report.biz_rt_order (
+    ReportDate Date,
+    OrderId String,
+    ReturnId String,
+    DocumentType LowCardinality(String),
+    ShopCode String,
+    ShopName String,
+    OrderStatus String,
+    SalesAmount Float64,
+    ReturnAmount Float64,
+    NetRevenue Float64,
+    TotalReceipts Float64,
+    TotalExpenditures Float64,
+    NetCashFlow Float64,
+    PaymentMethodSummary String,
+    TotalOrderAmount Float64,
+    TotalReturnAmount Float64,
+    ReconciliationDiff Float64,
+    PendingOrder UInt8,
+    UpdatedAt DateTime64(3)
+) ENGINE = ReplacingMergeTree(UpdatedAt)
+PARTITION BY toYYYYMMDD(ReportDate)
+ORDER BY (OrderId, ReturnId)
+TTL ReportDate + INTERVAL 14 DAY DELETE;
+
+-- Cold stub (replaced by Iceberg engine after MigrateBizRtToColdJob)
+-- Stub cold (đổi sang Iceberg engine sau job migrate)
+CREATE TABLE IF NOT EXISTS serving.biz_rt_order (
+    ReportDate Date,
+    OrderId String,
+    ReturnId String,
+    DocumentType LowCardinality(String),
+    ShopCode String,
+    ShopName String,
+    OrderStatus String,
+    SalesAmount Float64,
+    ReturnAmount Float64,
+    NetRevenue Float64,
+    TotalReceipts Float64,
+    TotalExpenditures Float64,
+    NetCashFlow Float64,
+    PaymentMethodSummary String,
+    TotalOrderAmount Float64,
+    TotalReturnAmount Float64,
+    ReconciliationDiff Float64,
+    PendingOrder UInt8,
+    UpdatedAt DateTime64(3)
+) ENGINE = ReplacingMergeTree(UpdatedAt)
+ORDER BY (OrderId, ReturnId);

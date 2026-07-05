@@ -38,6 +38,9 @@ dependencies {
 
     // Database Driver
     implementation 'org.postgresql:postgresql:42.6.0'
+    implementation 'com.clickhouse:clickhouse-jdbc:0.6.5'
+    implementation 'com.clickhouse:clickhouse-http-client:0.6.5'
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.2.1'
 
     // Config & JSON
     implementation 'org.ini4j:ini4j:0.5.4'

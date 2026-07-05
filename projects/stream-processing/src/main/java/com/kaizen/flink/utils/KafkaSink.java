@@ -2,6 +2,7 @@ package com.kaizen.flink.utils;
 
 import com.kaizen.flink.config.FlinkConfig;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
+import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 
 public class KafkaSink {
@@ -15,12 +16,14 @@ public class KafkaSink {
     public static <T> org.apache.flink.connector.kafka.sink.KafkaSink<T> buildObjectSink(FlinkConfig config, String topic) {
         return org.apache.flink.connector.kafka.sink.KafkaSink.<T>builder()
                 .setBootstrapServers(config.get("kafka", "bootstrap_servers"))
+                .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
                 .setRecordSerializer(
                         KafkaRecordSerializationSchema.<T>builder()
                                 .setTopic(topic)
                                 .setValueSerializationSchema(new JsonSerializationSchema<>())
                                 .build()
                 )
+                .setKafkaProducerConfig(KafkaClientProps.producerProps(config))
                 .build();
     }
 
@@ -30,12 +33,14 @@ public class KafkaSink {
     public static org.apache.flink.connector.kafka.sink.KafkaSink<String> buildStringSink(FlinkConfig config, String topic) {
         return org.apache.flink.connector.kafka.sink.KafkaSink.<String>builder()
                 .setBootstrapServers(config.get("kafka", "bootstrap_servers"))
+                .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
                 .setRecordSerializer(
                         KafkaRecordSerializationSchema.<String>builder()
                                 .setTopic(topic)
                                 .setValueSerializationSchema(new SimpleStringSchema())
                                 .build()
                 )
+                .setKafkaProducerConfig(KafkaClientProps.producerProps(config))
                 .build();
     }
 }

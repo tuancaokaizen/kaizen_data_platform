@@ -10,6 +10,7 @@ import com.kaizen.flink.model.PaymentTransaction;
 import com.kaizen.flink.sink.EsSink;
 import com.kaizen.flink.source.KafkaSourceBuilder;
 import com.kaizen.flink.utils.JsonUtils;
+import com.kaizen.flink.utils.KafkaClientProps;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.kafka.source.KafkaSource;
@@ -40,11 +41,13 @@ public class KaizenConsumerJob {
         final StreamExecutionEnvironment env = config.createEnv();
 
         env.enableCheckpointing(config.getLong("flink", "checkpoint_interval_ms", 10_000L));
-        env.setParallelism(config.getInt("flink", "parallelism", 2));
+        final int kafkaParallelism = KafkaClientProps.kafkaParallelism(config);
+        env.setParallelism(kafkaParallelism);
 
         // ── 1. Order-bundles → PostgreSQL Sink ────────────────────────────────
         KafkaSource<String> orderPgSrc = KafkaSourceBuilder.buildKafkaSource(config, "order-bundles", PG_ORDER_GROUP_ID);
         env.fromSource(orderPgSrc, WatermarkStrategy.noWatermarks(), "Kafka-OrderPg")
+                .setParallelism(kafkaParallelism)
                 .map(json -> JsonUtils.fromJson(json, OrderBundle.class))
                 .returns(org.apache.flink.api.common.typeinfo.TypeInformation.of(OrderBundle.class))
                 .addSink(new OrderBundlePgSink(config))
@@ -53,6 +56,7 @@ public class KaizenConsumerJob {
         // ── 2. Payment-bundles → PostgreSQL Sink ──────────────────────────────
         KafkaSource<String> paymentPgSrc = KafkaSourceBuilder.buildKafkaSource(config, "payment-bundles", PG_PAYMENT_GROUP_ID);
         env.fromSource(paymentPgSrc, WatermarkStrategy.noWatermarks(), "Kafka-PaymentPg")
+                .setParallelism(kafkaParallelism)
                 .map(json -> JsonUtils.fromJson(json, PaymentBundle.class))
                 .returns(org.apache.flink.api.common.typeinfo.TypeInformation.of(PaymentBundle.class))
                 .addSink(new PaymentBundlePgSink(config))
@@ -61,12 +65,14 @@ public class KaizenConsumerJob {
         // ── 3. Order-bundles → Elasticsearch Sink ──────────────────────────────
         KafkaSource<String> orderEsSrc = KafkaSourceBuilder.buildKafkaSource(config, "order-bundles", ES_GROUP_ID);
         env.fromSource(orderEsSrc, WatermarkStrategy.noWatermarks(), "Kafka-OrderEs")
+                .setParallelism(kafkaParallelism)
                 .sinkTo(EsSink.buildStringIndexSink(config, "order-bundles"))
                 .name("ES-OrderSink");
 
         // ── 4. Payment-bundles → Elasticsearch Sink ────────────────────────────
         KafkaSource<String> paymentEsSrc = KafkaSourceBuilder.buildKafkaSource(config, "payment-bundles", ES_GROUP_ID);
         env.fromSource(paymentEsSrc, WatermarkStrategy.noWatermarks(), "Kafka-PaymentEs")
+                .setParallelism(kafkaParallelism)
                 .sinkTo(EsSink.buildStringIndexSink(config, "payment-bundles"))
                 .name("ES-PaymentSink");
 

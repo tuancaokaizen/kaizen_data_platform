@@ -365,7 +365,9 @@ Chi tiết: [projects/README.md](../projects/README.md)
 | `spark_dw_transform_pipeline` | DW + serving + push CH + views | Manual / SIL |
 | `sil_daily_pipeline` | Chuỗi ingest → transform | **00:30** hàng ngày |
 | `spark_dw_maintenance_pipeline` | Compaction, expire snapshot | **02:00** |
-| `spark_partition_realignment_pipeline` | Partition evolution (một lần) | Manual |
+| `kafka_retention_pipeline` | Trim Kafka topics (retention) | **03:00** hàng ngày |
+| `postgres_vacuum_pipeline` | VACUUM (ANALYZE) bảng UPSERT PG | **04:00 Chủ nhật** |
+| `spark_iceberg_partition_cleanup_pipeline` | Expire snapshot + orphan cleanup (partitioned) | Manual |
 | `spark_transaction_simulation_pipeline` | Mô phỏng giao dịch batch | Manual |
 | `spark_dw_clear_nessie_pipeline` | Xóa dữ liệu Nessie (dev) | Manual |
 | `spark_dw_clear_serving_pipeline` | Xóa serving (dev) | Manual |
@@ -384,8 +386,9 @@ Sau transform: kiểm tra ClickHouse `report.financial_report`, `report.fund_rep
 
 ### Maintenance
 
-- **Hàng ngày:** `spark_dw_maintenance_pipeline` (tự chạy 02:00)
-- **Một lần:** `spark_partition_realignment_pipeline` khi đổi partition strategy
+- **Hàng ngày:** `spark_dw_maintenance_pipeline` (02:00), `kafka_retention_pipeline` (03:00)
+- **Hàng tuần:** `postgres_vacuum_pipeline` (Chủ nhật 04:00 UTC) — `VACUUM (ANALYZE)` trên 8 bảng order/payment
+- **Manual:** `spark_iceberg_partition_cleanup_pipeline`, `spark_partition_realignment_pipeline`
 
 ---
 

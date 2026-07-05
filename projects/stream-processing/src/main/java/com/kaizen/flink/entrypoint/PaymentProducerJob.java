@@ -6,6 +6,7 @@ import com.kaizen.flink.simulate.IdPool;
 import com.kaizen.flink.simulate.PaymentSimulator;
 import com.kaizen.flink.sink.KafkaSink;
 import com.kaizen.flink.utils.JsonUtils;
+import com.kaizen.flink.utils.KafkaClientProps;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
@@ -29,7 +30,9 @@ public class PaymentProducerJob {
 
         final StreamExecutionEnvironment env = config.createEnv();
         env.enableCheckpointing(config.getLong("flink", "checkpoint_interval_ms", 10_000L));
-        env.setParallelism(config.getInt("flink", "parallelism", 2));
+        final int kafkaParallelism = KafkaClientProps.kafkaParallelism(config);
+        final int sourceParallelism = config.getInt("flink", "source_parallelism", 1);
+        env.setParallelism(kafkaParallelism);
         final long emitMs = config.getLong("flink", "emit_interval_ms", 1000L);
 
         @SuppressWarnings({"deprecation", "serial"})
@@ -62,9 +65,10 @@ public class PaymentProducerJob {
             public void cancel() {
                 running = false;
             }
-        }).setParallelism(1).name("Src-PaymentBundle");
+        }).setParallelism(sourceParallelism).name("Src-PaymentBundle");
 
         bundleStream.sinkTo(KafkaSink.buildStringSink(config, "payment-bundles"))
+                .setParallelism(kafkaParallelism)
                 .name("Kafka-PaymentBundles");
 
         LOG.info("Starting PaymentProducerJob (" + emitMs + "ms/payment)...");

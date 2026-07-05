@@ -666,13 +666,52 @@ object SparkIOUtils {
       .load()
   }
 
-  /** Safe, standalone snapshot expiration for Iceberg tables. Cleans up older
-    * snapshot metadata and data files in S3/MinIO.
+  /** Expire old Iceberg snapshots by layer policy after ingest/transform.
+    * Hết hạn snapshot Iceberg theo policy từng layer sau ingest/transform.
+    *
+    * stg/fnd: retain_last=1 (staging — chỉ cần snapshot mới nhất)
+    * dw:      retain_last=5, older_than 7d
+    * serving: retain_last=3, older_than 3d
     */
   def expireTableSnapshots(spark: SparkSession, table: String): Unit = {
-    // No-op: We keep historical snapshots now that ClickHouse queries active files natively via the Iceberg engine.
-    println(
-      s"Skipping snapshot expiration for table: $table (retaining snapshots)."
-    )
+    if (!tableExists(spark, table)) {
+      println(s"Table $table not found — skip snapshot expiration.")
+      return
+    }
+
+    val policy: Option[(Int, Long)] = table match {
+      case t if t.contains(".stg.") || t.contains(".fnd.") => Some((1, 1L))
+      case t if t.contains(".dw.")                         => Some((5, 7L))
+      case t if t.contains(".serving.")                  => Some((3, 3L))
+      case _                                             => None
+    }
+
+    policy.foreach { case (retainLast, olderThanDays) =>
+      try {
+        spark.sql(
+          s"""ALTER TABLE $table SET TBLPROPERTIES (
+             |  'gc.enabled'='true',
+             |  'nessie.gc.no-warning'='true'
+             |)""".stripMargin
+        )
+        val olderThanMs =
+          System.currentTimeMillis() - (olderThanDays * 24 * 60 * 60 * 1000L)
+        spark.sql(
+          s"""
+             |CALL nessie.system.expire_snapshots(
+             |  table => '$table',
+             |  older_than => TIMESTAMP_MILLIS($olderThanMs),
+             |  retain_last => $retainLast
+             |)
+             |""".stripMargin
+        )
+        println(
+          s"✔ Expired snapshots for $table (retain_last=$retainLast, older_than=${olderThanDays}d)."
+        )
+      } catch {
+        case e: Exception =>
+          println(s"⚠ Snapshot expiration failed for $table: ${e.getMessage}")
+      }
+    }
   }
 }
