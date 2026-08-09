@@ -346,8 +346,8 @@ UNION ALL
 SELECT * FROM report.v_bao_cao_quy_theo_don;
 
 -- ============================================================================
--- REALTIME business-by-order (Flink) — hot 14d / cold Iceberg
--- Tình hình KD theo đơn realtime — hot 14 ngày / cold Iceberg
+-- REALTIME business-by-order (Flink) — view hot 14d / cold Iceberg (CH table TTL 16d buffer)
+-- Tình hình KD theo đơn realtime — view hot 14 ngày / cold Iceberg (bảng hot TTL 16 ngày buffer)
 -- ============================================================================
 DROP VIEW IF EXISTS report.v_bao_cao_kd_theo_don_rt;
 DROP VIEW IF EXISTS serving.v_bao_cao_kd_theo_don_rt;
@@ -379,47 +379,57 @@ ORDER BY (OrderId, ReturnId);
 
 CREATE VIEW report.v_bao_cao_kd_theo_don_rt AS
 SELECT
-    ReportDate AS `NgayBaoCao`,
-    OrderId AS `MaDonHang`,
-    ReturnId AS `MaPhieuTra`,
-    DocumentType AS `LoaiChungTu`,
-    ShopCode AS `MaCuaHang`,
-    ShopName AS `TenCuaHang`,
-    OrderStatus AS `TrangThaiDon`,
-    SalesAmount AS `DoanhThuBan`,
-    ReturnAmount AS `GiaTriTraHang`,
-    NetRevenue AS `DoanhThuThuan`,
-    TotalReceipts AS `TongThu`,
-    TotalExpenditures AS `TongChi`,
-    NetCashFlow AS `DongTienRong`,
-    PaymentMethodSummary AS `TomTatPTTT`,
-    TotalOrderAmount AS `TongTienDonHang`,
-    TotalReturnAmount AS `TongTienHoanTra`,
-    ReconciliationDiff AS `ChenhLechDoiSoat`,
-    PendingOrder AS `ChoDonHang`
-FROM report.biz_rt_order FINAL;
+    r.ReportDate AS `NgayBaoCao`,
+    r.OrderId AS `MaDonHang`,
+    r.ReturnId AS `MaPhieuTra`,
+    r.DocumentType AS `LoaiChungTu`,
+    r.ShopCode AS `MaCuaHang`,
+    coalesce(nullIf(ds.ShopName, ''), nullIf(r.ShopName, r.ShopCode), r.ShopCode) AS `TenCuaHang`,
+    r.OrderStatus AS `TrangThaiDon`,
+    r.SalesAmount AS `DoanhThuBan`,
+    r.ReturnAmount AS `GiaTriTraHang`,
+    r.NetRevenue AS `DoanhThuThuan`,
+    r.TotalReceipts AS `TongThu`,
+    r.TotalExpenditures AS `TongChi`,
+    r.NetCashFlow AS `DongTienRong`,
+    r.PaymentMethodSummary AS `TomTatPTTT`,
+    r.TotalOrderAmount AS `TongTienDonHang`,
+    r.TotalReturnAmount AS `TongTienHoanTra`,
+    r.ReconciliationDiff AS `ChenhLechDoiSoat`,
+    r.PendingOrder AS `ChoDonHang`
+FROM report.biz_rt_order AS r FINAL
+LEFT JOIN (
+    SELECT ShopCode, any(ShopName) AS ShopName
+    FROM dw.dim_shop
+    GROUP BY ShopCode
+) AS ds ON r.ShopCode = ds.ShopCode;
 
 CREATE VIEW serving.v_bao_cao_kd_theo_don_rt AS
 SELECT
-    ReportDate AS `NgayBaoCao`,
-    OrderId AS `MaDonHang`,
-    ReturnId AS `MaPhieuTra`,
-    DocumentType AS `LoaiChungTu`,
-    ShopCode AS `MaCuaHang`,
-    ShopName AS `TenCuaHang`,
-    OrderStatus AS `TrangThaiDon`,
-    SalesAmount AS `DoanhThuBan`,
-    ReturnAmount AS `GiaTriTraHang`,
-    NetRevenue AS `DoanhThuThuan`,
-    TotalReceipts AS `TongThu`,
-    TotalExpenditures AS `TongChi`,
-    NetCashFlow AS `DongTienRong`,
-    PaymentMethodSummary AS `TomTatPTTT`,
-    TotalOrderAmount AS `TongTienDonHang`,
-    TotalReturnAmount AS `TongTienHoanTra`,
-    ReconciliationDiff AS `ChenhLechDoiSoat`,
-    PendingOrder AS `ChoDonHang`
-FROM serving.biz_rt_order;
+    r.ReportDate AS `NgayBaoCao`,
+    r.OrderId AS `MaDonHang`,
+    r.ReturnId AS `MaPhieuTra`,
+    r.DocumentType AS `LoaiChungTu`,
+    r.ShopCode AS `MaCuaHang`,
+    coalesce(nullIf(ds.ShopName, ''), nullIf(r.ShopName, r.ShopCode), r.ShopCode) AS `TenCuaHang`,
+    r.OrderStatus AS `TrangThaiDon`,
+    r.SalesAmount AS `DoanhThuBan`,
+    r.ReturnAmount AS `GiaTriTraHang`,
+    r.NetRevenue AS `DoanhThuThuan`,
+    r.TotalReceipts AS `TongThu`,
+    r.TotalExpenditures AS `TongChi`,
+    r.NetCashFlow AS `DongTienRong`,
+    r.PaymentMethodSummary AS `TomTatPTTT`,
+    r.TotalOrderAmount AS `TongTienDonHang`,
+    r.TotalReturnAmount AS `TongTienHoanTra`,
+    r.ReconciliationDiff AS `ChenhLechDoiSoat`,
+    r.PendingOrder AS `ChoDonHang`
+FROM serving.biz_rt_order AS r
+LEFT JOIN (
+    SELECT ShopCode, any(ShopName) AS ShopName
+    FROM dw.dim_shop
+    GROUP BY ShopCode
+) AS ds ON r.ShopCode = ds.ShopCode;
 
 CREATE VIEW report.v_bao_cao_kd_theo_don_rt_tong_hop AS
 SELECT * FROM serving.v_bao_cao_kd_theo_don_rt

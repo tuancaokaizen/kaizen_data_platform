@@ -169,7 +169,9 @@ CREATE TABLE IF NOT EXISTS report.biz_rt_order (
 ) ENGINE = ReplacingMergeTree(UpdatedAt)
 PARTITION BY toYYYYMMDD(ReportDate)
 ORDER BY (OrderId, ReturnId)
-TTL ReportDate + INTERVAL 14 DAY DELETE;
+-- View + migrate use 14d hot window; TTL 16d = 14 + 2d buffer before purge after cold migrate
+-- View + migrate cửa sổ hot 14 ngày; TTL 16 ngày = buffer 2 ngày sau migrate cold rồi mới xóa hot
+TTL ReportDate + INTERVAL 16 DAY DELETE;
 
 -- Cold stub (replaced by Iceberg engine after MigrateBizRtToColdJob)
 -- Stub cold (đổi sang Iceberg engine sau job migrate)
