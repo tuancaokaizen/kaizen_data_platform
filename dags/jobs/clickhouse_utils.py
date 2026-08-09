@@ -97,8 +97,14 @@ def run_clickhouse_setup(table_name, layer=None):
         with open(schema_sql_path, 'r', encoding='utf-8') as sf:
             content = sf.read()
 
+        # Strip full-line comments before split — semicolons inside `-- ...; ...` break naive split
+        # Bỏ comment dòng trước khi split — dấu `;` trong comment làm tách statement sai
+        content_no_comments = '\n'.join(
+            line for line in content.split('\n') if not line.strip().startswith('--')
+        )
+
         # Parse statements to find the specific CREATE TABLE statement
-        raw_statements = content.split(';')
+        raw_statements = content_no_comments.split(';')
         statements_to_run = [f"CREATE DATABASE IF NOT EXISTS {db_name}"]
 
         target_marker = f"{db_name}.{table_name}"
@@ -107,10 +113,7 @@ def run_clickhouse_setup(table_name, layer=None):
             stmt_clean = stmt.strip()
             if not stmt_clean:
                 continue
-            # Remove comments for matching check
-            lines = [line for line in stmt_clean.split('\n') if not line.strip().startswith('--')]
-            stmt_no_comments = '\n'.join(lines)
-            if "CREATE TABLE" in stmt_no_comments and target_marker in stmt_no_comments:
+            if "CREATE TABLE" in stmt_clean and target_marker in stmt_clean:
                 statements_to_run.append(stmt_clean)
                 found_table = True
                 break
@@ -231,6 +234,7 @@ REPORT_BASE_TABLES = [
     "fund_report",
     "fund_report_shop",
     "fund_report_order",
+    "biz_rt_order",
 ]
 
 
@@ -241,6 +245,19 @@ def ensure_all_report_base_tables():
     for table_name in REPORT_BASE_TABLES:
         run_clickhouse_setup(table_name, layer="report")
     print("All ClickHouse report base tables are ready.")
+
+
+def refresh_biz_rt_serving_table():
+    """Point serving.biz_rt_order at Iceberg after MigrateBizRtToColdJob.
+    Trỏ serving.biz_rt_order sang Iceberg sau job migrate cold."""
+    try:
+        run_clickhouse_setup("biz_rt_order", layer="serving")
+        print("serving.biz_rt_order refreshed as Iceberg engine table.")
+    except Exception as e:
+        # Cold may be empty on first days (nothing older than hot window yet)
+        # Cold có thể trống những ngày đầu (chưa có dòng cũ hơn hot window)
+        print(f"WARNING: could not refresh serving.biz_rt_order: {e}")
+
 
 
 def run_clickhouse_views_setup():
@@ -337,6 +354,7 @@ SERVING_REPORT_TABLES = [
     "fund_report",
     "fund_report_shop",
     "fund_report_order",
+    "biz_rt_order",
     # Legacy grains / Grain cũ đã bỏ
     "fund_report_detail",
     "fund_report_product",
@@ -441,6 +459,10 @@ def run_clickhouse_clear_serving():
         "DROP VIEW IF EXISTS serving.v_bao_cao_quy_theo_san_pham",
         "DROP VIEW IF EXISTS serving.v_bao_cao_quy_chi_tiet",
         "DROP VIEW IF EXISTS serving.v_bao_cao_quy_theo_don",
+        # Realtime business-by-order / Tình hình KD theo đơn realtime
+        "DROP VIEW IF EXISTS report.v_bao_cao_kd_theo_don_rt_tong_hop",
+        "DROP VIEW IF EXISTS report.v_bao_cao_kd_theo_don_rt",
+        "DROP VIEW IF EXISTS serving.v_bao_cao_kd_theo_don_rt",
     ]
 
     table_drops = []

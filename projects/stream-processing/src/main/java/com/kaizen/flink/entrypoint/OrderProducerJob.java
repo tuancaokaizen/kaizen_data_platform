@@ -6,6 +6,7 @@ import com.kaizen.flink.simulate.IdPool;
 import com.kaizen.flink.simulate.OrderSimulator;
 import com.kaizen.flink.sink.KafkaSink;
 import com.kaizen.flink.utils.JsonUtils;
+import com.kaizen.flink.utils.KafkaClientProps;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
@@ -34,7 +35,9 @@ public class OrderProducerJob {
         final StreamExecutionEnvironment env = config.createEnv();
 
         env.enableCheckpointing(config.getLong("flink", "checkpoint_interval_ms", 10_000L));
-        env.setParallelism(config.getInt("flink", "parallelism", 2));
+        final int kafkaParallelism = KafkaClientProps.kafkaParallelism(config);
+        final int sourceParallelism = config.getInt("flink", "source_parallelism", 1);
+        env.setParallelism(kafkaParallelism);
         // Đọc cấu hình emitMs từ config.ini (ví dụ: 1000ms = 1 order/s)
         final long emitMs = config.getLong("flink", "emit_interval_ms", 1000L);
 
@@ -67,9 +70,10 @@ public class OrderProducerJob {
             public void cancel() {
                 running = false;
             }
-        }).setParallelism(1).name("Src-OrderBundle");
+        }).setParallelism(sourceParallelism).name("Src-OrderBundle");
 
         bundleStream.sinkTo(KafkaSink.buildStringSink(config, "order-bundles"))
+                .setParallelism(kafkaParallelism)
                 .name("Kafka-OrderBundles");
 
         LOG.info("Starting OrderProducerJob (" + emitMs + "ms/order)...");

@@ -344,3 +344,96 @@ SELECT * FROM serving.v_bao_cao_quy_theo_don
 WHERE `NgayBaoCao` < today() - toIntervalDay(7)
 UNION ALL
 SELECT * FROM report.v_bao_cao_quy_theo_don;
+
+-- ============================================================================
+-- REALTIME business-by-order (Flink) — view hot 14d / cold Iceberg (CH table TTL 16d buffer)
+-- Tình hình KD theo đơn realtime — view hot 14 ngày / cold Iceberg (bảng hot TTL 16 ngày buffer)
+-- ============================================================================
+DROP VIEW IF EXISTS report.v_bao_cao_kd_theo_don_rt;
+DROP VIEW IF EXISTS serving.v_bao_cao_kd_theo_don_rt;
+DROP VIEW IF EXISTS report.v_bao_cao_kd_theo_don_rt_tong_hop;
+
+-- Cold stub so views deploy before first Iceberg migrate / Stub cold để deploy view trước migrate
+CREATE TABLE IF NOT EXISTS serving.biz_rt_order (
+    ReportDate Date,
+    OrderId String,
+    ReturnId String,
+    DocumentType LowCardinality(String),
+    ShopCode String,
+    ShopName String,
+    OrderStatus String,
+    SalesAmount Float64,
+    ReturnAmount Float64,
+    NetRevenue Float64,
+    TotalReceipts Float64,
+    TotalExpenditures Float64,
+    NetCashFlow Float64,
+    PaymentMethodSummary String,
+    TotalOrderAmount Float64,
+    TotalReturnAmount Float64,
+    ReconciliationDiff Float64,
+    PendingOrder UInt8,
+    UpdatedAt DateTime64(3)
+) ENGINE = ReplacingMergeTree(UpdatedAt)
+ORDER BY (OrderId, ReturnId);
+
+CREATE VIEW report.v_bao_cao_kd_theo_don_rt AS
+SELECT
+    r.ReportDate AS `NgayBaoCao`,
+    r.OrderId AS `MaDonHang`,
+    r.ReturnId AS `MaPhieuTra`,
+    r.DocumentType AS `LoaiChungTu`,
+    r.ShopCode AS `MaCuaHang`,
+    coalesce(nullIf(ds.ShopName, ''), nullIf(r.ShopName, r.ShopCode), r.ShopCode) AS `TenCuaHang`,
+    r.OrderStatus AS `TrangThaiDon`,
+    r.SalesAmount AS `DoanhThuBan`,
+    r.ReturnAmount AS `GiaTriTraHang`,
+    r.NetRevenue AS `DoanhThuThuan`,
+    r.TotalReceipts AS `TongThu`,
+    r.TotalExpenditures AS `TongChi`,
+    r.NetCashFlow AS `DongTienRong`,
+    r.PaymentMethodSummary AS `TomTatPTTT`,
+    r.TotalOrderAmount AS `TongTienDonHang`,
+    r.TotalReturnAmount AS `TongTienHoanTra`,
+    r.ReconciliationDiff AS `ChenhLechDoiSoat`,
+    r.PendingOrder AS `ChoDonHang`
+FROM report.biz_rt_order AS r FINAL
+LEFT JOIN (
+    SELECT ShopCode, any(ShopName) AS ShopName
+    FROM dw.dim_shop
+    GROUP BY ShopCode
+) AS ds ON r.ShopCode = ds.ShopCode;
+
+CREATE VIEW serving.v_bao_cao_kd_theo_don_rt AS
+SELECT
+    r.ReportDate AS `NgayBaoCao`,
+    r.OrderId AS `MaDonHang`,
+    r.ReturnId AS `MaPhieuTra`,
+    r.DocumentType AS `LoaiChungTu`,
+    r.ShopCode AS `MaCuaHang`,
+    coalesce(nullIf(ds.ShopName, ''), nullIf(r.ShopName, r.ShopCode), r.ShopCode) AS `TenCuaHang`,
+    r.OrderStatus AS `TrangThaiDon`,
+    r.SalesAmount AS `DoanhThuBan`,
+    r.ReturnAmount AS `GiaTriTraHang`,
+    r.NetRevenue AS `DoanhThuThuan`,
+    r.TotalReceipts AS `TongThu`,
+    r.TotalExpenditures AS `TongChi`,
+    r.NetCashFlow AS `DongTienRong`,
+    r.PaymentMethodSummary AS `TomTatPTTT`,
+    r.TotalOrderAmount AS `TongTienDonHang`,
+    r.TotalReturnAmount AS `TongTienHoanTra`,
+    r.ReconciliationDiff AS `ChenhLechDoiSoat`,
+    r.PendingOrder AS `ChoDonHang`
+FROM serving.biz_rt_order AS r
+LEFT JOIN (
+    SELECT ShopCode, any(ShopName) AS ShopName
+    FROM dw.dim_shop
+    GROUP BY ShopCode
+) AS ds ON r.ShopCode = ds.ShopCode;
+
+CREATE VIEW report.v_bao_cao_kd_theo_don_rt_tong_hop AS
+SELECT * FROM serving.v_bao_cao_kd_theo_don_rt
+WHERE `NgayBaoCao` < today() - toIntervalDay(14)
+UNION ALL
+SELECT * FROM report.v_bao_cao_kd_theo_don_rt
+WHERE `NgayBaoCao` >= today() - toIntervalDay(14);

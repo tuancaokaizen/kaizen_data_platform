@@ -1,6 +1,7 @@
 package com.kaizen.flink.source;
 
 import com.kaizen.flink.config.FlinkConfig;
+import com.kaizen.flink.utils.KafkaClientProps;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
@@ -25,12 +26,25 @@ public class KafkaSourceBuilder {
      * Source với group ID tùy chỉnh – cần thiết để nhiều consumer group độc lập nhau.
      */
     public static KafkaSource<String> buildKafkaSource(FlinkConfig config, String topic, String groupId) {
+        return buildKafkaSource(config, topic, groupId, false);
+    }
+
+    /**
+     * @param fromEarliest true = đọc từ đầu topic (job mới / backfill trong retention)
+     *                     false = chỉ message mới (latest)
+     */
+    public static KafkaSource<String> buildKafkaSource(
+            FlinkConfig config, String topic, String groupId, boolean fromEarliest) {
+        OffsetsInitializer offsets = fromEarliest
+                ? OffsetsInitializer.earliest()
+                : OffsetsInitializer.latest();
         return KafkaSource.<String>builder()
                 .setBootstrapServers(config.get("kafka", "bootstrap_servers"))
                 .setTopics(topic)
                 .setGroupId(groupId)
-                .setStartingOffsets(OffsetsInitializer.latest())
+                .setStartingOffsets(offsets)
                 .setValueOnlyDeserializer(new SimpleStringSchema())
+                .setProperties(KafkaClientProps.consumerProps(config))
                 .build();
     }
 }
