@@ -1,417 +1,267 @@
 #!/bin/bash
-set -e
+# Build and run the Kaizen stream jobs on the Flink session cluster (compute/kaizen-flink-*).
+# Build và chạy các stream job Kaizen trên Flink session cluster (compute/kaizen-flink-*).
+#
+# Jobs = every src/main/java/com/kaizen/stream/{processing,simulation}/<pipeline>/*Job.java.
+# Group = the folder (processing | simulation); Flink name = "Kaizen-<group>-<name()>".
+# Job = mọi src/main/java/com/kaizen/stream/{processing,simulation}/<pipeline>/*Job.java.
+# Nhóm = thư mục (processing | simulation); tên Flink = "Kaizen-<nhóm>-<name()>".
+# Selection / Chọn job: a group (processing | simulation), a full name (simulation-order) or a short name (order).
+# No credentials are read from config.ini: jobs get them from Secret kaizen-stream-secrets,
+# `clean` reads MinIO keys from Secret kaizen-flink-s3 into env only.
+# Không đọc credential từ config.ini: job lấy từ Secret kaizen-stream-secrets,
+# `clean` đọc khoá MinIO từ Secret kaizen-flink-s3 và chỉ giữ trong env.
+set -euo pipefail
 
-# Prioritize K3S_CONF or config.k3s-new over standard KUBECONFIG
-if [ -n "$K3S_CONF" ]; then
+# Prefer K3S_CONF, then the lab cluster config / Ưu tiên K3S_CONF, rồi config của cluster lab
+if [ -n "${K3S_CONF:-}" ]; then
     export KUBECONFIG="$K3S_CONF"
 elif [ -f "$HOME/.kube/config.k3s-new" ]; then
     export KUBECONFIG="$HOME/.kube/config.k3s-new"
 fi
 
-# Get directory of the script
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+# Project root is the parent of deploy/ / Gốc project là thư mục cha của deploy/
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
+SOURCE_ROOT="$DIR/src/main/java"
+JOB_GROUPS=(processing simulation)
+JAR_FILE="$DIR/build/libs/kaizen-stream-processing-1.0-SNAPSHOT.jar"
+CONTAINER_JAR="/tmp/kaizen-stream-processing.jar"
+SAVEPOINT_DIR="$DIR/.savepoints"
 
-# Helper function to read config.ini
-get_config_val() {
-    local section=$1
-    local key=$2
-    awk -F " *= *" -v sec="[$section]" -v k="$key" '
-        $0 == sec { in_sec = 1; next }
-        /^\[/ { in_sec = 0 }
-        in_sec && $1 == k { print $2; exit }
-    ' "$DIR/config.ini"
+FLINK_NS="compute"
+FLINK_JM_LABEL="component=jobmanager"
+STATE_BUCKET="flink"
+SAVEPOINT_URI="s3a://$STATE_BUCKET/savepoint"
+
+# ---------------------------------------------------------------------------
+# Job discovery / Tìm job
+# ---------------------------------------------------------------------------
+
+# Short name returned by name(), e.g. "order" (ArchitectureTest keeps it a literal)
+# Tên ngắn trả về từ name(), vd. "order" (ArchitectureTest bắt buộc là chuỗi hằng)
+job_short_name() {
+    grep -A2 'String name()' "$1" | grep -oE 'return "[a-z0-9-]+";' | head -1 | sed -E 's/return "(.*)";/\1/'
 }
 
-# Load MinIO config
-MINIO_ENDPOINT=$(get_config_val "minio" "endpoint")
-MINIO_ACCESS_KEY=$(get_config_val "minio" "access_key")
-MINIO_SECRET_KEY=$(get_config_val "minio" "secret_key")
-
-MINIO_BUCKET="flink"
-REMOTE_JAR_PATH="artifact/kaizen-stream-processing-1.0-SNAPSHOT.jar"
-
-JAR_FILE="build/libs/kaizen-stream-processing-1.0-SNAPSHOT.jar"
-
-# Tự động quét các file *Job.java trong package com.kaizen.flink.entrypoint
-JOBS=()
-ENTRYPOINT_DIR="$DIR/src/main/java/com/kaizen/flink/entrypoint"
-if [ -d "$ENTRYPOINT_DIR" ]; then
-    for f in "$ENTRYPOINT_DIR"/*Job.java; do
-        if [ -f "$f" ]; then
-            class_name=$(basename "$f" .java)
-            JOBS+=("com.kaizen.flink.entrypoint.$class_name")
-        fi
-    done
-fi
-
-if [ ${#JOBS[@]} -eq 0 ]; then
-    echo "❌ Error: No Flink *Job.java entrypoints found at $ENTRYPOINT_DIR"
-    exit 1
-fi
-
-# Parse port from MINIO_ENDPOINT
-MINIO_PORT=$(echo "$MINIO_ENDPOINT" | grep -oE '[0-9]+$' || echo "9001")
-
-get_flink_jobmanager_pod() {
-    if ! command -v kubectl &> /dev/null; then
-        echo "❌ Error: 'kubectl' command not found." >&2
-        return 1
-    fi
-    local JM_LINE
-    JM_LINE=$(kubectl get pods --all-namespaces 2>/dev/null | grep -iE "flink-jobmanager|jobmanager" | head -n 1) || true
-    if [ -z "$JM_LINE" ]; then
-        echo "❌ Error: Flink JobManager pod not found in Kubernetes." >&2
-        return 1
-    fi
-    local JM_NS
-    local JM_POD
-    JM_NS=$(echo "$JM_LINE" | awk '{print $1}')
-    JM_POD=$(echo "$JM_LINE" | awk '{print $2}')
-    echo "$JM_NS $JM_POD"
-}
-
-setup_port_forward() {
-    local port=$1
-    local keyword=$2
-    local pf_var_name=$3
-    
-    if ! nc -z localhost "$port" &>/dev/null; then
-        echo "Port $port is closed. Attempting to auto port-forward service containing '$keyword'..."
-        if command -v kubectl &> /dev/null; then
-            local SVC_LINE=""
-            SVC_LINE=$(kubectl get svc --all-namespaces 2>/dev/null | grep -iE "$keyword" | head -n 1) || true
-            if [ -n "$SVC_LINE" ]; then
-                local NS
-                local SVC
-                NS=$(echo "$SVC_LINE" | awk '{print $1}')
-                SVC=$(echo "$SVC_LINE" | awk '{print $2}')
-                echo "Detected service '$SVC' in namespace '$NS'"
-                
-                local target_port="$port"
-                if [[ "$keyword" == "minio" ]]; then
-                    target_port="9000"
-                fi
-                kubectl port-forward -n "$NS" svc/"$SVC" "$port":"$target_port" >/dev/null 2>&1 &
-                local pid=$!
-                eval "$pf_var_name=$pid"
-                echo "Port-forwarding started for $SVC on port $port (PID: $pid). Waiting..."
-                sleep 3
-            else
-                echo "⚠️ Warning: Service matching '$keyword' not found in Kubernetes."
+# Lines "<class> <Kaizen-name> <group> <short name>", filtered by group, full name or short name
+# Các dòng "<class> <Kaizen-name> <nhóm> <tên ngắn>", lọc theo nhóm, tên đầy đủ hoặc tên ngắn
+list_jobs() {
+    local only="${1:-}" group f name class
+    for group in "${JOB_GROUPS[@]}"; do
+        # Only <group>/<pipeline>/*Job.java; processing/job/ is the job framework
+        # Chỉ <nhóm>/<pipeline>/*Job.java; processing/job/ là khung chạy job
+        for f in "$SOURCE_ROOT/com/kaizen/stream/$group"/*/*Job.java; do
+            [ -f "$f" ] || continue
+            [ "$(basename "$(dirname "$f")")" = "job" ] && continue
+            name="$(job_short_name "$f")"
+            if [ -z "$name" ]; then
+                echo "❌ Cannot read name() literal in $f" >&2
+                exit 1
             fi
-        else
-            echo "⚠️ Warning: kubectl not found. Cannot auto port-forward."
-        fi
-    else
-        echo "Port $port is already open."
-    fi
+            if [ -z "$only" ] || [ "$only" = "$group" ] || [ "$only" = "$group-$name" ] || [ "$only" = "$name" ]; then
+                class="${f#"$SOURCE_ROOT/"}"
+                class="${class%.java}"
+                echo "${class//\//.} Kaizen-$group-$name $group $name"
+            fi
+        done
+    done
 }
 
-teardown_port_forward() {
-    local pid=$1
-    if [ -n "$pid" ]; then
-        echo "Closing port-forward (PID: $pid)..."
-        kill "$pid" 2>/dev/null || true
-    fi
-}
-
-clean_and_build() {
-    echo "=== 1. Cleaning and Building Flink Shadow Jar ==="
-    gradle --gradle-user-home "$DIR/.gradle-home" --no-daemon clean shadowJar
-    echo "✔ Build successful: $JAR_FILE"
-}
-
-upload_jar() {
-    echo "=== 2. Uploading Flink Stream Jar to MinIO (bucket: $MINIO_BUCKET, path: $REMOTE_JAR_PATH) ==="
-    if [ ! -f "$JAR_FILE" ]; then
-        echo "❌ Error: Jar file not found at $JAR_FILE. Please run './deploy_stream.sh build' first."
+selected_jobs() {
+    local jobs
+    jobs="$(list_jobs "${1:-}")"
+    if [ -z "$jobs" ]; then
+        echo "❌ No job matches '${1:-}'. Available: ${JOB_GROUPS[*]} $(list_jobs | awk '{print $3 "-" $4}' | tr '\n' ' ')" >&2
         exit 1
     fi
+    # A short name used in both groups is ambiguous / Tên ngắn trùng ở 2 nhóm thì không rõ job nào
+    if [ "$(echo "$jobs" | awk '{print $3}' | sort -u | wc -l)" -gt 1 ] && [ "${1:-}" != "" ] \
+        && ! printf '%s\n' "${JOB_GROUPS[@]}" | grep -qx "$1"; then
+        echo "❌ '$1' matches several jobs, use the full name <group>-<name>" >&2
+        exit 1
+    fi
+    echo "$jobs"
+}
 
-    # Set local MC config directory to bypass home directory permission limits
-    mkdir -p "$DIR/.mc"
+# ---------------------------------------------------------------------------
+# Flink helpers / Hàm hỗ trợ Flink
+# ---------------------------------------------------------------------------
+
+jm_pod() {
+    local pod
+    pod="$(kubectl get pods -n "$FLINK_NS" -l "$FLINK_JM_LABEL" --field-selector=status.phase=Running \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+    if [ -z "$pod" ]; then
+        echo "❌ No running JobManager in namespace $FLINK_NS" >&2
+        exit 1
+    fi
+    echo "$pod"
+}
+
+flink_cli() {
+    kubectl exec -n "$FLINK_NS" "$JM_POD" -- flink "$@"
+}
+
+# "<jobId> <Kaizen-name>" of active jobs / "<jobId> <Kaizen-name>" của job đang chạy
+active_jobs() {
+    flink_cli list 2>/dev/null | grep -E '\((RUNNING|CREATED|RESTARTING)\)' \
+        | sed -nE 's/.* : ([a-f0-9]{32}) : (Kaizen-[A-Za-z0-9_-]+) .*/\1 \2/p' || true
+}
+
+# ---------------------------------------------------------------------------
+# Actions / Thao tác
+# ---------------------------------------------------------------------------
+
+build() {
+    echo "=== Build: tests + shadow jar ==="
+    (cd "$DIR" && gradle --gradle-user-home "$DIR/.gradle-home" --no-daemon clean test shadowJar)
+    echo "✔ $JAR_FILE"
+}
+
+start() {
+    local only="${1:-}" jobs active class name group short savepoint_file sp
+    jobs="$(selected_jobs "$only")"
+    [ -f "$JAR_FILE" ] || { echo "❌ $JAR_FILE missing, run '$0 build' first"; exit 1; }
+    JM_POD="$(jm_pod)"
+    active="$(active_jobs)"
+
+    echo "=== Start on $FLINK_NS/$JM_POD ==="
+    kubectl cp "$JAR_FILE" "$FLINK_NS/$JM_POD:$CONTAINER_JAR"
+
+    while read -r class name group short; do
+        # Never run two copies of one job: they would share consumer groups
+        # Không chạy 2 bản của cùng job: chúng sẽ dùng chung consumer group
+        if echo "$active" | grep -q " $name\$"; then
+            echo "⏭  $name is already running, skipped (use '$0 stop $group-$short' first)"
+            continue
+        fi
+        local args=(run -d)
+        savepoint_file="$SAVEPOINT_DIR/$group-$short"
+        if [ -s "$savepoint_file" ]; then
+            sp="$(cat "$savepoint_file")"
+            echo "↺  $name restores from $sp"
+            args+=(-s "$sp")
+        fi
+        echo "▶  $name ($class)"
+        flink_cli "${args[@]}" -c "$class" "$CONTAINER_JAR"
+        rm -f "$savepoint_file"
+    done <<< "$jobs"
+
+    echo "Waiting 10s, then checking state..."
+    sleep 10
+    local failed=0
+    while read -r class name _; do
+        if flink_cli list 2>/dev/null | grep " : $name " | grep -q '(RUNNING)'; then
+            echo "✔ $name RUNNING"
+        else
+            echo "❌ $name is not RUNNING (see '$0 status' or the Flink UI)"
+            failed=1
+        fi
+    done <<< "$jobs"
+    return "$failed"
+}
+
+stop() {
+    local only="${1:-}" jobs active id name group short out sp failed=0
+    jobs="$(selected_jobs "$only")"
+    JM_POD="$(jm_pod)"
+    active="$(active_jobs)"
+    mkdir -p "$SAVEPOINT_DIR"
+
+    echo "=== Stop with savepoint ($SAVEPOINT_URI) ==="
+    while read -r _ name group short; do
+        id="$(echo "$active" | awk -v n="$name" '$2 == n {print $1}' | head -1)"
+        if [ -z "$id" ]; then
+            echo "·  $name is not running"
+            continue
+        fi
+        out="$(flink_cli stop --savepointPath "$SAVEPOINT_URI" "$id" 2>&1)" || true
+        sp="$(echo "$out" | grep -oE 's3a?://[A-Za-z0-9./_-]+' | grep savepoint- | head -1 || true)"
+        if [ -n "$sp" ]; then
+            echo "$sp" > "$SAVEPOINT_DIR/$group-$short"
+            echo "■  $name stopped, savepoint $sp"
+        else
+            # No cancel fallback: cancelling would lose state; the job keeps running
+            # Không tự cancel: cancel làm mất state; job vẫn tiếp tục chạy
+            echo "$out" | tail -20
+            echo "❌ $name: stop-with-savepoint failed, job left RUNNING. Fix the cause, or cancel by hand: flink cancel $id"
+            failed=1
+        fi
+    done <<< "$jobs"
+    return "$failed"
+}
+
+status() {
+    JM_POD="$(jm_pod)"
+    echo "=== Jobs in source code ==="
+    list_jobs | awk '{printf "  %-12s %-40s %s\n", $3, $2, $1}'
+    echo "=== Flink ($FLINK_NS/$JM_POD) ==="
+    flink_cli list -a || true
+    if compgen -G "$SAVEPOINT_DIR/*" >/dev/null; then
+        echo "=== Pending savepoints (used by next start) ==="
+        for f in "$SAVEPOINT_DIR"/*; do echo "  $(basename "$f"): $(cat "$f")"; done
+    fi
+}
+
+# Cancel every Kaizen job and wipe its state; consumer groups keep their committed offsets
+# Huỷ mọi job Kaizen và xoá state; consumer group vẫn giữ offset đã commit
+clean() {
+    JM_POD="$(jm_pod)"
+    echo "This cancels ALL Kaizen jobs WITHOUT savepoint and deletes:"
+    echo "  - local $SAVEPOINT_DIR"
+    echo "  - s3://$STATE_BUCKET/checkpoint/ and s3://$STATE_BUCKET/savepoint/ on MinIO"
+    read -r -p "Type 'yes' to continue: " answer
+    [ "$answer" = "yes" ] || { echo "Aborted."; exit 1; }
+
+    local id name
+    while read -r id name; do
+        [ -n "$id" ] || continue
+        echo "✖  cancel $name ($id)"
+        flink_cli cancel "$id" || true
+    done <<< "$(active_jobs)"
+    rm -rf "$SAVEPOINT_DIR"
+
+    command -v mc >/dev/null || { echo "❌ 'mc' (MinIO client) is required for clean"; exit 1; }
+    local pf_pid="" ak sk
+    if ! nc -z 127.0.0.1 19000 2>/dev/null; then
+        kubectl port-forward -n storage svc/minio 19000:9000 >/dev/null 2>&1 &
+        pf_pid=$!
+        sleep 3
+    fi
+    ak="$(kubectl get secret -n "$FLINK_NS" kaizen-flink-s3 -o jsonpath='{.data.access-key}' | base64 -d)"
+    sk="$(kubectl get secret -n "$FLINK_NS" kaizen-flink-s3 -o jsonpath='{.data.secret-key}' | base64 -d)"
+    # Credentials only in env, never in argv / Credential chỉ nằm trong env, không nằm trong argv
     export MC_CONFIG_DIR="$DIR/.mc"
-
-    local PF_PID=""
-    setup_port_forward "$MINIO_PORT" "minio" PF_PID
-
-    local EXIT_CODE=0
-    if command -v mc &> /dev/null; then
-        echo "Using mc (MinIO Client) for upload..."
-        mc alias set local-minio "$MINIO_ENDPOINT" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" --api s3v4 --quiet
-        mc mb local-minio/"$MINIO_BUCKET" 2>/dev/null || true
-        if mc cp "$JAR_FILE" local-minio/"$MINIO_BUCKET"/"$REMOTE_JAR_PATH"; then
-            echo "✔ Upload successful."
-        else
-            echo "❌ Error: MinIO upload failed!"
-            EXIT_CODE=1
-        fi
-    elif command -v aws &> /dev/null; then
-        echo "Using aws CLI for upload..."
-        AWS_ACCESS_KEY_ID="$MINIO_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$MINIO_SECRET_KEY" \
-        aws s3 cp "$JAR_FILE" "s3://$MINIO_BUCKET/$REMOTE_JAR_PATH" \
-        --endpoint-url "$MINIO_ENDPOINT" --no-verify-ssl
-        echo "✔ Uploaded to s3://$MINIO_BUCKET/$REMOTE_JAR_PATH via aws CLI"
-    else
-        echo "❌ Error: Neither 'mc' (MinIO Client) nor 'aws' CLI is installed."
-        EXIT_CODE=1
-    fi
-
-    teardown_port_forward "$PF_PID"
-
-    if [ "$EXIT_CODE" -ne 0 ]; then
-        exit "$EXIT_CODE"
-    fi
+    export MC_HOST_kzflink="http://$ak:$sk@127.0.0.1:19000"
+    mc rm --recursive --force "kzflink/$STATE_BUCKET/checkpoint/" >/dev/null 2>&1 || true
+    mc rm --recursive --force "kzflink/$STATE_BUCKET/savepoint/" >/dev/null 2>&1 || true
+    unset MC_HOST_kzflink ak sk
+    [ -n "$pf_pid" ] && kill "$pf_pid" 2>/dev/null || true
+    echo "✔ Clean done"
 }
 
-start_stream() {
-    echo "=== 3. Starting all ${#JOBS[@]} Kaizen Flink Jobs (via kubectl cp + local path) ==="
-    
-    local JM_INFO
-    JM_INFO=$(get_flink_jobmanager_pod)
-    local JM_NS
-    local JM_POD
-    JM_NS=$(echo "$JM_INFO" | awk '{print $1}')
-    JM_POD=$(echo "$JM_INFO" | awk '{print $2}')
-
-    if [ -z "$JM_POD" ]; then
-        echo "❌ Error: Flink JobManager pod is not available."
-        exit 1
-    fi
-    echo "Using Flink JobManager: $JM_POD in namespace $JM_NS"
-
-    # Copy JAR into the JobManager container (avoids s3a:// URI issues)
-    local CONTAINER_JAR="/tmp/kaizen-stream-processing.jar"
-    echo "Copying JAR to container: $CONTAINER_JAR..."
-    kubectl cp "$DIR/$JAR_FILE" "$JM_NS/$JM_POD:$CONTAINER_JAR"
-    echo "✔ JAR copied to container."
-
-    for job in "${JOBS[@]}"; do
-        local class_name="${job##*.}"
-        local job_name="Kaizen-${class_name}"
-        local savepoint_file="$DIR/.savepoints/$job_name"
-        
-        local restore_flag=""
-        if [ -f "$savepoint_file" ]; then
-            local sp_path
-            sp_path=$(cat "$savepoint_file")
-            if [ -n "$sp_path" ]; then
-                echo "Restoring job $job_name from savepoint: $sp_path"
-                restore_flag="-s $sp_path"
-            fi
-            rm -f "$savepoint_file"
-        fi
-
-        echo "Submitting job: $job_name (class: $job)..."
-        if [ -n "$restore_flag" ]; then
-            kubectl exec -n "$JM_NS" "$JM_POD" -- flink run -d $restore_flag -c "$job" "$CONTAINER_JAR"
-        else
-            kubectl exec -n "$JM_NS" "$JM_POD" -- flink run -d -c "$job" "$CONTAINER_JAR"
-        fi
-    done
-    
-    echo "✔ All jobs submitted successfully!"
-
-    # Verify health after 5 seconds
-    echo "Waiting 5 seconds for jobs to initialize and check their health..."
-    sleep 5
-
-    local FLINK_LIST_OUT
-    FLINK_LIST_OUT=$(kubectl exec -n "$JM_NS" "$JM_POD" -- flink list 2>/dev/null) || true
-
-    local all_running=true
-    for job in "${JOBS[@]}"; do
-        local class_name="${job##*.}"
-        local job_name="Kaizen-${class_name}"
-        if ! echo "$FLINK_LIST_OUT" | grep -E "$job_name" | grep -q "RUNNING"; then
-            echo "❌ Error: Job '$job_name' is NOT running!"
-            all_running=false
-        else
-            echo "✔ Job '$job_name' is RUNNING."
-        fi
-    done
-
-    if [ "$all_running" = false ]; then
-        echo "⚠️ Warning: One or more Flink jobs failed to start correctly. Please run './deploy_stream.sh status' or check Flink UI."
-        exit 1
-    else
-        echo "✔ All Flink jobs successfully verified!"
-    fi
+usage() {
+    cat <<EOF
+Usage: $0 <action> [selection]
+  build                  gradle clean test shadowJar
+  start   [selection]    submit jobs (restores pending savepoints); skips jobs already running
+  stop    [selection]    stop with savepoint; on failure the job keeps running
+  restart [selection]    stop → build → start
+  stream  [selection]    build → start
+  status                 jobs in source code, Flink job list, pending savepoints
+  clean                  cancel all Kaizen jobs and delete checkpoints/savepoints (asks for 'yes')
+Selection: empty (all) | ${JOB_GROUPS[*]} | <group>-<name> | <name>
+Jobs: $(list_jobs | awk '{print $3 "-" $4}' | tr '\n' ' ')
+EOF
 }
 
-stop_stream() {
-    echo "=== 4. Stopping all running Kaizen Flink Jobs ==="
-    local JM_INFO
-    JM_INFO=$(get_flink_jobmanager_pod)
-    local JM_NS
-    local JM_POD
-    JM_NS=$(echo "$JM_INFO" | awk '{print $1}')
-    JM_POD=$(echo "$JM_INFO" | awk '{print $2}')
-
-    if [ -z "$JM_POD" ]; then
-        echo "❌ Error: Flink JobManager pod is not available."
-        exit 1
-    fi
-
-    # Lấy thông tin chi tiết các job đang chạy bên trong pod
-    local running_jobs_info=""
-    running_jobs_info=$(kubectl exec -n "$JM_NS" "$JM_POD" -- flink list 2>/dev/null | grep -E "RUNNING|CREATED|RESTARTING" | grep "Kaizen") || true
-    if [ -z "$running_jobs_info" ]; then
-        echo "No running Kaizen jobs found."
-        return
-    fi
-
-    mkdir -p "$DIR/.savepoints"
-
-    # Đọc danh sách dòng kết quả
-    while read -r line; do
-        if [ -n "$line" ]; then
-            local job_id
-            local job_name
-            job_id=$(echo "$line" | grep -oE '[a-f0-9]{32}' | head -n 1) || true
-            job_name=$(echo "$line" | grep -oE 'Kaizen-[a-zA-Z0-9_-]+' | head -n 1) || true
-            
-            if [ -n "$job_id" ] && [ -n "$job_name" ]; then
-                echo "Stopping job: $job_name (ID: $job_id) with savepoint in s3a://$MINIO_BUCKET/savepoint..."
-                local STOP_OUTPUT
-                STOP_OUTPUT=$(kubectl exec -n "$JM_NS" "$JM_POD" -- sh -c "flink stop --savepointPath \"s3a://$MINIO_BUCKET/savepoint\" \"$job_id\"" 2>&1) || true
-                echo "$STOP_OUTPUT"
-                
-                local SAVEPOINT_PATH
-                SAVEPOINT_PATH=$(echo "$STOP_OUTPUT" | grep -oE 's3a?://[a-zA-Z0-9./_-]+' | head -n 1) || true
-                if [ -n "$SAVEPOINT_PATH" ]; then
-                    echo "✔ Saved savepoint path for $job_name: $SAVEPOINT_PATH"
-                    echo "$SAVEPOINT_PATH" > "$DIR/.savepoints/$job_name"
-                else
-                    echo "⚠️ Failed to stop with savepoint. Cancelling job ID: $job_id..."
-                    kubectl exec -n "$JM_NS" "$JM_POD" -- flink cancel "$job_id"
-                    rm -f "$DIR/.savepoints/$job_name"
-                fi
-            fi
-        fi
-    done <<< "$running_jobs_info"
-
-    echo "✔ Stopped all jobs."
-}
-
-show_status() {
-    echo "=== Flink Jobs Status ==="
-    local JM_INFO
-    JM_INFO=$(get_flink_jobmanager_pod)
-    local JM_NS
-    local JM_POD
-    JM_NS=$(echo "$JM_INFO" | awk '{print $1}')
-    JM_POD=$(echo "$JM_INFO" | awk '{print $2}')
-
-    if [ -z "$JM_POD" ]; then
-        echo "❌ Error: Flink JobManager pod is not available."
-        exit 1
-    fi
-
-    kubectl exec -n "$JM_NS" "$JM_POD" -- flink list || true
-}
-
-clean_stream() {
-    echo "=== Cleaning up Flink jobs and MinIO checkpoints ==="
-    
-    local JM_INFO
-    JM_INFO=$(get_flink_jobmanager_pod)
-    local JM_NS
-    local JM_POD
-    JM_NS=$(echo "$JM_INFO" | awk '{print $1}')
-    JM_POD=$(echo "$JM_INFO" | awk '{print $2}')
-
-    # 1. Cancel all running Flink jobs
-    if [ -n "$JM_POD" ]; then
-        local running_jobs=""
-        running_jobs=$(kubectl exec -n "$JM_NS" "$JM_POD" -- flink list 2>/dev/null | grep -E "RUNNING|CREATED|RESTARTING" | grep "Kaizen" | awk '{print $4}') || true
-        if [ -n "$running_jobs" ]; then
-            for job_id in $running_jobs; do
-                echo "Cancelling active job ID: $job_id..."
-                kubectl exec -n "$JM_NS" "$JM_POD" -- flink cancel "$job_id" || true
-            done
-        else
-            echo "No running Kaizen jobs to cancel."
-        fi
-    else
-        echo "⚠️ Warning: Flink JobManager pod not found. Skipping cancelling jobs."
-    fi
-
-    # 2. Delete local savepoint tracking files
-    rm -rf "$DIR/.savepoints"
-    echo "✔ Cleared local savepoint tracking files."
-
-    # 3. Clean savepoints, checkpoints, and JAR on MinIO
-    echo "Cleaning savepoints and checkpoints on MinIO..."
-    local PF_PID=""
-    setup_port_forward "$MINIO_PORT" "minio" PF_PID
-
-    mkdir -p "$DIR/.mc"
-    export MC_CONFIG_DIR="$DIR/.mc"
-
-    if command -v mc &> /dev/null; then
-        mc alias set local-minio "$MINIO_ENDPOINT" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" --api s3v4 --quiet
-        mc rm --recursive --force local-minio/"$MINIO_BUCKET"/savepoint/ >/dev/null 2>&1 || true
-        mc rm --recursive --force local-minio/"$MINIO_BUCKET"/checkpoint/ >/dev/null 2>&1 || true
-        mc rm --force local-minio/"$MINIO_BUCKET"/"$REMOTE_JAR_PATH" >/dev/null 2>&1 || true
-        echo "✔ Savepoints, checkpoints, and JAR cleared on MinIO."
-    elif command -v aws &> /dev/null; then
-        AWS_ACCESS_KEY_ID="$MINIO_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$MINIO_SECRET_KEY" \
-        aws s3 rm "s3://$MINIO_BUCKET/savepoint/" --recursive --endpoint-url "$MINIO_ENDPOINT" --no-verify-ssl >/dev/null 2>&1 || true
-        AWS_ACCESS_KEY_ID="$MINIO_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$MINIO_SECRET_KEY" \
-        aws s3 rm "s3://$MINIO_BUCKET/checkpoint/" --recursive --endpoint-url "$MINIO_ENDPOINT" --no-verify-ssl >/dev/null 2>&1 || true
-        AWS_ACCESS_KEY_ID="$MINIO_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$MINIO_SECRET_KEY" \
-        aws s3 rm "s3://$MINIO_BUCKET/$REMOTE_JAR_PATH" --endpoint-url "$MINIO_ENDPOINT" --no-verify-ssl >/dev/null 2>&1 || true
-        echo "✔ Savepoints, checkpoints, and JAR cleared on MinIO."
-    fi
-
-    teardown_port_forward "$PF_PID"
-
-    echo "✔ Clean completed successfully!"
-}
-
-# Main routing based on argument
-ACTION=$1
-case "$ACTION" in
-    build)
-        clean_and_build
-        ;;
-    upload)
-        upload_jar
-        ;;
-    start)
-        start_stream
-        ;;
-    stop)
-        stop_stream
-        ;;
-    status)
-        show_status
-        ;;
-    clean)
-        clean_stream
-        ;;
-    restart)
-        stop_stream
-        clean_and_build
-        upload_jar
-        start_stream
-        ;;
-    stream)
-        clean_and_build
-        upload_jar
-        start_stream
-        ;;
-    *)
-        echo "Usage: ./deploy_stream.sh {build|upload|start|stop|status|clean|restart|stream}"
-        echo "  build   : Clean and build the shadow JAR"
-        echo "  upload  : Upload the built JAR to MinIO"
-        echo "  start   : Deploy all ${#JOBS[@]} jobs as FlinkSessionJobs"
-        echo "  stop    : Stop all active FlinkSessionJobs"
-        echo "  status  : View FlinkSessionJobs status"
-        echo "  clean   : Clean up FlinkSessionJobs, flush Redis, and clear checkpoints/artifacts"
-        echo "  restart : Stop active jobs -> clean & build -> upload -> start jobs"
-        echo "  stream  : Clean & build -> upload -> start jobs in one go"
-        exit 1
-        ;;
+case "${1:-}" in
+    build) build ;;
+    start) start "${2:-}" ;;
+    stop) stop "${2:-}" ;;
+    restart) stop "${2:-}"; build; start "${2:-}" ;;
+    stream) build; start "${2:-}" ;;
+    status) status ;;
+    clean) clean ;;
+    *) usage; exit 1 ;;
 esac
