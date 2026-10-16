@@ -56,8 +56,30 @@ dependencies {
     compileOnly          'org.projectlombok:lombok:1.18.30'
     annotationProcessor  'org.projectlombok:lombok:1.18.30'
 
-    testImplementation 'junit:junit:4.13.2'
+    testCompileOnly          'org.projectlombok:lombok:1.18.30'
+    testAnnotationProcessor  'org.projectlombok:lombok:1.18.30'
+
+    // ─── NHÓM 4: Test – JUnit 5 + Flink operator harness ────────────────────
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly    'org.junit.platform:junit-platform-launcher'
+    testImplementation "org.apache.flink:flink-streaming-java:${flinkVersion}"
+    testImplementation "org.apache.flink:flink-clients:${flinkVersion}"
+    testImplementation "org.apache.flink:flink-streaming-java:${flinkVersion}:tests"
+    testImplementation "org.apache.flink:flink-runtime:${flinkVersion}:tests"
+    testImplementation "org.apache.flink:flink-test-utils-junit:${flinkVersion}"
 }
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events 'failed'
+        exceptionFormat 'full'
+    }
+}
+
+// Tests must pass before packaging / Test phải xanh trước khi đóng gói jar
+shadowJar.dependsOn test
 
 // Đảm bảo toàn bộ resources được đóng gói vào root JAR
 processResources {

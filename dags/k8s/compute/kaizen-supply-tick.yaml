@@ -1,0 +1,81 @@
+# Supply simulation tick worker: writes due trip events and PO receipts every 60 s (dags/jobs/kaizen_sim/tick.py).
+# Deploy with dags/k8s/compute/deploy_supply_tick.sh (builds ConfigMap kaizen-sim-code, fills __PG_USER__).
+# Secrets (existing): compute/kaizen-stream-secrets (postgres-password).
+# Worker tick mô phỏng chuỗi cung ứng: ghi sự kiện chuyến và nhận hàng PO đến hạn mỗi 60 giây.
+# Deploy bằng dags/k8s/compute/deploy_supply_tick.sh (tạo ConfigMap kaizen-sim-code, điền __PG_USER__).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kaizen-supply-tick
+  namespace: compute
+  labels:
+    app: kaizen-supply-tick
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kaizen-supply-tick
+  template:
+    metadata:
+      labels:
+        app: kaizen-supply-tick
+      annotations:
+        kaizen/code-sha: __CODE_SHA__
+    spec:
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+      containers:
+        - name: tick
+          image: python:3.12-slim
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          command: ["sh", "-c"]
+          args:
+            - pip install --quiet --no-cache-dir --target /tmp/deps psycopg2-binary==2.9.10 &&
+              exec python -m jobs.kaizen_sim.tick --every 60 --heartbeat /tmp/heartbeat
+          env:
+            - name: HOME
+              value: /tmp
+            - name: PYTHONPATH
+              value: /app:/tmp/deps
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: POSTGRES_HOST
+              value: my-postgres-postgresql.databases.svc.cluster.local
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: information_system
+            - name: POSTGRES_USER
+              value: __PG_USER__
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kaizen-stream-secrets
+                  key: postgres-password
+          volumeMounts:
+            - name: code
+              mountPath: /app/jobs/kaizen_sim
+              readOnly: true
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "test $(( $(date +%s) - $(stat -c %Y /tmp/heartbeat) )) -lt 600"]
+            initialDelaySeconds: 240
+            periodSeconds: 60
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: 20m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+      volumes:
+        - name: code
+          configMap:
+            name: kaizen-sim-code

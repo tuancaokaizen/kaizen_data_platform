@@ -17,6 +17,13 @@ dependencies {
     implementation 'org.postgresql:postgresql:42.6.0'
     implementation 'org.ini4j:ini4j:0.5.4'
 
+    // Reads common_<environment>.conf (HOCON) / Đọc common_<environment>.conf (HOCON)
+    implementation 'com.typesafe:config:1.4.3'
+
+    // Same snakeyaml version as Spark 3.4.1 ships, so no conflict at runtime (reads tables.yaml)
+    // Cùng phiên bản snakeyaml với Spark 3.4.1 nên không xung đột lúc chạy (đọc tables.yaml)
+    implementation 'org.yaml:snakeyaml:1.33'
+
     // AWS & S3 dependencies for Iceberg storage support (required at runtime by Spark executors)
     implementation 'org.apache.hadoop:hadoop-aws:3.3.4'
     implementation 'com.amazonaws:aws-java-sdk-bundle:1.12.262'
@@ -31,6 +38,28 @@ dependencies {
 
     // Kafka Admin API for KafkaRetentionJob / API quản trị Kafka cho job dọn retention
     implementation 'org.apache.kafka:kafka-clients:3.4.1'
+
+    // ScalaTest run through the JUnit 4 runner, Spark on the test classpath
+    // ScalaTest chạy qua JUnit 4 runner, Spark có trong classpath test
+    testImplementation 'org.apache.spark:spark-core_2.12:3.4.1'
+    testImplementation 'org.apache.spark:spark-sql_2.12:3.4.1'
+    // Shipped in the Spark 3.4.1 image, needed by Iceberg's SQL extensions in local tests
+    // Có sẵn trong image Spark 3.4.1, cần cho SQL extension của Iceberg khi test local
+    testImplementation 'org.scala-lang.modules:scala-collection-compat_2.12:2.7.0'
+    testImplementation 'org.scalatest:scalatest_2.12:3.2.17'
+    testImplementation 'org.scalatestplus:junit-4-13_2.12:3.2.17.0'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+test {
+    useJUnit()
+    // Same JVM time zone as the Spark pods, so test timestamps keep their wall-clock hour
+    // Cùng múi giờ JVM với pod Spark, để timestamp trong test giữ đúng giờ ghi
+    jvmArgs '-Duser.timezone=UTC'
+    testLogging {
+        events 'failed'
+        exceptionFormat 'full'
+    }
 }
 
 shadowJar {
@@ -44,4 +73,3 @@ shadowJar {
 
 // Map the custom deployment task name to shadowJar
 task buildBatchJar(dependsOn: shadowJar) {}
-

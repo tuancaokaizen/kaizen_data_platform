@@ -1,4 +1,8 @@
 {
+  "kinh-doanh-realtime-theo-don": {
+    "dashboardId": 8,
+    "embeddedUuid": "ae543b6a-c542-4bc4-adc2-3ffaeb47b758"
+  },
   "quy-chi-tiet-don-hang": {
     "dashboardId": 1,
     "embeddedUuid": "f3cdbac4-b137-4965-93ee-cd81e85f9cf7"

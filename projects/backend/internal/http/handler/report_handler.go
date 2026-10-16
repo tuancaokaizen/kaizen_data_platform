@@ -104,6 +104,71 @@ func (h *ReportHandler) GetFundSummary(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]any{"data": summary, "view": query.View})
 }
 
+func (h *ReportHandler) GetKdReport(w http.ResponseWriter, r *http.Request) {
+	query, err := buildReportQuery(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	data, total, err := h.reportService.GetKdReport(r.Context(), query)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"data": data,
+		"view": query.View,
+		"pagination": map[string]any{
+			"page":     query.Page,
+			"pageSize": query.PageSize,
+			"total":    total,
+		},
+	})
+}
+
+func (h *ReportHandler) GetKdSummary(w http.ResponseWriter, r *http.Request) {
+	query, err := buildReportQuery(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	summary, err := h.reportService.GetKdSummary(r.Context(), query)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{"data": summary, "view": query.View})
+}
+
+func (h *ReportHandler) GetKdFilterOptions(w http.ResponseWriter, r *http.Request) {
+	fromDate, err := time.Parse(dateLayout, r.URL.Query().Get("fromDate"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid fromDate")
+		return
+	}
+	toDate, err := time.Parse(dateLayout, r.URL.Query().Get("toDate"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid toDate")
+		return
+	}
+
+	opts, err := h.reportService.GetKdFilterOptions(r.Context(), fromDate, toDate)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"view":          repository.KdViewOrder,
+		"shops":         opts.Shops,
+		"orderStatuses": opts.OrderStatuses,
+	})
+}
+
 // GetFinancialFilterOptions returns distinct filter values (detail view only for now)
 // Trả về giá trị lọc distinct — hiện chỉ hỗ trợ view chi tiết SP×CH
 func (h *ReportHandler) GetFinancialFilterOptions(w http.ResponseWriter, r *http.Request) {
@@ -191,6 +256,9 @@ func buildReportQuery(r *http.Request) (service.ReportQuery, error) {
 func defaultViewForPath(path string) string {
 	if path == "/api/v1/reports/fund" || path == "/api/v1/reports/fund/summary" {
 		return "payment"
+	}
+	if path == "/api/v1/reports/kd" || path == "/api/v1/reports/kd/summary" {
+		return "order"
 	}
 	return "shop"
 }

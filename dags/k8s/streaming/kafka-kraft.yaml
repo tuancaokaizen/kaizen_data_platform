@@ -1,0 +1,206 @@
+# Kafka KRaft single node (combined broker + controller), replaces ZooKeeper mode.
+# Kafka KRaft 1 node (broker + controller), thay cho chế độ ZooKeeper.
+# Design / Thiết kế: docs/design/kafka_topic_model.md (mục 4, 5).
+#
+# Clients keep using kaizen-kafka.streaming.svc.cluster.local:9092 (same Service name).
+# Client vẫn dùng kaizen-kafka.streaming.svc.cluster.local:9092 (giữ tên Service).
+# Rollout + rollback / Triển khai + quay lui: docs/design/kafka_topic_model.md mục 12.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kaizen-kafka-headless
+  namespace: streaming
+  labels:
+    app: kaizen-kafka
+    mode: kraft
+spec:
+  clusterIP: None
+  # Controller must resolve its own DNS before Ready / Controller cần tự phân giải DNS trước khi Ready
+  publishNotReadyAddresses: true
+  selector:
+    app: kaizen-kafka
+    mode: kraft
+  ports:
+    - name: broker
+      port: 9092
+    - name: controller
+      port: 9093
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kaizen-kafka
+  namespace: streaming
+  labels:
+    app: kaizen-kafka
+spec:
+  selector:
+    app: kaizen-kafka
+  ports:
+    - name: broker
+      port: 9092
+      targetPort: 9092
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kaizen-kafka-external-nodeport
+  namespace: streaming
+  labels:
+    app: kaizen-kafka
+spec:
+  type: NodePort
+  selector:
+    app: kaizen-kafka
+    mode: kraft
+  ports:
+    - name: kafka-broker-ext
+      port: 9094
+      targetPort: 9094
+      nodePort: 30092
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kaizen-kafka-kraft
+  namespace: streaming
+  labels:
+    app: kaizen-kafka
+    mode: kraft
+spec:
+  serviceName: kaizen-kafka-headless
+  replicas: 1
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: kaizen-kafka
+      mode: kraft
+  template:
+    metadata:
+      labels:
+        app: kaizen-kafka
+        mode: kraft
+    spec:
+      # local-path PVC is bound to this node / PVC local-path gắn với node này
+      nodeSelector:
+        kubernetes.io/hostname: tuan-cao-rog-strix-g512lv-g512lv
+      # Avoid KAFKA_UI_* service env vars leaking into broker config / Tránh biến môi trường service KAFKA_UI_* lọt vào cấu hình broker
+      enableServiceLinks: false
+      securityContext:
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: kafka
+          image: confluentinc/cp-kafka:7.5.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: broker
+              containerPort: 9092
+            - name: controller
+              containerPort: 9093
+            - name: external
+              containerPort: 9094
+          env:
+            # --- KRaft identity / Định danh KRaft ---
+            - name: CLUSTER_ID
+              value: "V27Hv2HrSbO-7kOrkTo4eg"
+            - name: KAFKA_NODE_ID
+              value: "1"
+            - name: KAFKA_PROCESS_ROLES
+              value: "broker,controller"
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: "1@kaizen-kafka-kraft-0.kaizen-kafka-headless.streaming.svc.cluster.local:9093"
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "PLAINTEXT"
+            - name: KAFKA_LISTENERS
+              value: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094"
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://kaizen-kafka.streaming.svc.cluster.local:9092,EXTERNAL://192.168.100.172:30092"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT"
+            - name: KAFKA_LOG_DIRS
+              value: "/var/lib/kafka/data"
+            # --- Topics are created only by script / Topic chỉ tạo bằng script ---
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              value: "false"
+            - name: KAFKA_NUM_PARTITIONS
+              value: "6"
+            - name: KAFKA_DEFAULT_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_MIN_INSYNC_REPLICAS
+              value: "1"
+            # --- Internal topics, fixed at first start / Topic nội bộ, cố định từ lần chạy đầu ---
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS
+              value: "10"
+            - name: KAFKA_OFFSETS_RETENTION_MINUTES
+              value: "4320"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_NUM_PARTITIONS
+              value: "10"
+            - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
+              value: "3000"
+            # --- Retention defaults, topics override / Retention mặc định, topic tự ghi đè ---
+            - name: KAFKA_LOG_RETENTION_HOURS
+              value: "72"
+            - name: KAFKA_LOG_SEGMENT_BYTES
+              value: "67108864"
+            - name: KAFKA_LOG_INDEX_SIZE_MAX_BYTES
+              value: "1048576"
+            - name: KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS
+              value: "300000"
+            - name: KAFKA_COMPRESSION_TYPE
+              value: "producer"
+            - name: KAFKA_MESSAGE_MAX_BYTES
+              value: "1048576"
+            # --- Memory / Bộ nhớ (heap 1g, rest = page cache) ---
+            - name: KAFKA_LOG_CLEANER_DEDUPE_BUFFER_SIZE
+              value: "33554432"
+            - name: KAFKA_NUM_IO_THREADS
+              value: "4"
+            - name: KAFKA_NUM_NETWORK_THREADS
+              value: "3"
+            - name: KAFKA_QUEUED_MAX_REQUESTS
+              value: "100"
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xms1g -Xmx1g"
+            - name: KAFKA_JVM_PERFORMANCE_OPTS
+              value: "-XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:+ExitOnOutOfMemoryError"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1536Mi
+            limits:
+              memory: 2Gi
+          readinessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 9093
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/kafka/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: kaizen-kafka
+          mode: kraft
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 20Gi

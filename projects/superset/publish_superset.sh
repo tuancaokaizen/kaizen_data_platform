@@ -191,7 +191,7 @@ if [ "$EMBED" = true ] && [ "$DRY_RUN" = false ]; then
   while IFS= read -r local_domain; do
     EMBED_ARGS+=(--domain "$local_domain")
   done < <(superset_collect_embed_domain_args)
-  for d in "${USER_DOMAINS[@]}"; do
+  for d in ${USER_DOMAINS[@]+"${USER_DOMAINS[@]}"}; do
     EMBED_ARGS+=(--domain "$d")
   done
   if ! superset_run_module enable-embed "${EMBED_ARGS[@]}"; then

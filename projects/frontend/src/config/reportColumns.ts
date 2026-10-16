@@ -184,6 +184,55 @@ export function getColumnsForView(viewKey: ReportViewKey): ColumnsType<ReportRow
         paymentCol,
         ...fundMetricColumns
       ];
+    case "kd:order":
+      return [
+        dateCol,
+        { title: "Mã đơn hàng", dataIndex: "orderId", width: 140 },
+        { title: "Mã phiếu trả hàng", dataIndex: "returnId", width: 140 },
+        {
+          title: "Loại chứng từ",
+          dataIndex: "documentType",
+          width: 120,
+          render: (value: string) => formatDocumentType(value)
+        },
+        ...shopCols,
+        { title: "Trạng thái đơn hàng", dataIndex: "orderStatus", width: 140 },
+        {
+          title: "Doanh thu bán",
+          dataIndex: "grossRevenue",
+          render: numCell,
+          align: "right",
+          width: 130
+        },
+        {
+          title: "Giá trị trả hàng",
+          dataIndex: "returnAmount",
+          render: numCell,
+          align: "right",
+          width: 130
+        },
+        {
+          title: "Doanh thu thuần",
+          dataIndex: "netRevenue",
+          render: numCell,
+          align: "right",
+          width: 130
+        },
+        ...fundMetricColumns.slice(0, 3),
+        {
+          title: "Tóm tắt PTTT",
+          dataIndex: "paymentMethodSummary",
+          width: 220,
+          ellipsis: true
+        },
+        ...fundMetricColumns.slice(3),
+        {
+          title: "Chờ đơn hàng",
+          dataIndex: "pendingOrder",
+          width: 110,
+          render: (value?: number) => (value === 1 ? "Có" : value === 0 ? "Không" : "-")
+        }
+      ];
     default:
       return [dateCol, ...shopCols, ...financialMetricColumns];
   }
@@ -195,6 +244,7 @@ export function rowKeyForView(viewKey: ReportViewKey, row: ReportRow, index: num
   if (row.productId) parts.push(row.productId);
   if (row.orderId) parts.push(row.orderId);
   if (row.paymentMethodName) parts.push(row.paymentMethodName);
+  if (row.paymentMethodSummary) parts.push(row.paymentMethodSummary);
   if (row.documentType) parts.push(row.documentType);
   return parts.join("-");
 }

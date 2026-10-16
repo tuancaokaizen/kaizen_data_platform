@@ -36,6 +36,9 @@ presets:
     type: filter_select
     label: Loại chứng từ
     multi: true
+    default:
+    - SALE
+    - RETURN
     options:
     - SALE
     - RETURN
@@ -45,6 +48,12 @@ presets:
     label: Trạng thái đơn
     multi: true
     search: true
+    select_all: true
+  ngay_30d:
+    column: NgayBaoCao
+    type: filter_time
+    label: Khoảng ngày
+    default: Last 30 days
   pttt:
     column: TenPhuongThucThanhToan
     type: filter_select

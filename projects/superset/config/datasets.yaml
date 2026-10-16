@@ -38,3 +38,8 @@ datasets:
     schema: report
     description: "Báo cáo quỹ — chi tiết theo đơn hàng"
     main_dttm_col: NgayBaoCao
+
+  - table_name: v_bao_cao_kinh_doanh_theo_don_realtime_tong_hop
+    schema: report
+    description: "Báo cáo tình hình kinh doanh realtime — theo đơn hàng"
+    main_dttm_col: NgayBaoCao

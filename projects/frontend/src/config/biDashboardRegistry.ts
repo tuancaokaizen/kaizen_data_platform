@@ -8,6 +8,7 @@ export type BiDashboardEntry = {
 };
 
 export const BI_DASHBOARDS: BiDashboardEntry[] = [
+  { slug: "kinh-doanh-realtime-theo-don", reportKey: "kd:order", title: "Tình hình kinh doanh realtime theo đơn" },
   { slug: "quy-chi-tiet-don-hang", reportKey: "fund:order", title: "Chi tiết quỹ theo đơn hàng" },
   { slug: "quy-pttt-cua-hang", reportKey: "fund:payment", title: "Theo phương thức thanh toán và cửa hàng" },
   { slug: "quy-tong-hop-cua-hang", reportKey: "fund:shop", title: "Tổng hợp quỹ theo cửa hàng" },

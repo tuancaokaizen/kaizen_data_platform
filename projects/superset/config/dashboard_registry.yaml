@@ -32,3 +32,7 @@ dashboards:
     report_key: fund:order
     title: Chi tiết quỹ theo đơn hàng
     chart_label: Quỹ đơn hàng
+  - slug: kinh-doanh-realtime-theo-don
+    report_key: kd:order
+    title: Tình hình kinh doanh realtime theo đơn
+    chart_label: THKD realtime

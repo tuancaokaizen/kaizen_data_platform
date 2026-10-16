@@ -8,6 +8,7 @@ native_filters:
   type: filter_time
   label: Khoảng ngày
   required: true
+  default: Last 30 days
 - column: MaCuaHang
   type: filter_select
   label: Cửa hàng

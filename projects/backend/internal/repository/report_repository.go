@@ -33,6 +33,8 @@ type ReportRow struct {
 	EmployeeSaleId     string    `json:"employeeSaleId,omitempty"`
 	OrderStatus        string    `json:"orderStatus,omitempty"`
 	PaymentMethodName  string    `json:"paymentMethodName,omitempty"`
+	PaymentMethodSummary string  `json:"paymentMethodSummary,omitempty"`
+	PendingOrder         int32     `json:"pendingOrder"`
 	SalesQuantity      int64     `json:"salesQuantity"`
 	ReturnQuantity     int64     `json:"returnQuantity"`
 	GrossRevenue       float64   `json:"grossRevenue"`
@@ -82,6 +84,13 @@ func normalizeFundView(view string) string {
 		return view
 	default:
 		return FundViewPayment
+	}
+}
+
+func normalizeKdView(view string) string {
+	switch view {
+	default:
+		return KdViewOrder
 	}
 }
 
@@ -276,6 +285,103 @@ func (r *ReportRepository) GetFundSummary(
 	return summary, err
 }
 
+func (r *ReportRepository) GetKdReport(
+	ctx context.Context,
+	fromDate time.Time,
+	toDate time.Time,
+	view string,
+	filter KdFilter,
+	page int,
+	pageSize int,
+) ([]ReportRow, int64, error) {
+	view = normalizeKdView(view)
+	spec := kdViewSpecFor(view)
+
+	queryCtx, cancel := context.WithTimeout(ctx, r.queryTimeout)
+	defer cancel()
+
+	where := "`NgayBaoCao` >= ? AND `NgayBaoCao` <= ?"
+	args := []any{fromDate, toDate}
+	where, args = appendKdFilters(filter, where, args)
+
+	countSQL := fmt.Sprintf("SELECT count() FROM %s WHERE %s", spec.table, where)
+	var total uint64
+	if err := r.conn.QueryRow(queryCtx, countSQL, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	dataSQL := fmt.Sprintf(
+		"SELECT %s FROM %s WHERE %s ORDER BY %s",
+		spec.columns, spec.table, where, spec.orderBy,
+	)
+	if pageSize > 0 {
+		offset := (page - 1) * pageSize
+		dataSQL += " LIMIT ? OFFSET ?"
+		args = append(args, pageSize, offset)
+	}
+
+	rows, err := r.conn.Query(queryCtx, dataSQL, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	capacity := pageSize
+	if capacity <= 0 {
+		capacity = int(total)
+		if capacity == 0 {
+			capacity = 64
+		}
+	}
+	result := make([]ReportRow, 0, capacity)
+	for rows.Next() {
+		row, err := scanKdRow(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		result = append(result, row)
+	}
+	return result, int64(total), nil
+}
+
+func (r *ReportRepository) GetKdSummary(
+	ctx context.Context,
+	fromDate time.Time,
+	toDate time.Time,
+	view string,
+	filter KdFilter,
+) (ReportSummary, error) {
+	view = normalizeKdView(view)
+	spec := kdViewSpecFor(view)
+
+	queryCtx, cancel := context.WithTimeout(ctx, r.queryTimeout)
+	defer cancel()
+
+	where := "`NgayBaoCao` >= ? AND `NgayBaoCao` <= ?"
+	args := []any{fromDate, toDate}
+	where, args = appendKdFilters(filter, where, args)
+
+	query := fmt.Sprintf(`
+		SELECT
+			sum(`+"`DoanhThuThuan`"+`), sum(`+"`TongThu`"+`), sum(`+"`TongChi`"+`), sum(`+"`DongTienRong`"+`),
+			sum(`+"`ChenhLechDoiSoat`"+`), countIf(`+"`ChoDonHang`"+` = 1)
+		FROM %s
+		WHERE %s`, spec.table, where)
+
+	var summary ReportSummary
+	var pendingCount uint64
+	err := r.conn.QueryRow(queryCtx, query, args...).Scan(
+		&summary.TotalNetRevenue,
+		&summary.TotalReceipts,
+		&summary.TotalExpenditures,
+		&summary.TotalNetCashFlow,
+		&summary.ReconciliationDiff,
+		&pendingCount,
+	)
+	summary.TotalSalesQuantity = int64(pendingCount)
+	return summary, err
+}
+
 func scanFinancialRow(view string, rows driver.Rows) (ReportRow, error) {
 	var row ReportRow
 	var err error
@@ -334,5 +440,17 @@ func scanFundRow(view string, rows driver.Rows) (ReportRow, error) {
 			&row.TotalReturnAmount, &row.ReconciliationDiff,
 		)
 	}
+	return row, err
+}
+
+func scanKdRow(rows driver.Rows) (ReportRow, error) {
+	var row ReportRow
+	err := rows.Scan(
+		&row.ReportDate, &row.OrderId, &row.ReturnId, &row.DocumentType,
+		&row.ShopCode, &row.ShopName, &row.OrderStatus,
+		&row.GrossRevenue, &row.ReturnAmount, &row.NetRevenue,
+		&row.TotalReceipts, &row.TotalExpenditures, &row.NetCashFlow, &row.PaymentMethodSummary,
+		&row.TotalOrderAmount, &row.TotalReturnAmount, &row.ReconciliationDiff, &row.PendingOrder,
+	)
 	return row, err
 }

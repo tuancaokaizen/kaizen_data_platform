@@ -1,12 +1,14 @@
 import { supersetSlugForReportKey } from "./biDashboardRegistry";
 
-export type ReportCategory = "financial" | "fund";
+export type ReportCategory = "financial" | "fund" | "kd";
 
 export type FinancialView = "shop" | "detail" | "product" | "order";
 export type FundView = "payment" | "shop" | "order";
+export type KdView = "order";
 export type ReportViewKey =
   | `financial:${FinancialView}`
-  | `fund:${FundView}`;
+  | `fund:${FundView}`
+  | `kd:${KdView}`;
 
 export type FilterField =
   | "dateRange"
@@ -21,12 +23,12 @@ export type FilterField =
 export type ReportViewConfig = {
   key: ReportViewKey;
   category: ReportCategory;
-  view: FinancialView | FundView;
+  view: FinancialView | FundView | KdView;
   label: string;
   description: string;
   filters: FilterField[];
-  /** Superset dashboard slug — derived from biDashboardRegistry / Slug dashboard Superset */
-  supersetSlug: string;
+  /** Superset dashboard slug — omit when BI dashboard not ready yet / Bỏ qua nếu chưa có dashboard Superset */
+  supersetSlug?: string;
 };
 
 /** Full Vietnamese labels for filter fields / Nhãn đầy đủ cho bộ lọc */
@@ -47,13 +49,14 @@ export const FILTER_PLACEHOLDERS: Partial<Record<FilterField, string>> = {
   productLineCode: "Chọn mã ngành hàng",
   orderId: "Nhập mã đơn hàng",
   documentType: "Chọn loại chứng từ",
-  orderStatus: "Nhập trạng thái đơn hàng",
+  orderStatus: "Chọn trạng thái đơn hàng",
   paymentMethodName: "Chọn phương thức thanh toán"
 };
 
 export const MENU_GROUP_LABELS: Record<ReportCategory, string> = {
   financial: "Báo Cáo Tài Chính",
-  fund: "Báo Cáo Quỹ"
+  fund: "Báo Cáo Quỹ",
+  kd: "Báo Cáo Tình Hình Kinh Doanh Realtime"
 };
 
 /** Product lines in master data / Ngành hàng trong dữ liệu nguồn */
@@ -138,6 +141,15 @@ export const REPORT_VIEWS: ReportViewConfig[] = [
       "Thu chi theo từng đơn hàng và phương thức thanh toán (dữ liệu nóng 7 ngày gần nhất)",
     filters: ["dateRange", "shopCode", "orderId", "paymentMethodName"],
     supersetSlug: supersetSlugForReportKey("fund:order")
+  },
+  {
+    key: "kd:order",
+    category: "kd",
+    view: "order",
+    label: "Theo đơn hàng",
+    description: "Doanh thu, thu chi và dòng tiền theo từng đơn bán hoặc trả hàng",
+    filters: ["dateRange", "shopCode", "orderId", "documentType", "orderStatus"],
+    supersetSlug: supersetSlugForReportKey("kd:order")
   }
 ];
 

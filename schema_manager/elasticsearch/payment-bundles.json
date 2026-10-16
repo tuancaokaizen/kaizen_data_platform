@@ -1,49 +1,48 @@
 {
   "settings": {
     "index": {
-      "number_of_shards": 2
+      "number_of_shards": 2,
+      "number_of_replicas": 0
     }
   },
   "mappings": {
+    "dynamic": false,
     "properties": {
-      "payment": {
+      "meta": {
         "properties": {
-          "id": { "type": "keyword" },
-          "paymentType": { "type": "short" },
-          "status": { "type": "keyword" },
-          "totalPayment": { "type": "integer" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" }
+          "eventId": { "type": "keyword" },
+          "eventType": { "type": "keyword" },
+          "schemaVersion": { "type": "short" },
+          "source": { "type": "keyword" },
+          "eventTime": { "type": "date" },
+          "aggregateId": { "type": "keyword" },
+          "version": { "type": "long" }
         }
       },
-      "transactions": {
-        "type": "nested",
+      "data": {
         "properties": {
-          "id": { "type": "keyword" },
-          "paymentId": { "type": "keyword" },
-          "paymentMethodId": { "type": "short" },
-          "amount": { "type": "integer" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" }
-        }
-      },
-      "orderPayment": {
-        "properties": {
-          "id": { "type": "keyword" },
-          "paymentId": { "type": "keyword" },
-          "orderId": { "type": "keyword" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" }
-        }
-      },
-      "returnPayment": {
-        "properties": {
-          "id": { "type": "keyword" },
-          "paymentId": { "type": "keyword" },
-          "returnId": { "type": "keyword" },
-          "orderId": { "type": "keyword" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" }
+          "payment": {
+            "properties": {
+              "id": { "type": "keyword" },
+              "type": { "type": "keyword" },
+              "status": { "type": "keyword" },
+              "orderId": { "type": "keyword" },
+              "returnId": { "type": "keyword" },
+              "shopCode": { "type": "keyword" },
+              "totalAmount": { "type": "long" },
+              "attempt": { "type": "short" },
+              "createdDate": { "type": "date" },
+              "modifiedDate": { "type": "date" }
+            }
+          },
+          "transactions": {
+            "type": "nested",
+            "properties": {
+              "id": { "type": "keyword" },
+              "paymentMethodId": { "type": "short" },
+              "amount": { "type": "long" }
+            }
+          }
         }
       }
     }

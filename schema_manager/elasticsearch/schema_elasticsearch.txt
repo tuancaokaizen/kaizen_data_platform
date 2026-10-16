@@ -288,66 +288,84 @@ PUT /payment-methods
 
 ###
 
-# 15. Index: order-bundles
+# 15. Index: order-bundles (v2 envelope: meta + data; _id = order id; written by SearchIndexJob (Kaizen-processing-search-index) scripted upsert)
 PUT /order-bundles
 {
   "settings": {
     "index": {
-      "number_of_shards": 2
+      "number_of_shards": 2,
+      "number_of_replicas": 0
     }
   },
   "mappings": {
+    "dynamic": false,
     "properties": {
-      "order": {
+      "meta": {
         "properties": {
-          "id": { "type": "keyword" },
-          "customerId": { "type": "keyword" },
-          "shopCode": { "type": "keyword" },
-          "transactionDate": { "type": "date" },
-          "totalBill": { "type": "integer" },
-          "totalDiscount": { "type": "integer" },
-          "totalPayment": { "type": "integer" },
-          "employeeSaleId": { "type": "keyword" },
-          "status": { "type": "keyword" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" },
-          "voucherSeriesCode": { "type": "keyword" }
+          "eventId": { "type": "keyword" },
+          "eventType": { "type": "keyword" },
+          "schemaVersion": { "type": "short" },
+          "source": { "type": "keyword" },
+          "eventTime": { "type": "date" },
+          "aggregateId": { "type": "keyword" },
+          "version": { "type": "long" }
         }
       },
-      "orderItems": {
-        "type": "nested",
+      "data": {
         "properties": {
-          "id": { "type": "keyword" },
-          "orderId": { "type": "keyword" },
-          "productId": { "type": "keyword" },
-          "quantity": { "type": "integer" },
-          "unitPrice": { "type": "integer" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" }
-        }
-      },
-      "returnRecord": {
-        "properties": {
-          "id": { "type": "keyword" },
-          "orderId": { "type": "keyword" },
-          "returnAmount": { "type": "integer" },
-          "createdDate": { "type": "date" },
-          "modifiedTimeMs": { "type": "long" }
-        }
-      },
-      "returnItems": {
-        "type": "nested",
-        "properties": {
-          "id": { "type": "keyword" },
-          "returnId": { "type": "keyword" },
-          "productId": { "type": "keyword" },
-          "quantity": { "type": "integer" },
-          "unitPrice": { "type": "integer" },
-          "orderItemId": { "type": "keyword" },
-          "orderId": { "type": "keyword" },
-          "totalAmount": { "type": "integer" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" }
+          "order": {
+            "properties": {
+              "id": { "type": "keyword" },
+              "shopCode": { "type": "keyword" },
+              "customerId": { "type": "keyword" },
+              "employeeSaleId": { "type": "keyword" },
+              "transactionDate": { "type": "date" },
+              "totalBill": { "type": "long" },
+              "totalDiscount": { "type": "long" },
+              "totalPayment": { "type": "long" },
+              "voucherSeriesCode": { "type": "keyword" },
+              "status": { "type": "keyword" },
+              "createdDate": { "type": "date" },
+              "modifiedDate": { "type": "date" }
+            }
+          },
+          "items": {
+            "type": "nested",
+            "properties": {
+              "id": { "type": "keyword" },
+              "lineNo": { "type": "integer" },
+              "productId": { "type": "keyword" },
+              "quantity": { "type": "integer" },
+              "unitPrice": { "type": "long" },
+              "discountAmount": { "type": "long" },
+              "lineAmount": { "type": "long" },
+              "isGift": { "type": "boolean" },
+              "unitCost": { "type": "long" }
+            }
+          },
+          "returns": {
+            "type": "nested",
+            "properties": {
+              "id": { "type": "keyword" },
+              "createdDate": { "type": "date" },
+              "reason": { "type": "keyword" },
+              "returnAmount": { "type": "long" },
+              "items": {
+                "type": "nested",
+                "properties": {
+                  "id": { "type": "keyword" },
+                  "orderItemId": { "type": "keyword" },
+                  "productId": { "type": "keyword" },
+                  "quantity": { "type": "integer" },
+                  "restockQty": { "type": "integer" },
+                  "damageQty": { "type": "integer" },
+                  "unitPrice": { "type": "long" },
+                  "unitCost": { "type": "long" },
+                  "lineAmount": { "type": "long" }
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -356,54 +374,53 @@ PUT /order-bundles
 
 ###
 
-# 16. Index: payment-bundles
+# 16. Index: payment-bundles (v2 envelope: meta + data; _id = payment id; written by SearchIndexJob (Kaizen-processing-search-index) scripted upsert)
 PUT /payment-bundles
 {
   "settings": {
     "index": {
-      "number_of_shards": 2
+      "number_of_shards": 2,
+      "number_of_replicas": 0
     }
   },
   "mappings": {
+    "dynamic": false,
     "properties": {
-      "payment": {
+      "meta": {
         "properties": {
-          "id": { "type": "keyword" },
-          "paymentType": { "type": "short" },
-          "status": { "type": "keyword" },
-          "totalPayment": { "type": "integer" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" }
+          "eventId": { "type": "keyword" },
+          "eventType": { "type": "keyword" },
+          "schemaVersion": { "type": "short" },
+          "source": { "type": "keyword" },
+          "eventTime": { "type": "date" },
+          "aggregateId": { "type": "keyword" },
+          "version": { "type": "long" }
         }
       },
-      "transactions": {
-        "type": "nested",
+      "data": {
         "properties": {
-          "id": { "type": "keyword" },
-          "paymentId": { "type": "keyword" },
-          "paymentMethodId": { "type": "short" },
-          "amount": { "type": "integer" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" }
-        }
-      },
-      "orderPayment": {
-        "properties": {
-          "id": { "type": "keyword" },
-          "paymentId": { "type": "keyword" },
-          "orderId": { "type": "keyword" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" }
-        }
-      },
-      "returnPayment": {
-        "properties": {
-          "id": { "type": "keyword" },
-          "paymentId": { "type": "keyword" },
-          "returnId": { "type": "keyword" },
-          "orderId": { "type": "keyword" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" }
+          "payment": {
+            "properties": {
+              "id": { "type": "keyword" },
+              "type": { "type": "keyword" },
+              "status": { "type": "keyword" },
+              "orderId": { "type": "keyword" },
+              "returnId": { "type": "keyword" },
+              "shopCode": { "type": "keyword" },
+              "totalAmount": { "type": "long" },
+              "attempt": { "type": "short" },
+              "createdDate": { "type": "date" },
+              "modifiedDate": { "type": "date" }
+            }
+          },
+          "transactions": {
+            "type": "nested",
+            "properties": {
+              "id": { "type": "keyword" },
+              "paymentMethodId": { "type": "short" },
+              "amount": { "type": "long" }
+            }
+          }
         }
       }
     }

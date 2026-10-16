@@ -1,0 +1,97 @@
+id: db_thkd_realtime_order
+title: Tình hình kinh doanh realtime theo đơn
+dataset: v_bao_cao_kinh_doanh_theo_don_realtime_tong_hop
+slug: kinh-doanh-realtime-theo-don
+# Auto-refresh embedded dashboard every 5 minutes / Tự làm mới dashboard mỗi 5 phút
+refresh_frequency_seconds: 300
+native_filters:
+- column: NgayBaoCao
+  type: filter_time
+  label: Khoảng ngày
+  # Wider window so sparse single days do not dominate / Cửa sổ rộng hơn để ngày thưa không làm trống KPI
+  default: Last 30 days
+- column: MaCuaHang
+  type: filter_select
+  label: Cửa hàng
+  multi: true
+  select_all: true
+- column: LoaiChungTu
+  type: filter_select
+  label: Loại chứng từ
+  multi: true
+  # Pre-select both types so clear/empty never sticks as IN () / Chọn sẵn cả 2 loại
+  default:
+  - SALE
+  - RETURN
+  options:
+  - SALE
+  - RETURN
+- column: TrangThaiDon
+  type: filter_select
+  label: Trạng thái đơn
+  multi: true
+  search: true
+  select_all: true
+layout:
+  row1_kpi:
+  - chart: kpi_don
+    viz: big_number_total
+    metric: COUNT(DISTINCT MaDonHang)
+    title: Số đơn hàng
+  - chart: kpi_dt_thuan
+    viz: big_number_total
+    metric: SUM(DoanhThuThuan)
+    title: Doanh thu thuần
+  - chart: kpi_dong_tien
+    viz: big_number_total
+    metric: SUM(DongTienRong)
+    title: Dòng tiền ròng
+  - chart: kpi_cho_don
+    viz: big_number_total
+    metric: SUM(ChoDonHang)
+    title: Đơn chờ xử lý
+  row2_trend:
+  - chart: line_dt_ngay
+    viz: echarts_timeseries_line
+    x: NgayBaoCao
+    metrics:
+    - SUM(DoanhThuThuan)
+    - SUM(DongTienRong)
+    title: Xu hướng doanh thu & dòng tiền
+    granularity: day
+  row3_breakdown:
+  - chart: pie_loai_chung_tu
+    viz: pie
+    groupby:
+    - LoaiChungTu
+    # COUNT: pie drops negative SUM(DoanhThuThuan) on RETURN rows
+    # COUNT: pie bỏ giá trị âm của DoanhThuThuan trên dòng RETURN
+    metric: COUNT(*)
+    title: Cơ cấu chứng từ (SALE vs RETURN)
+  - chart: bar_top_cua_hang
+    viz: echarts_timeseries_bar
+    x: TenCuaHang
+    categorical: true
+    metric: SUM(DoanhThuThuan)
+    title: Top cửa hàng — doanh thu thuần
+    sort: desc
+    row_limit: 12
+    orientation: horizontal
+  row4_detail:
+  - chart: table_thkd_don
+    viz: table
+    columns:
+    - NgayBaoCao
+    - MaDonHang
+    - LoaiChungTu
+    - TrangThaiDon
+    - TenCuaHang
+    - DoanhThuThuan
+    - TongThu
+    - TongChi
+    - DongTienRong
+    - TomTatPTTT
+    - ChenhLechDoiSoat
+    - ChoDonHang
+    title: Chi tiết theo đơn hàng
+    page_size: 100

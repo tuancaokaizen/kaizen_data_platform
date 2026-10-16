@@ -49,6 +49,7 @@ type ReportDetailTabProps = {
   shopOptions: { label: string; value: string }[];
   productOptions: { label: string; value: string }[];
   paymentOptions: { label: string; value: string }[];
+  orderStatusOptions: { label: string; value: string }[];
   showFilter: (field: FilterField) => boolean;
   onSearch: () => void;
   summary: {
@@ -56,12 +57,20 @@ type ReportDetailTabProps = {
     grossProfit: number;
     totalReceipts: number;
     netCashFlow: number;
+    reconciliationDiff?: number;
+    pendingOrderCount?: number;
   };
   columns: ColumnsType<ReportRow>;
   reportData?: ListResponse<ReportRow>;
   paginationConfig: TablePaginationConfig;
   rowKey: (row: ReportRow, index?: number) => string;
 };
+
+const filterSelectOption = (input: string, option?: { label?: string; value?: string }) =>
+  (option?.label ?? "").toLowerCase().includes(input.toLowerCase()) ||
+  String(option?.value ?? "")
+    .toLowerCase()
+    .includes(input.toLowerCase());
 
 export function ReportDetailTab({
   viewConfig,
@@ -70,6 +79,7 @@ export function ReportDetailTab({
   shopOptions,
   productOptions,
   paymentOptions,
+  orderStatusOptions,
   showFilter,
   onSearch,
   summary,
@@ -104,6 +114,8 @@ export function ReportDetailTab({
                     showSearch
                     options={shopOptions}
                     placeholder={FILTER_PLACEHOLDERS.shopCode}
+                    optionFilterProp="label"
+                    filterOption={filterSelectOption}
                   />
                 </Form.Item>
               </Col>
@@ -153,7 +165,14 @@ export function ReportDetailTab({
             {showFilter("orderStatus") && (
               <Col xs={24} sm={12} lg={4}>
                 <Form.Item label={FILTER_LABELS.orderStatus} name="orderStatus">
-                  <Input placeholder={FILTER_PLACEHOLDERS.orderStatus} allowClear />
+                  <Select
+                    allowClear
+                    showSearch
+                    options={orderStatusOptions}
+                    placeholder={FILTER_PLACEHOLDERS.orderStatus}
+                    optionFilterProp="label"
+                    filterOption={filterSelectOption}
+                  />
                 </Form.Item>
               </Col>
             )}
@@ -196,6 +215,44 @@ export function ReportDetailTab({
                   title="Lợi nhuận gộp (trang hiện tại)"
                   value={summary.grossProfit}
                   formatter={(v) => formatNumber(v as number)}
+                />
+              </Card>
+            </Col>
+          </>
+        ) : viewConfig.category === "kd" ? (
+          <>
+            <Col xs={24} sm={12} lg={6}>
+              <Card size="small">
+                <Statistic
+                  title="Doanh thu thuần (trang hiện tại)"
+                  value={summary.netRevenue}
+                  formatter={(v) => formatNumber(v as number)}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <Card size="small">
+                <Statistic
+                  title="Dòng tiền ròng (trang hiện tại)"
+                  value={summary.netCashFlow}
+                  formatter={(v) => formatNumber(v as number)}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <Card size="small">
+                <Statistic
+                  title="Chênh lệch đối soát (trang hiện tại)"
+                  value={summary.reconciliationDiff ?? 0}
+                  formatter={(v) => formatNumber(v as number)}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <Card size="small">
+                <Statistic
+                  title="Đơn chờ xử lý (trang hiện tại)"
+                  value={summary.pendingOrderCount ?? 0}
                 />
               </Card>
             </Col>

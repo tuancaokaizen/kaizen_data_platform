@@ -49,9 +49,21 @@ def _build_chart_data_payload(chart: dict) -> dict:
         metrics.append(params["metric"])
     metrics.extend(params.get("metrics") or [])
 
-    columns = params.get("columns") or params.get("groupby") or []
-    if chart.get("viz_type") == "table" and not columns:
-        columns = params.get("all_columns") or []
+    viz = chart.get("viz_type") or params.get("viz_type")
+    # heatmap_v2 columns = x_axis + groupby(Y) / Cột heatmap = trục X + groupby Y
+    if viz == "heatmap_v2":
+        columns = []
+        if params.get("x_axis"):
+            columns.append(params["x_axis"])
+        gb = params.get("groupby") or []
+        if isinstance(gb, str):
+            columns.append(gb)
+        else:
+            columns.extend(gb)
+    else:
+        columns = params.get("columns") or params.get("groupby") or []
+        if viz == "table" and not columns:
+            columns = params.get("all_columns") or []
 
     query: dict = {"columns": columns, "metrics": metrics, "row_limit": 1000}
     if not metrics and not columns:
@@ -67,7 +79,10 @@ def _build_chart_data_payload(chart: dict) -> dict:
     }
 
 
-def run_save_query_context() -> int:
+def run_save_query_context(force: bool = False) -> int:
+    """Populate chart query_context; force=True overwrites existing.
+    Lưu query_context; force=True ghi đè bản đã có.
+    """
     api = SupersetSession()
     charts = _list_all_charts(api)
     saved = 0
@@ -77,7 +92,8 @@ def run_save_query_context() -> int:
     print("=== Save chart query_context (embedded guest filters) ===")
     for chart in sorted(charts, key=lambda row: row.get("id", 0)):
         chart_id = chart["id"]
-        if chart.get("query_context"):
+        # Skip only when already present and not forcing / Bỏ qua nếu đã có và không force
+        if chart.get("query_context") and not force:
             skipped += 1
             continue
         try:

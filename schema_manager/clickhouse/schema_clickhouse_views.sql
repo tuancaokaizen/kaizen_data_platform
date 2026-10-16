@@ -1,6 +1,10 @@
 -- ClickHouse Report Views — Hot/Cold với tên cột tiếng Việt
 -- Hot layer  : report.* (ReplacingMergeTree, dữ liệu 30 ngày gần nhất)
 -- Cold layer : serving.* (Iceberg/Nessie, lịch sử đầy đủ trên MinIO)
+-- Each *_tong_hop view filters BOTH sides on the same ICT cutoff: hot is refilled once a day, so between
+-- midnight and the next push it still holds the day that cold now covers. The server runs in UTC.
+-- Mỗi view *_tong_hop lọc CẢ HAI phía theo cùng mốc giờ VN: hot chỉ nạp lại mỗi ngày một lần nên từ nửa đêm
+-- tới lần push kế tiếp vẫn còn ngày mà cold đã phủ. Server chạy múi giờ UTC.
 
 CREATE DATABASE IF NOT EXISTS report;
 CREATE DATABASE IF NOT EXISTS serving;
@@ -77,9 +81,10 @@ FROM serving.financial_report;
 
 CREATE VIEW report.v_bao_cao_tai_chinh_tong_hop AS
 SELECT * FROM serving.v_bao_cao_tai_chinh
-WHERE `NgayBaoCao` < today() - toIntervalDay(30)
+WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
 UNION ALL
-SELECT * FROM report.v_bao_cao_tai_chinh;
+SELECT * FROM report.v_bao_cao_tai_chinh
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30);
 
 -- ============================================================================
 -- FINANCIAL — detail grain (shop + product + line)
@@ -128,9 +133,10 @@ FROM serving.financial_report_detail;
 
 CREATE VIEW report.v_bao_cao_tai_chinh_chi_tiet_tong_hop AS
 SELECT * FROM serving.v_bao_cao_tai_chinh_chi_tiet
-WHERE `NgayBaoCao` < today() - toIntervalDay(30)
+WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
 UNION ALL
-SELECT * FROM report.v_bao_cao_tai_chinh_chi_tiet;
+SELECT * FROM report.v_bao_cao_tai_chinh_chi_tiet
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30);
 
 -- ============================================================================
 -- FINANCIAL — product grain
@@ -175,9 +181,10 @@ FROM serving.financial_report_product;
 
 CREATE VIEW report.v_bao_cao_tai_chinh_theo_san_pham_tong_hop AS
 SELECT * FROM serving.v_bao_cao_tai_chinh_theo_san_pham
-WHERE `NgayBaoCao` < today() - toIntervalDay(30)
+WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
 UNION ALL
-SELECT * FROM report.v_bao_cao_tai_chinh_theo_san_pham;
+SELECT * FROM report.v_bao_cao_tai_chinh_theo_san_pham
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30);
 
 -- ============================================================================
 -- FUND — payment grain (shop + PTTT, backward compatible)
@@ -212,9 +219,10 @@ FROM serving.fund_report;
 
 CREATE VIEW report.v_bao_cao_quy_tong_hop AS
 SELECT * FROM serving.v_bao_cao_quy
-WHERE `NgayBaoCao` < today() - toIntervalDay(30)
+WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
 UNION ALL
-SELECT * FROM report.v_bao_cao_quy;
+SELECT * FROM report.v_bao_cao_quy
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30);
 
 -- ============================================================================
 -- FUND — shop grain
@@ -247,9 +255,10 @@ FROM serving.fund_report_shop;
 
 CREATE VIEW report.v_bao_cao_quy_theo_shop_tong_hop AS
 SELECT * FROM serving.v_bao_cao_quy_theo_shop
-WHERE `NgayBaoCao` < today() - toIntervalDay(30)
+WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
 UNION ALL
-SELECT * FROM report.v_bao_cao_quy_theo_shop;
+SELECT * FROM report.v_bao_cao_quy_theo_shop
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30);
 
 -- ============================================================================
 -- FINANCIAL — order grain (hot 7 days in push job) / Theo từng đơn hàng
@@ -300,9 +309,10 @@ FROM serving.financial_report_order;
 
 CREATE VIEW report.v_bao_cao_tai_chinh_theo_don_tong_hop AS
 SELECT * FROM serving.v_bao_cao_tai_chinh_theo_don
-WHERE `NgayBaoCao` < today() - toIntervalDay(7)
+WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7)
 UNION ALL
-SELECT * FROM report.v_bao_cao_tai_chinh_theo_don;
+SELECT * FROM report.v_bao_cao_tai_chinh_theo_don
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7);
 
 -- ============================================================================
 -- FUND — order grain (hot 7 days in push job) / Quỹ theo từng đơn × PTTT
@@ -341,99 +351,95 @@ FROM serving.fund_report_order;
 
 CREATE VIEW report.v_bao_cao_quy_theo_don_tong_hop AS
 SELECT * FROM serving.v_bao_cao_quy_theo_don
-WHERE `NgayBaoCao` < today() - toIntervalDay(7)
+WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7)
 UNION ALL
-SELECT * FROM report.v_bao_cao_quy_theo_don;
+SELECT * FROM report.v_bao_cao_quy_theo_don
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7);
 
 -- ============================================================================
 -- REALTIME business-by-order (Flink) — view hot 14d / cold Iceberg (CH table TTL 16d buffer)
 -- Tình hình KD theo đơn realtime — view hot 14 ngày / cold Iceberg (bảng hot TTL 16 ngày buffer)
 -- ============================================================================
-DROP VIEW IF EXISTS report.v_bao_cao_kd_theo_don_rt;
-DROP VIEW IF EXISTS serving.v_bao_cao_kd_theo_don_rt;
-DROP VIEW IF EXISTS report.v_bao_cao_kd_theo_don_rt_tong_hop;
+DROP VIEW IF EXISTS report.v_bao_cao_kinh_doanh_theo_don_realtime;
+DROP VIEW IF EXISTS serving.v_bao_cao_kinh_doanh_theo_don_realtime;
+DROP VIEW IF EXISTS report.v_bao_cao_kinh_doanh_theo_don_realtime_tong_hop;
 
 -- Cold stub so views deploy before first Iceberg migrate / Stub cold để deploy view trước migrate
-CREATE TABLE IF NOT EXISTS serving.biz_rt_order (
+CREATE TABLE IF NOT EXISTS serving.realtime_business_by_order (
     ReportDate Date,
     OrderId String,
     ReturnId String,
     DocumentType LowCardinality(String),
-    ShopCode String,
+    ShopCode LowCardinality(String),
     ShopName String,
-    OrderStatus String,
-    SalesAmount Float64,
-    ReturnAmount Float64,
-    NetRevenue Float64,
-    TotalReceipts Float64,
-    TotalExpenditures Float64,
-    NetCashFlow Float64,
+    OrderStatus LowCardinality(String),
+    SalesAmount Int64,
+    ReturnAmount Int64,
+    NetRevenue Int64,
+    TotalReceipts Int64,
+    TotalExpenditures Int64,
+    NetCashFlow Int64,
     PaymentMethodSummary String,
-    TotalOrderAmount Float64,
-    TotalReturnAmount Float64,
-    ReconciliationDiff Float64,
+    TotalOrderAmount Int64,
+    TotalReturnAmount Int64,
+    ReconciliationDiff Int64,
     PendingOrder UInt8,
+    Version UInt64,
     UpdatedAt DateTime64(3)
-) ENGINE = ReplacingMergeTree(UpdatedAt)
+) ENGINE = ReplacingMergeTree(Version)
 ORDER BY (OrderId, ReturnId);
 
-CREATE VIEW report.v_bao_cao_kd_theo_don_rt AS
+-- Shop names come with the rows (Flink reads shop."Shop"), so the realtime views do not depend on dw.
+-- Money is exposed as Float64 like the other report views (backend scans float64).
+-- Tên cửa hàng đi kèm dòng (Flink đọc shop."Shop") nên view realtime không phụ thuộc dw.
+-- Tiền xuất ra Float64 như các view báo cáo khác (backend scan float64).
+CREATE VIEW report.v_bao_cao_kinh_doanh_theo_don_realtime AS
 SELECT
     r.ReportDate AS `NgayBaoCao`,
     r.OrderId AS `MaDonHang`,
     r.ReturnId AS `MaPhieuTra`,
     r.DocumentType AS `LoaiChungTu`,
     r.ShopCode AS `MaCuaHang`,
-    coalesce(nullIf(ds.ShopName, ''), nullIf(r.ShopName, r.ShopCode), r.ShopCode) AS `TenCuaHang`,
+    if(r.ShopName = '', r.ShopCode, r.ShopName) AS `TenCuaHang`,
     r.OrderStatus AS `TrangThaiDon`,
-    r.SalesAmount AS `DoanhThuBan`,
-    r.ReturnAmount AS `GiaTriTraHang`,
-    r.NetRevenue AS `DoanhThuThuan`,
-    r.TotalReceipts AS `TongThu`,
-    r.TotalExpenditures AS `TongChi`,
-    r.NetCashFlow AS `DongTienRong`,
+    toFloat64(r.SalesAmount) AS `DoanhThuBan`,
+    toFloat64(r.ReturnAmount) AS `GiaTriTraHang`,
+    toFloat64(r.NetRevenue) AS `DoanhThuThuan`,
+    toFloat64(r.TotalReceipts) AS `TongThu`,
+    toFloat64(r.TotalExpenditures) AS `TongChi`,
+    toFloat64(r.NetCashFlow) AS `DongTienRong`,
     r.PaymentMethodSummary AS `TomTatPTTT`,
-    r.TotalOrderAmount AS `TongTienDonHang`,
-    r.TotalReturnAmount AS `TongTienHoanTra`,
-    r.ReconciliationDiff AS `ChenhLechDoiSoat`,
+    toFloat64(r.TotalOrderAmount) AS `TongTienDonHang`,
+    toFloat64(r.TotalReturnAmount) AS `TongTienHoanTra`,
+    toFloat64(r.ReconciliationDiff) AS `ChenhLechDoiSoat`,
     r.PendingOrder AS `ChoDonHang`
-FROM report.biz_rt_order AS r FINAL
-LEFT JOIN (
-    SELECT ShopCode, any(ShopName) AS ShopName
-    FROM dw.dim_shop
-    GROUP BY ShopCode
-) AS ds ON r.ShopCode = ds.ShopCode;
+FROM report.realtime_business_by_order AS r FINAL;
 
-CREATE VIEW serving.v_bao_cao_kd_theo_don_rt AS
+CREATE VIEW serving.v_bao_cao_kinh_doanh_theo_don_realtime AS
 SELECT
     r.ReportDate AS `NgayBaoCao`,
     r.OrderId AS `MaDonHang`,
     r.ReturnId AS `MaPhieuTra`,
     r.DocumentType AS `LoaiChungTu`,
     r.ShopCode AS `MaCuaHang`,
-    coalesce(nullIf(ds.ShopName, ''), nullIf(r.ShopName, r.ShopCode), r.ShopCode) AS `TenCuaHang`,
+    if(r.ShopName = '', r.ShopCode, r.ShopName) AS `TenCuaHang`,
     r.OrderStatus AS `TrangThaiDon`,
-    r.SalesAmount AS `DoanhThuBan`,
-    r.ReturnAmount AS `GiaTriTraHang`,
-    r.NetRevenue AS `DoanhThuThuan`,
-    r.TotalReceipts AS `TongThu`,
-    r.TotalExpenditures AS `TongChi`,
-    r.NetCashFlow AS `DongTienRong`,
+    toFloat64(r.SalesAmount) AS `DoanhThuBan`,
+    toFloat64(r.ReturnAmount) AS `GiaTriTraHang`,
+    toFloat64(r.NetRevenue) AS `DoanhThuThuan`,
+    toFloat64(r.TotalReceipts) AS `TongThu`,
+    toFloat64(r.TotalExpenditures) AS `TongChi`,
+    toFloat64(r.NetCashFlow) AS `DongTienRong`,
     r.PaymentMethodSummary AS `TomTatPTTT`,
-    r.TotalOrderAmount AS `TongTienDonHang`,
-    r.TotalReturnAmount AS `TongTienHoanTra`,
-    r.ReconciliationDiff AS `ChenhLechDoiSoat`,
+    toFloat64(r.TotalOrderAmount) AS `TongTienDonHang`,
+    toFloat64(r.TotalReturnAmount) AS `TongTienHoanTra`,
+    toFloat64(r.ReconciliationDiff) AS `ChenhLechDoiSoat`,
     r.PendingOrder AS `ChoDonHang`
-FROM serving.biz_rt_order AS r
-LEFT JOIN (
-    SELECT ShopCode, any(ShopName) AS ShopName
-    FROM dw.dim_shop
-    GROUP BY ShopCode
-) AS ds ON r.ShopCode = ds.ShopCode;
+FROM serving.realtime_business_by_order AS r;
 
-CREATE VIEW report.v_bao_cao_kd_theo_don_rt_tong_hop AS
-SELECT * FROM serving.v_bao_cao_kd_theo_don_rt
-WHERE `NgayBaoCao` < today() - toIntervalDay(14)
+CREATE VIEW report.v_bao_cao_kinh_doanh_theo_don_realtime_tong_hop AS
+SELECT * FROM serving.v_bao_cao_kinh_doanh_theo_don_realtime
+WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(14)
 UNION ALL
-SELECT * FROM report.v_bao_cao_kd_theo_don_rt
-WHERE `NgayBaoCao` >= today() - toIntervalDay(14);
+SELECT * FROM report.v_bao_cao_kinh_doanh_theo_don_realtime
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(14);

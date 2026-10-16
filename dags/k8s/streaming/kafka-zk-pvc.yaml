@@ -1,0 +1,29 @@
+# Persistent volumes for Kafka + Zookeeper (Confluent cp images).
+# PVC cho Kafka + Zookeeper — tránh mất topic khi restart pod.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kaizen-kafka-data
+  namespace: streaming
+  labels:
+    app: kaizen-kafka
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kaizen-zookeeper-data
+  namespace: streaming
+  labels:
+    app: zookeeper
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi

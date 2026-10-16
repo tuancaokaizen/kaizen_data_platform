@@ -1,0 +1,255 @@
+# Flink session cluster for Kaizen stream jobs (1 JobManager + 3 TaskManagers).
+# Flink session cluster cho các stream job Kaizen (1 JobManager + 3 TaskManager).
+# Design / Thiết kế: docs/design/kafka_topic_model.md mục 10, docs/design/stream_code_structure.md.
+#
+# Cluster-wide defaults (RocksDB, checkpoint 30s, S3) live here so job code does not repeat them.
+# Mặc định toàn cluster (RocksDB, checkpoint 30s, S3) đặt ở đây để code job không lặp lại.
+#
+# Requires Secrets / Cần các Secret:
+#   compute/kaizen-flink-s3        (access-key, secret-key)                  → checkpoint/savepoint on S3
+#   compute/kaizen-stream-secrets  (postgres-password, clickhouse-password)  → job sinks (env KAIZEN_*_PASSWORD)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kaizen-flink-jobmanager
+  namespace: compute
+  labels:
+    app: kaizen-flink
+    component: jobmanager
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kaizen-flink
+      component: jobmanager
+  template:
+    metadata:
+      labels:
+        app: kaizen-flink
+        component: jobmanager
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: tuan-cao-rog-strix-g512lv-g512lv
+      containers:
+        - name: jobmanager
+          image: flink:1.17.2-scala_2.12-java11
+          imagePullPolicy: IfNotPresent
+          args: ["jobmanager"]
+          ports:
+            - name: rpc
+              containerPort: 6123
+            - name: blob
+              containerPort: 6124
+            - name: ui
+              containerPort: 8081
+          # Keep identical to the TaskManager env below / Giữ giống hệt env của TaskManager bên dưới
+          env:
+            - name: ENABLE_BUILT_IN_PLUGINS
+              value: flink-s3-fs-hadoop-1.17.2.jar
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kaizen-flink-s3
+                  key: access-key
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kaizen-flink-s3
+                  key: secret-key
+            # Job settings override (SettingsLoader: env KAIZEN_<SECTION>_<KEY>); jobs' main() runs here
+            # Ghi đè cấu hình job (SettingsLoader: env KAIZEN_<SECTION>_<KEY>); main() của job chạy ở đây
+            - name: KAIZEN_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kaizen-stream-secrets
+                  key: postgres-password
+            - name: KAIZEN_CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kaizen-stream-secrets
+                  key: clickhouse-password
+            # $(S3_*) is expanded by Kubernetes only inside `value`, so keep this inline (not a ConfigMap).
+            # Kubernetes chỉ thay $(S3_*) trong `value`, nên giữ inline (không dùng ConfigMap).
+            # Slot: 6 job đọc Kafka × p=3 + outbox p=1 = 19 ≤ 3 TaskManager × 7 slot.
+            - name: FLINK_PROPERTIES
+              value: |
+                jobmanager.rpc.address: kaizen-flink-jobmanager
+                jobmanager.memory.process.size: 1000m
+                taskmanager.numberOfTaskSlots: 7
+                taskmanager.memory.process.size: 2800m
+                taskmanager.memory.jvm-metaspace.size: 512m
+                cluster.evenly-spread-out-slots: true
+                parallelism.default: 1
+                state.backend.type: rocksdb
+                state.backend.incremental: true
+                state.backend.rocksdb.localdir: /flink-rocksdb
+                state.checkpoints.dir: s3a://flink/checkpoint
+                state.savepoints.dir: s3a://flink/savepoint
+                state.checkpoints.num-retained: 2
+                execution.checkpointing.interval: 30s
+                execution.checkpointing.mode: EXACTLY_ONCE
+                execution.checkpointing.timeout: 2min
+                execution.checkpointing.min-pause: 10s
+                execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
+                execution.checkpointing.tolerable-failed-checkpoints: 3
+                restart-strategy.type: exponential-delay
+                restart-strategy.exponential-delay.initial-backoff: 10s
+                restart-strategy.exponential-delay.max-backoff: 2min
+                s3.endpoint: http://minio.storage.svc.cluster.local:9000
+                s3.path.style.access: true
+                s3.access-key: $(S3_ACCESS_KEY)
+                s3.secret-key: $(S3_SECRET_KEY)
+          resources:
+            requests:
+              cpu: 200m
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+          readinessProbe:
+            tcpSocket:
+              port: 6123
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kaizen-flink-taskmanager
+  namespace: compute
+  labels:
+    app: kaizen-flink
+    component: taskmanager
+spec:
+  replicas: 3
+  # Required anti-affinity blocks surge pods, so replace in place / Anti-affinity bắt buộc chặn pod surge nên thay tại chỗ
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kaizen-flink
+      component: taskmanager
+  template:
+    metadata:
+      labels:
+        app: kaizen-flink
+        component: taskmanager
+    spec:
+      # One TaskManager per node / Mỗi node đúng 1 TaskManager
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app: kaizen-flink
+                  component: taskmanager
+      containers:
+        - name: taskmanager
+          image: flink:1.17.2-scala_2.12-java11
+          imagePullPolicy: IfNotPresent
+          args: ["taskmanager"]
+          # Keep identical to the JobManager env above / Giữ giống hệt env của JobManager ở trên
+          env:
+            - name: ENABLE_BUILT_IN_PLUGINS
+              value: flink-s3-fs-hadoop-1.17.2.jar
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kaizen-flink-s3
+                  key: access-key
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kaizen-flink-s3
+                  key: secret-key
+            - name: KAIZEN_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kaizen-stream-secrets
+                  key: postgres-password
+            - name: KAIZEN_CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kaizen-stream-secrets
+                  key: clickhouse-password
+            - name: FLINK_PROPERTIES
+              value: |
+                jobmanager.rpc.address: kaizen-flink-jobmanager
+                jobmanager.memory.process.size: 1000m
+                taskmanager.numberOfTaskSlots: 7
+                taskmanager.memory.process.size: 2800m
+                taskmanager.memory.jvm-metaspace.size: 512m
+                cluster.evenly-spread-out-slots: true
+                parallelism.default: 1
+                state.backend.type: rocksdb
+                state.backend.incremental: true
+                state.backend.rocksdb.localdir: /flink-rocksdb
+                state.checkpoints.dir: s3a://flink/checkpoint
+                state.savepoints.dir: s3a://flink/savepoint
+                state.checkpoints.num-retained: 2
+                execution.checkpointing.interval: 30s
+                execution.checkpointing.mode: EXACTLY_ONCE
+                execution.checkpointing.timeout: 2min
+                execution.checkpointing.min-pause: 10s
+                execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
+                execution.checkpointing.tolerable-failed-checkpoints: 3
+                restart-strategy.type: exponential-delay
+                restart-strategy.exponential-delay.initial-backoff: 10s
+                restart-strategy.exponential-delay.max-backoff: 2min
+                s3.endpoint: http://minio.storage.svc.cluster.local:9000
+                s3.path.style.access: true
+                s3.access-key: $(S3_ACCESS_KEY)
+                s3.secret-key: $(S3_SECRET_KEY)
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2800Mi
+            limits:
+              memory: 3Gi
+          volumeMounts:
+            - name: rocksdb
+              mountPath: /flink-rocksdb
+      volumes:
+        # RocksDB working files, rebuilt from checkpoint on restart / File làm việc RocksDB, dựng lại từ checkpoint khi restart
+        - name: rocksdb
+          emptyDir:
+            sizeLimit: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kaizen-flink-jobmanager
+  namespace: compute
+  labels:
+    app: kaizen-flink
+spec:
+  selector:
+    app: kaizen-flink
+    component: jobmanager
+  ports:
+    - name: rpc
+      port: 6123
+    - name: blob
+      port: 6124
+    - name: ui
+      port: 8081
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kaizen-flink-nodeport-service
+  namespace: compute
+  labels:
+    app: kaizen-flink
+spec:
+  type: NodePort
+  selector:
+    app: kaizen-flink
+    component: jobmanager
+  ports:
+    - name: ui
+      port: 8081
+      targetPort: 8081
+      nodePort: 31081

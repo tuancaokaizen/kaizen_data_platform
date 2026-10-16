@@ -6,6 +6,7 @@ native_filters:
 - column: NgayBaoCao
   type: filter_time
   label: Khoảng ngày
+  default: Last 30 days
 - column: MaCuaHang
   type: filter_select
   label: Cửa hàng
@@ -20,6 +21,9 @@ native_filters:
   type: filter_select
   label: Ngành hàng
   multi: true
+  default:
+  - medicine
+  - supplement
   options:
   - medicine
   - supplement

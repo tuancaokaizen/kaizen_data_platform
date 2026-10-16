@@ -1,0 +1,168 @@
+Đặc khu Côn Đảo
+Phường An Đông
+Phường An Hội Đông
+Phường An Hội Tây
+Phường An Khánh
+Phường An Lạc
+Phường An Nhơn
+Phường An Phú
+Phường An Phú Đông
+Phường Bà Rịa
+Phường Bàn Cờ
+Phường Bảy Hiền
+Phường Bến Cát
+Phường Bến Thành
+Phường Bình Cơ
+Phường Bình Dương
+Phường Bình Đông
+Phường Bình Hòa
+Phường Bình Hưng Hòa
+Phường Bình Lợi Trung
+Phường Bình Phú
+Phường Bình Quới
+Phường Bình Tân
+Phường Bình Tây
+Phường Bình Thạnh
+Phường Bình Thới
+Phường Bình Tiên
+Phường Bình Trị Đông
+Phường Bình Trưng
+Phường Cát Lái
+Phường Cầu Kiệu
+Phường Cầu Ông Lãnh
+Phường Chánh Hiệp
+Phường Chánh Hưng
+Phường Chánh Phú Hòa
+Phường Chợ Lớn
+Phường Chợ Quán
+Phường Dĩ An
+Phường Diên Hồng
+Phường Đông Hòa
+Phường Đông Hưng Thuận
+Phường Đức Nhuận
+Phường Gia Định
+Phường Gò Vấp
+Phường Hạnh Thông
+Phường Hiệp Bình
+Phường Hòa Bình
+Phường Hòa Hưng
+Phường Hòa Lợi
+Phường Khánh Hội
+Phường Lái Thiêu
+Phường Linh Xuân
+Phường Long Bình
+Phường Long Hương
+Phường Long Nguyên
+Phường Long Phước
+Phường Long Trường
+Phường Minh Phụng
+Phường Nhiêu Lộc
+Phường Phú An
+Phường Phú Định
+Phường Phú Lâm
+Phường Phú Lợi
+Phường Phú Mỹ
+Phường Phú Nhuận
+Phường Phú Thạnh
+Phường Phú Thọ
+Phường Phú Thọ Hòa
+Phường Phú Thuận
+Phường Phước Long
+Phường Phước Thắng
+Phường Rạch Dừa
+Phường Sài Gòn
+Phường Tam Bình
+Phường Tam Long
+Phường Tam Thắng
+Phường Tăng Nhơn Phú
+Phường Tân Bình
+Phường Tân Định
+Phường Tân Đông Hiệp
+Phường Tân Hải
+Phường Tân Hiệp
+Phường Tân Hòa
+Phường Tân Hưng
+Phường Tân Khánh
+Phường Tân Mỹ
+Phường Tân Phú
+Phường Tân Phước
+Phường Tân Sơn
+Phường Tân Sơn Hòa
+Phường Tân Sơn Nhất
+Phường Tân Sơn Nhì
+Phường Tân Tạo
+Phường Tân Thành
+Phường Tân Thới Hiệp
+Phường Tân Thuận
+Phường Tân Uyên
+Phường Tây Nam
+Phường Tây Thạnh
+Phường Thạnh Mỹ Tây
+Phường Thông Tây Hội
+Phường Thới An
+Phường Thới Hòa
+Phường Thủ Dầu Một
+Phường Thủ Đức
+Phường Thuận An
+Phường Thuận Giao
+Phường Trung Mỹ Tây
+Phường Vĩnh Hội
+Phường Vĩnh Tân
+Phường Vũng Tàu
+Phường Vườn Lài
+Phường Xóm Chiếu
+Phường Xuân Hòa
+Xã An Long
+Xã An Nhơn Tây
+Xã An Thới Đông
+Xã Bà Điểm
+Xã Bàu Bàng
+Xã Bàu Lâm
+Xã Bắc Tân Uyên
+Xã Bình Chánh
+Xã Bình Châu
+Xã Bình Giã
+Xã Bình Hưng
+Xã Bình Khánh
+Xã Bình Lợi
+Xã Bình Mỹ
+Xã Cần Giờ
+Xã Châu Đức
+Xã Châu Pha
+Xã Củ Chi
+Xã Dầu Tiếng
+Xã Đất Đỏ
+Xã Đông Thạnh
+Xã Hiệp Phước
+Xã Hòa Hiệp
+Xã Hòa Hội
+Xã Hóc Môn
+Xã Hồ Tràm
+Xã Hưng Long
+Xã Kim Long
+Xã Long Điền
+Xã Long Hải
+Xã Long Hòa
+Xã Long Sơn
+Xã Minh Thạnh
+Xã Ngãi Giao
+Xã Nghĩa Thành
+Xã Nhà Bè
+Xã Nhuận Đức
+Xã Phú Giáo
+Xã Phú Hòa Đông
+Xã Phước Hải
+Xã Phước Hòa
+Xã Phước Thành
+Xã Tân An Hội
+Xã Tân Nhựt
+Xã Tân Vĩnh Lộc
+Xã Thái Mỹ
+Xã Thanh An
+Xã Thạnh An
+Xã Thường Tân
+Xã Trừ Văn Thố
+Xã Vĩnh Lộc
+Xã Xuân Sơn
+Xã Xuân Thới Sơn
+Xã Xuyên Mộc

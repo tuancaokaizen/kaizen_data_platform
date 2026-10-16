@@ -1,0 +1,55 @@
+# One-shot Job: reconcile PG → ES order-bundles for skipped days
+# Apply: kubectl --kubeconfig=$HOME/.kube/config.k3s-new apply -f dags/k8s/reconcile-es-orders-job.yaml
+# Logs:  kubectl --kubeconfig=$HOME/.kube/config.k3s-new logs -n orchestrator -l app=reconcile-es-orders -f
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: PLACEHOLDER
+  namespace: orchestrator
+  labels:
+    app: reconcile-es-orders
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: reconcile-es-orders
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: reconcile
+          image: apache/airflow:2.10.5-python3.12
+          imagePullPolicy: IfNotPresent
+          command: ["bash", "/work/run_reconcile.sh"]
+          env:
+            - name: CONFIG
+              value: /work/config.ini
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          volumeMounts:
+            - name: script
+              mountPath: /work/reconcile_pg_es_order_bundles.py
+              subPath: reconcile_pg_es_order_bundles.py
+            - name: script
+              mountPath: /work/run_reconcile.sh
+              subPath: run_reconcile.sh
+            - name: config
+              mountPath: /work/config.ini
+              subPath: config.ini
+              readOnly: true
+          resources:
+            requests:
+              cpu: "100m"
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: script
+          configMap:
+            name: reconcile-es-script
+            defaultMode: 0755
+        - name: config
+          secret:
+            secretName: reconcile-es-config

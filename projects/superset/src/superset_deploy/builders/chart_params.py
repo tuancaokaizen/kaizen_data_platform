@@ -111,11 +111,20 @@ def _treemap(spec, base, metrics, groupby):
 
 @register("heatmap_v2")
 def _heatmap(spec, base, metrics, groupby):
+    # heatmap_v2: x_axis = X, groupby = Y (not groupby_columns)
+    # heatmap_v2: x_axis = trục X, groupby = trục Y (không dùng groupby_columns)
     base["metric"] = metrics[0] if metrics else sql_metric("COUNT(*)")
     if spec.get("x"):
-        base["groupby"] = [spec["x"]]
+        base["x_axis"] = spec["x"]
     if spec.get("y"):
-        base["groupby_columns"] = [spec["y"]]
+        base["groupby"] = [spec["y"]]
+    base.setdefault("legend_type", "continuous")
+    base.setdefault("show_values", True)
+    base.setdefault("show_legend", True)
+    base.setdefault("sort_x_axis", "alpha_asc")
+    base.setdefault("sort_y_axis", "alpha_asc")
+    base.setdefault("bottom_margin", "auto")
+    base.setdefault("left_margin", "auto")
     return base
 
 

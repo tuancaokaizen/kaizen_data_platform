@@ -1,0 +1,20 @@
+# ZooKeeper anti-OOM settings (documented values applied via kubectl patch)
+# Cấu hình chống OOM cho ZooKeeper (áp dụng bằng kubectl patch)
+#
+# Problem / Vấn đề:
+#   limits.memory=384Mi, no JVM heap cap → OOMKilled → ZK zxid reset → Kafka session stuck
+#
+# Fix applied live / Đã apply live:
+#   requests: 512Mi / limits: 1Gi
+#   KAFKA_HEAP_OPTS=-Xms256m -Xmx512m  (heap under limit; leave room for native/metaspace)
+#
+# Re-apply:
+#   kubectl --kubeconfig=$HOME/.kube/config.k3s-new -n streaming patch deploy zookeeper --type=json -p='[
+#     {"op":"replace","path":"/spec/template/spec/containers/0/resources","value":{"requests":{"cpu":"50m","memory":"512Mi"},"limits":{"cpu":"500m","memory":"1Gi"}}},
+#     {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"KAFKA_HEAP_OPTS","value":"-Xms256m -Xmx512m"}}
+#   ]'
+#
+# Extra tips / Thêm:
+#   - Keep PVC for ZK data (kaizen-zookeeper-data) so restart does not wipe zxid
+#   - After ZK OOM recovery: rollout restart kaizen-kafka to clear stale ZK session
+#   - Monitor: kubectl top pod -n streaming zookeeper-*
