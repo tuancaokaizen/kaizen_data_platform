@@ -88,6 +88,34 @@ func (s *ReportService) GetFundSummary(
 	return s.repo.GetFundSummary(ctx, query.FromDate, query.ToDate, query.View, filter)
 }
 
+func (s *ReportService) GetKdReport(
+	ctx context.Context,
+	query ReportQuery,
+) ([]repository.ReportRow, int64, error) {
+	filter := repository.KdFilter{
+		ShopCode:     query.ShopCode,
+		OrderId:      query.OrderId,
+		DocumentType: query.DocumentType,
+		OrderStatus:  query.OrderStatus,
+	}
+	return s.repo.GetKdReport(
+		ctx, query.FromDate, query.ToDate, query.View, filter, query.Page, query.PageSize,
+	)
+}
+
+func (s *ReportService) GetKdSummary(
+	ctx context.Context,
+	query ReportQuery,
+) (repository.ReportSummary, error) {
+	filter := repository.KdFilter{
+		ShopCode:     query.ShopCode,
+		OrderId:      query.OrderId,
+		DocumentType: query.DocumentType,
+		OrderStatus:  query.OrderStatus,
+	}
+	return s.repo.GetKdSummary(ctx, query.FromDate, query.ToDate, query.View, filter)
+}
+
 // GetFinancialDetailFilterOptions returns distinct shop/product values for detail view filters
 // Trả về giá trị distinct cửa hàng/sản phẩm cho bộ lọc view chi tiết
 func (s *ReportService) GetFinancialDetailFilterOptions(
@@ -96,4 +124,12 @@ func (s *ReportService) GetFinancialDetailFilterOptions(
 	toDate time.Time,
 ) (repository.FinancialDetailFilterOptions, error) {
 	return s.repo.GetFinancialDetailFilterOptions(ctx, fromDate, toDate)
+}
+
+func (s *ReportService) GetKdFilterOptions(
+	ctx context.Context,
+	fromDate time.Time,
+	toDate time.Time,
+) (repository.KdFilterOptions, error) {
+	return s.repo.GetKdFilterOptions(ctx, fromDate, toDate)
 }

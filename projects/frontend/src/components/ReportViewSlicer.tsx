@@ -54,6 +54,23 @@ export function ReportViewSlicer({ activeKey, onChange }: ReportViewSlicerProps)
           optionFilterProp="label"
         />
       </section>
+
+      <section
+        className={`report-nav__group${
+          activeCategory === "kd" ? " report-nav__group--active" : ""
+        }`}
+      >
+        <h2 className="report-nav__category">{MENU_GROUP_LABELS.kd}</h2>
+        <Select
+          className="report-nav__select"
+          value={activeCategory === "kd" ? activeKey : undefined}
+          options={childViewOptions("kd")}
+          onChange={(key) => onChange(key as ReportViewKey)}
+          placeholder="Chọn chiều báo cáo"
+          showSearch
+          optionFilterProp="label"
+        />
+      </section>
     </nav>
   );
 }

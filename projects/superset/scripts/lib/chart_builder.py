@@ -76,11 +76,19 @@ def build_chart_params(
         return base
 
     if viz == "heatmap_v2":
+        # heatmap_v2: x_axis = X, groupby = Y / x_axis = trục X, groupby = trục Y
         base["metric"] = metrics[0] if metrics else sql_metric("COUNT(*)")
         if spec.get("x"):
-            base["groupby"] = [spec["x"]]
+            base["x_axis"] = spec["x"]
         if spec.get("y"):
-            base["groupby_columns"] = [spec["y"]]
+            base["groupby"] = [spec["y"]]
+        base.setdefault("legend_type", "continuous")
+        base.setdefault("show_values", True)
+        base.setdefault("show_legend", True)
+        base.setdefault("sort_x_axis", "alpha_asc")
+        base.setdefault("sort_y_axis", "alpha_asc")
+        base.setdefault("bottom_margin", "auto")
+        base.setdefault("left_margin", "auto")
         return base
 
     if viz == "table":
@@ -133,7 +141,11 @@ def build_native_filters(
             "targets": [target],
             "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
             "cascadeParentIds": [],
-            "controlValues": {"enableEmptyFilter": not f.get("required", False)},
+            # Empty optional filter = no restriction / Filter trống = không lọc
+            "controlValues": {
+                "enableEmptyFilter": not f.get("required", False),
+                "defaultToFirstItem": False,
+            },
         }
 
         if ftype == "filter_time":
@@ -147,6 +159,25 @@ def build_native_filters(
                 entry["controlValues"]["searchAllOptions"] = False
             else:
                 entry["controlValues"]["searchAllOptions"] = f.get("search", fd.get("search", False))
+
+            # Explicit default or options as default / Default tường minh hoặc từ options
+            default_vals = f.get("default")
+            if default_vals is None and f.get("options"):
+                default_vals = list(f["options"])
+            if default_vals is not None:
+                if not isinstance(default_vals, list):
+                    default_vals = [default_vals]
+                entry["defaultDataMask"] = {
+                    "extraFormData": {
+                        "filters": [
+                            {"col": col, "op": "IN", "val": default_vals}
+                        ]
+                    },
+                    "filterState": {
+                        "label": ", ".join(str(v) for v in default_vals),
+                        "value": default_vals,
+                    },
+                }
 
         configs.append(entry)
     return configs

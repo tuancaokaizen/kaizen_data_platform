@@ -4,6 +4,8 @@ time_column: NgayBaoCao
 time_filter:
   type: filter_time
   label: Khoảng ngày
+  # Prefer 30d so sparse single days do not empty the whole dashboard
+  # Ưu tiên 30 ngày để ngày thưa không làm trống cả dashboard
   default: Last 30 days
 chart_plugins:
   kpi: big_number_total

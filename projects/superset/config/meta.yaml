@@ -4,6 +4,7 @@ calculated_columns:
     THEN 'Trả hàng' ELSE LoaiChungTu END
   datasets:
   - v_bao_cao_tai_chinh_theo_don_tong_hop
+  - v_bao_cao_kinh_doanh_theo_don_realtime_tong_hop
 - name: CoChenhLech
   sql: CASE WHEN ChenhLechDoiSoat != 0 THEN 1 ELSE 0 END
   datasets:

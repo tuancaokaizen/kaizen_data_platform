@@ -6,7 +6,8 @@ native_filters:
 - column: NgayBaoCao
   type: filter_time
   label: Khoảng ngày
-  default: Last 7 days
+  # Avoid Last 7 days when a day in-window is still empty / Tránh Last 7d khi còn ngày trống trong cửa sổ
+  default: Last 30 days
 - column: MaCuaHang
   type: filter_select
   label: Cửa hàng
@@ -21,6 +22,9 @@ native_filters:
   type: filter_select
   label: Loại chứng từ
   multi: true
+  default:
+  - SALE
+  - RETURN
   options:
   - SALE
   - RETURN
@@ -29,6 +33,7 @@ native_filters:
   label: Trạng thái đơn
   multi: true
   search: true
+  select_all: true
 layout:
   row1_kpi:
   - chart: kpi_so_don
@@ -44,8 +49,10 @@ layout:
     viz: pie
     groupby:
     - LoaiChungTu
-    metric: SUM(DoanhThuThuan)
-    title: Bán hàng vs Trả hàng (doanh thu)
+    # COUNT so RETURN is visible (pie hides negative DoanhThuThuan)
+    # COUNT để hiện RETURN (pie ẩn DoanhThuThuan âm)
+    metric: COUNT(*)
+    title: SALE vs RETURN (số chứng từ)
   - chart: bar_trang_thai
     viz: echarts_timeseries_bar
     x: TrangThaiDon

@@ -15,6 +15,11 @@ const (
 	FundViewOrder   = "order"
 )
 
+// KdViewOrder — KD realtime by order (Flink hot + Iceberg cold union) / KD realtime theo đơn
+const (
+	KdViewOrder = "order"
+)
+
 type FinancialFilter struct {
 	ShopCode        string
 	ProductId       string
@@ -28,6 +33,13 @@ type FundFilter struct {
 	ShopCode          string
 	PaymentMethodName string
 	OrderId           string
+}
+
+type KdFilter struct {
+	ShopCode     string
+	OrderId      string
+	DocumentType string
+	OrderStatus  string
 }
 
 type financialViewSpec struct {
@@ -120,6 +132,39 @@ func appendFinancialFilters(view string, filter FinancialFilter, where string, a
 		args = append(args, filter.DocumentType)
 	}
 	if filter.OrderStatus != "" && view == FinancialViewOrder {
+		where += " AND `TrangThaiDon` = ?"
+		args = append(args, filter.OrderStatus)
+	}
+	return where, args
+}
+
+func kdViewSpecFor(view string) financialViewSpec {
+	switch view {
+	default:
+		return financialViewSpec{
+			table: "report.v_bao_cao_kinh_doanh_theo_don_realtime_tong_hop",
+			columns: "`NgayBaoCao`, `MaDonHang`, `MaPhieuTra`, `LoaiChungTu`, `MaCuaHang`, `TenCuaHang`, `TrangThaiDon`, " +
+				"`DoanhThuBan`, `GiaTriTraHang`, `DoanhThuThuan`, `TongThu`, `TongChi`, `DongTienRong`, `TomTatPTTT`, " +
+				"`TongTienDonHang`, `TongTienHoanTra`, `ChenhLechDoiSoat`, `ChoDonHang`",
+			orderBy: "`NgayBaoCao` DESC, `MaDonHang`, `MaPhieuTra`",
+		}
+	}
+}
+
+func appendKdFilters(filter KdFilter, where string, args []any) (string, []any) {
+	if filter.ShopCode != "" {
+		where += " AND `MaCuaHang` = ?"
+		args = append(args, filter.ShopCode)
+	}
+	if filter.OrderId != "" {
+		where += " AND `MaDonHang` = ?"
+		args = append(args, filter.OrderId)
+	}
+	if filter.DocumentType != "" {
+		where += " AND `LoaiChungTu` = ?"
+		args = append(args, filter.DocumentType)
+	}
+	if filter.OrderStatus != "" {
 		where += " AND `TrangThaiDon` = ?"
 		args = append(args, filter.OrderStatus)
 	}

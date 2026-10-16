@@ -32,11 +32,12 @@ def upsert_dashboard(
     all_chart_ids = [cid for row in chart_rows for cid, _, _ in row]
 
     position = build_position_json(chart_rows, chart_names)
+    refresh_frequency = int(dash_spec.get("refresh_frequency_seconds", 0))
     json_metadata = {
         "native_filter_configuration": native_filters,
         "color_scheme": "",
         "label_colors": {},
-        "refresh_frequency": 0,
+        "refresh_frequency": refresh_frequency,
         "timed_refresh_immune_slices": [],
         "expanded_slices": {},
         "default_filters": "{}",

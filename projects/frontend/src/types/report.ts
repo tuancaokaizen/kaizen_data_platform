@@ -28,6 +28,8 @@ export type ReportRow = {
   totalOrderAmount?: number;
   totalReturnAmount?: number;
   reconciliationDiff?: number;
+  paymentMethodSummary?: string;
+  pendingOrder?: number;
 };
 
 export type Pagination = {

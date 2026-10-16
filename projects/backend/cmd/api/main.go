@@ -12,6 +12,7 @@ import (
 	"github.com/kaizen/backend-report-api/internal/db"
 	reportHandler "github.com/kaizen/backend-report-api/internal/http/handler"
 	"github.com/kaizen/backend-report-api/internal/http/middleware"
+	swaggerHTTP "github.com/kaizen/backend-report-api/internal/http/swagger"
 	"github.com/kaizen/backend-report-api/internal/repository"
 	"github.com/kaizen/backend-report-api/internal/service"
 	supersetClient "github.com/kaizen/backend-report-api/internal/superset"
@@ -45,8 +46,12 @@ func main() {
 	mux.HandleFunc("/api/v1/reports/financial/filter-options", reportHTTP.GetFinancialFilterOptions)
 	mux.HandleFunc("/api/v1/reports/fund", reportHTTP.GetFundReport)
 	mux.HandleFunc("/api/v1/reports/fund/summary", reportHTTP.GetFundSummary)
+	mux.HandleFunc("/api/v1/reports/kd", reportHTTP.GetKdReport)
+	mux.HandleFunc("/api/v1/reports/kd/summary", reportHTTP.GetKdSummary)
+	mux.HandleFunc("/api/v1/reports/kd/filter-options", reportHTTP.GetKdFilterOptions)
 	mux.HandleFunc("/api/v1/bi/embed-config", biHTTP.GetEmbedConfig)
 	mux.HandleFunc("/api/v1/bi/guest-token", biHTTP.PostGuestToken)
+	swaggerHTTP.Register(mux)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -59,6 +64,7 @@ func main() {
 	// Start server in background to support graceful shutdown / Chạy server nền để hỗ trợ tắt an toàn
 	go func() {
 		log.Printf("backend API is running on :%s", cfg.Port)
+		log.Printf("Swagger UI: http://localhost:%s/swagger/", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("http server failed: %v", err)
 		}

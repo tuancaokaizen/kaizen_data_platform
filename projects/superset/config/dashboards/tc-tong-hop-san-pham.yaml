@@ -6,6 +6,7 @@ native_filters:
 - column: NgayBaoCao
   type: filter_time
   label: Khoảng ngày
+  default: Last 30 days
 - column: MaSanPham
   type: filter_select
   label: Mã sản phẩm

@@ -1,0 +1,435 @@
+openapi: 3.0.3
+info:
+  title: Kaizen Report API
+  description: |
+    REST API phục vụ báo cáo tài chính, quỹ và tình hình kinh doanh realtime.
+    Swagger UI: `/swagger/`
+  version: 1.0.0
+servers:
+  - url: http://localhost:8090
+    description: Local backend (run_local.sh)
+tags:
+  - name: health
+  - name: financial
+  - name: fund
+  - name: kd
+  - name: bi
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/v1/reports/financial:
+    get:
+      tags: [financial]
+      summary: Báo cáo tài chính (phân trang)
+      parameters: &reportQueryParams
+        - $ref: "#/components/parameters/fromDate"
+        - $ref: "#/components/parameters/toDate"
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [shop, detail, product, order]
+            default: shop
+        - $ref: "#/components/parameters/shopCode"
+        - $ref: "#/components/parameters/productId"
+        - $ref: "#/components/parameters/productLineCode"
+        - $ref: "#/components/parameters/orderId"
+        - $ref: "#/components/parameters/documentType"
+        - $ref: "#/components/parameters/orderStatus"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          $ref: "#/components/responses/ReportList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /api/v1/reports/financial/summary:
+    get:
+      tags: [financial]
+      summary: Tổng hợp báo cáo tài chính
+      parameters: *reportQueryParams
+      responses:
+        "200":
+          $ref: "#/components/responses/ReportSummary"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/v1/reports/financial/filter-options:
+    get:
+      tags: [financial]
+      summary: Giá trị lọc distinct (view detail)
+      parameters:
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [detail]
+            default: detail
+        - $ref: "#/components/parameters/fromDate"
+        - $ref: "#/components/parameters/toDate"
+      responses:
+        "200":
+          description: Shops and products
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  view:
+                    type: string
+                  shops:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ShopOption"
+                  products:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ProductOption"
+
+  /api/v1/reports/fund:
+    get:
+      tags: [fund]
+      summary: Báo cáo quỹ (phân trang)
+      parameters:
+        - $ref: "#/components/parameters/fromDate"
+        - $ref: "#/components/parameters/toDate"
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [payment, shop, order]
+            default: payment
+        - $ref: "#/components/parameters/shopCode"
+        - $ref: "#/components/parameters/orderId"
+        - name: paymentMethodName
+          in: query
+          schema:
+            type: string
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          $ref: "#/components/responses/ReportList"
+
+  /api/v1/reports/fund/summary:
+    get:
+      tags: [fund]
+      summary: Tổng hợp báo cáo quỹ
+      parameters:
+        - $ref: "#/components/parameters/fromDate"
+        - $ref: "#/components/parameters/toDate"
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [payment, shop, order]
+        - $ref: "#/components/parameters/shopCode"
+        - $ref: "#/components/parameters/orderId"
+        - name: paymentMethodName
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/ReportSummary"
+
+  /api/v1/reports/kd:
+    get:
+      tags: [kd]
+      summary: Báo cáo tình hình kinh doanh realtime theo đơn
+      parameters:
+        - $ref: "#/components/parameters/fromDate"
+        - $ref: "#/components/parameters/toDate"
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [order]
+            default: order
+        - $ref: "#/components/parameters/shopCode"
+        - $ref: "#/components/parameters/orderId"
+        - $ref: "#/components/parameters/documentType"
+        - $ref: "#/components/parameters/orderStatus"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          $ref: "#/components/responses/ReportList"
+
+  /api/v1/reports/kd/summary:
+    get:
+      tags: [kd]
+      summary: Tổng hợp KD realtime
+      parameters:
+        - $ref: "#/components/parameters/fromDate"
+        - $ref: "#/components/parameters/toDate"
+        - name: view
+          in: query
+          schema:
+            type: string
+            enum: [order]
+        - $ref: "#/components/parameters/shopCode"
+        - $ref: "#/components/parameters/orderId"
+        - $ref: "#/components/parameters/documentType"
+        - $ref: "#/components/parameters/orderStatus"
+      responses:
+        "200":
+          $ref: "#/components/responses/ReportSummary"
+
+  /api/v1/reports/kd/filter-options:
+    get:
+      tags: [kd]
+      summary: Giá trị lọc distinct (cửa hàng, trạng thái đơn)
+      parameters:
+        - $ref: "#/components/parameters/fromDate"
+        - $ref: "#/components/parameters/toDate"
+      responses:
+        "200":
+          description: Filter dropdown values
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  view:
+                    type: string
+                  shops:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ShopOption"
+                  orderStatuses:
+                    type: array
+                    items:
+                      type: string
+
+  /api/v1/bi/embed-config:
+    get:
+      tags: [bi]
+      summary: Cấu hình nhúng Superset
+      responses:
+        "200":
+          description: Embed config
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  supersetDomain:
+                    type: string
+                  dashboards:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        slug:
+                          type: string
+                        embeddedUuid:
+                          type: string
+
+  /api/v1/bi/guest-token:
+    post:
+      tags: [bi]
+      summary: Mint Superset guest token cho dashboard nhúng
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug]
+              properties:
+                slug:
+                  type: string
+                  example: kinh-doanh-realtime-theo-don
+      responses:
+        "200":
+          description: Guest token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+
+components:
+  parameters:
+    fromDate:
+      name: fromDate
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+      example: "2026-06-01"
+    toDate:
+      name: toDate
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+      example: "2026-07-06"
+    shopCode:
+      name: shopCode
+      in: query
+      schema:
+        type: string
+    productId:
+      name: productId
+      in: query
+      schema:
+        type: string
+    productLineCode:
+      name: productLineCode
+      in: query
+      schema:
+        type: string
+    orderId:
+      name: orderId
+      in: query
+      schema:
+        type: string
+    documentType:
+      name: documentType
+      in: query
+      schema:
+        type: string
+        enum: [SALE, RETURN]
+    orderStatus:
+      name: orderStatus
+      in: query
+      schema:
+        type: string
+    page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+    pageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        default: 20
+        description: "0 = lấy toàn bộ (tối đa theo backend)"
+
+  schemas:
+    ShopOption:
+      type: object
+      properties:
+        shopCode:
+          type: string
+        shopName:
+          type: string
+    ProductOption:
+      type: object
+      properties:
+        productId:
+          type: string
+        productName:
+          type: string
+    ReportRow:
+      type: object
+      properties:
+        reportDate:
+          type: string
+          format: date-time
+        shopCode:
+          type: string
+        shopName:
+          type: string
+        orderId:
+          type: string
+        returnId:
+          type: string
+        documentType:
+          type: string
+        orderStatus:
+          type: string
+        grossRevenue:
+          type: number
+        netRevenue:
+          type: number
+        totalReceipts:
+          type: number
+        netCashFlow:
+          type: number
+        paymentMethodSummary:
+          type: string
+        pendingOrder:
+          type: integer
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+    ErrorBody:
+      type: object
+      properties:
+        error:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Invalid query
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+    ServerError:
+      description: Internal error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+    ReportList:
+      description: Paginated report rows
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReportRow"
+              view:
+                type: string
+              pagination:
+                $ref: "#/components/schemas/Pagination"
+    ReportSummary:
+      description: Aggregated metrics
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: object
+              view:
+                type: string

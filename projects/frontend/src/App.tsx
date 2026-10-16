@@ -3,7 +3,7 @@ import { App as AntdApp, Layout, Tabs, Typography } from "antd";
 import type { TablePaginationConfig } from "antd/es/table";
 import dayjs from "dayjs";
 import axios from "axios";
-import { fetchReport, fetchFinancialDetailFilterOptions, type ReportFilter } from "./api/reportApi";
+import { fetchReport, fetchFinancialDetailFilterOptions, fetchKdFilterOptions, type ReportFilter } from "./api/reportApi";
 import { ReportDetailTab, type FilterFormValues } from "./components/ReportDetailTab";
 import { ReportViewSlicer } from "./components/ReportViewSlicer";
 import { SupersetEmbedTab } from "./components/SupersetEmbedTab";
@@ -38,7 +38,8 @@ function App() {
   const [detailFilterOptions, setDetailFilterOptions] = useState<{
     shops: { shopCode: string; shopName: string }[];
     products: { productId: string; productName: string }[];
-  }>({ shops: [], products: [] });
+    orderStatuses: string[];
+  }>({ shops: [], products: [], orderStatuses: [] });
   const [page, setPage] = useState(DEFAULT_PAGE);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [form] = Form.useForm<FilterFormValues>();
@@ -47,9 +48,10 @@ function App() {
   const columns = useMemo(() => getColumnsForView(activeViewKey), [activeViewKey]);
 
   const isFinancialDetailView = activeViewKey === "financial:detail";
+  const isKdView = viewConfig.category === "kd";
 
   const shopOptions = useMemo(() => {
-    if (isFinancialDetailView) {
+    if (isFinancialDetailView || isKdView) {
       const dynamic = detailFilterOptions.shops.map((shop) => ({
         label: shop.shopName ? `${shop.shopCode} - ${shop.shopName}` : shop.shopCode,
         value: shop.shopCode
@@ -63,7 +65,7 @@ function App() {
     );
     const dynamic = Array.from(unique).map((code) => ({ label: code, value: code }));
     return [{ label: "Tất cả cửa hàng", value: FILTER_ALL_VALUE }, ...dynamic];
-  }, [isFinancialDetailView, detailFilterOptions.shops, reportData?.data]);
+  }, [isFinancialDetailView, isKdView, detailFilterOptions.shops, reportData?.data]);
 
   const productOptions = useMemo(() => {
     if (isFinancialDetailView) {
@@ -84,6 +86,23 @@ function App() {
     const dynamic = Array.from(unique.entries()).map(([value, label]) => ({ label, value }));
     return [{ label: "Tất cả sản phẩm", value: FILTER_ALL_VALUE }, ...dynamic];
   }, [isFinancialDetailView, detailFilterOptions.products, reportData?.data]);
+
+  const orderStatusOptions = useMemo(() => {
+    if (isKdView) {
+      const dynamic = detailFilterOptions.orderStatuses.map((status) => ({
+        label: status,
+        value: status
+      }));
+      return [{ label: "Tất cả trạng thái", value: FILTER_ALL_VALUE }, ...dynamic];
+    }
+    const unique = new Set(
+      (reportData?.data ?? [])
+        .map((row) => row.orderStatus)
+        .filter((status): status is string => Boolean(status))
+    );
+    const dynamic = Array.from(unique).map((status) => ({ label: status, value: status }));
+    return [{ label: "Tất cả trạng thái", value: FILTER_ALL_VALUE }, ...dynamic];
+  }, [isKdView, detailFilterOptions.orderStatuses, reportData?.data]);
 
   const paymentOptions = useMemo(() => {
     const unique = new Set(
@@ -123,7 +142,10 @@ function App() {
         productLineCode: formValues.productLineCode || undefined,
         orderId: formValues.orderId || undefined,
         documentType: formValues.documentType || undefined,
-        orderStatus: formValues.orderStatus || undefined,
+        orderStatus:
+          !formValues.orderStatus || formValues.orderStatus === FILTER_ALL_VALUE
+            ? undefined
+            : formValues.orderStatus,
         paymentMethodName:
           !formValues.paymentMethodName || formValues.paymentMethodName === FILTER_ALL_VALUE
             ? undefined
@@ -137,8 +159,8 @@ function App() {
 
   const loadDetailFilterOptions = useCallback(
     async (values?: FilterFormValues, viewKey: ReportViewKey = activeViewKey) => {
-      if (viewKey !== "financial:detail") {
-        setDetailFilterOptions({ shops: [], products: [] });
+      if (viewKey !== "financial:detail" && viewKey !== "kd:order") {
+        setDetailFilterOptions({ shops: [], products: [], orderStatuses: [] });
         return;
       }
       const formValues = values ?? form.getFieldsValue();
@@ -146,8 +168,38 @@ function App() {
         "YYYY-MM-DD"
       );
       const toDate = (formValues.dateRange?.[1] ?? dayjs()).format("YYYY-MM-DD");
-      const opts = await fetchFinancialDetailFilterOptions(fromDate, toDate);
-      setDetailFilterOptions({ shops: opts.shops ?? [], products: opts.products ?? [] });
+      if (viewKey === "financial:detail") {
+        const opts = await fetchFinancialDetailFilterOptions(fromDate, toDate);
+        setDetailFilterOptions({
+          shops: opts.shops ?? [],
+          products: opts.products ?? [],
+          orderStatuses: []
+        });
+        return;
+      }
+      const opts = await fetchKdFilterOptions(fromDate, toDate);
+      setDetailFilterOptions({
+        shops: opts.shops ?? [],
+        products: [],
+        orderStatuses: opts.orderStatuses ?? []
+      });
+      // Clear stale selections when value not in refreshed options / Xóa lựa chọn không còn hợp lệ
+      const currentShop = form.getFieldValue("shopCode");
+      if (
+        currentShop &&
+        currentShop !== FILTER_ALL_VALUE &&
+        !(opts.shops ?? []).some((s) => s.shopCode === currentShop)
+      ) {
+        form.setFieldValue("shopCode", undefined);
+      }
+      const currentStatus = form.getFieldValue("orderStatus");
+      if (
+        currentStatus &&
+        currentStatus !== FILTER_ALL_VALUE &&
+        !(opts.orderStatuses ?? []).includes(currentStatus)
+      ) {
+        form.setFieldValue("orderStatus", undefined);
+      }
     },
     [form, activeViewKey]
   );
@@ -213,10 +265,10 @@ function App() {
       try {
         setLoading(true);
         const cfg = getViewConfig(nextKey);
-        if (nextKey === "financial:detail") {
+        if (nextKey === "financial:detail" || nextKey === "kd:order") {
           await loadDetailFilterOptions(undefined, nextKey);
         } else {
-          setDetailFilterOptions({ shops: [], products: [] });
+          setDetailFilterOptions({ shops: [], products: [], orderStatuses: [] });
         }
         await loadReport(undefined, {
           page: DEFAULT_PAGE,
@@ -239,8 +291,8 @@ function App() {
     void (async () => {
       try {
         setLoading(true);
-        if (activeViewKey === "financial:detail") {
-          await loadDetailFilterOptions(initial, "financial:detail");
+        if (activeViewKey === "financial:detail" || activeViewKey === "kd:order") {
+          await loadDetailFilterOptions(initial, activeViewKey);
         }
         await loadReport(initial, { page: DEFAULT_PAGE, pageSize: DEFAULT_PAGE_SIZE });
       } catch (error) {
@@ -261,7 +313,33 @@ function App() {
           acc.grossProfit += row.grossProfit ?? 0;
           return acc;
         },
-        { netRevenue: 0, grossProfit: 0, totalReceipts: 0, netCashFlow: 0 }
+        {
+          netRevenue: 0,
+          grossProfit: 0,
+          totalReceipts: 0,
+          netCashFlow: 0,
+          reconciliationDiff: 0,
+          pendingOrderCount: 0
+        }
+      );
+    }
+    if (viewConfig.category === "kd") {
+      return rows.reduce(
+        (acc, row) => {
+          acc.netRevenue += row.netRevenue ?? 0;
+          acc.netCashFlow += row.netCashFlow ?? 0;
+          acc.reconciliationDiff += row.reconciliationDiff ?? 0;
+          if (row.pendingOrder === 1) acc.pendingOrderCount += 1;
+          return acc;
+        },
+        {
+          netRevenue: 0,
+          grossProfit: 0,
+          totalReceipts: 0,
+          netCashFlow: 0,
+          reconciliationDiff: 0,
+          pendingOrderCount: 0
+        }
       );
     }
     return rows.reduce(
@@ -270,7 +348,14 @@ function App() {
         acc.netCashFlow += row.netCashFlow ?? 0;
         return acc;
       },
-      { netRevenue: 0, grossProfit: 0, totalReceipts: 0, netCashFlow: 0 }
+      {
+        netRevenue: 0,
+        grossProfit: 0,
+        totalReceipts: 0,
+        netCashFlow: 0,
+        reconciliationDiff: 0,
+        pendingOrderCount: 0
+      }
     );
   }, [reportData?.data, viewConfig.category]);
 
@@ -327,6 +412,7 @@ function App() {
                     shopOptions={shopOptions}
                     productOptions={productOptions}
                     paymentOptions={paymentOptions}
+                    orderStatusOptions={orderStatusOptions}
                     showFilter={showFilter}
                     onSearch={handleSearch}
                     summary={summary}
@@ -337,16 +423,20 @@ function App() {
                   />
                 )
               },
-              {
-                key: "bi",
-                label: "Phân tích BI",
-                children: (
-                  <SupersetEmbedTab
-                    slug={viewConfig.supersetSlug}
-                    active={contentTab === "bi"}
-                  />
-                )
-              }
+              ...(viewConfig.supersetSlug
+                ? [
+                    {
+                      key: "bi" as const,
+                      label: "Phân tích BI",
+                      children: (
+                        <SupersetEmbedTab
+                          slug={viewConfig.supersetSlug}
+                          active={contentTab === "bi"}
+                        />
+                      )
+                    }
+                  ]
+                : [])
             ]}
           />
         </Content>

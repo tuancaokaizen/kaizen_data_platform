@@ -88,3 +88,72 @@ func (r *ReportRepository) GetFinancialDetailFilterOptions(
 
 	return FinancialDetailFilterOptions{Shops: shops, Products: products}, nil
 }
+
+// KdFilterOptions holds distinct values for KD realtime filters / Giá trị distinct cho lọc KD realtime
+type KdFilterOptions struct {
+	Shops         []ShopOption `json:"shops"`
+	OrderStatuses []string     `json:"orderStatuses"`
+}
+
+// GetKdFilterOptions lists distinct shops and order statuses in date range for KD order view
+// Lấy cửa hàng và trạng thái đơn distinct trong khoảng ngày (view KD theo đơn)
+func (r *ReportRepository) GetKdFilterOptions(
+	ctx context.Context,
+	fromDate time.Time,
+	toDate time.Time,
+) (KdFilterOptions, error) {
+	spec := kdViewSpecFor(KdViewOrder)
+	queryCtx, cancel := context.WithTimeout(ctx, r.queryTimeout)
+	defer cancel()
+
+	where := "`NgayBaoCao` >= ? AND `NgayBaoCao` <= ?"
+	args := []any{fromDate, toDate}
+
+	// Group by shop code — avoids duplicate rows when TenCuaHang varies / Gom theo mã CH
+	shopSQL := fmt.Sprintf(
+		`SELECT %s, any(%s) FROM %s WHERE %s GROUP BY %s ORDER BY %s`,
+		"`MaCuaHang`", "`TenCuaHang`", spec.table, where, "`MaCuaHang`", "`MaCuaHang`",
+	)
+	shopRows, err := r.conn.Query(queryCtx, shopSQL, args...)
+	if err != nil {
+		return KdFilterOptions{}, err
+	}
+	defer shopRows.Close()
+
+	shops := make([]ShopOption, 0, 32)
+	for shopRows.Next() {
+		var opt ShopOption
+		if err := shopRows.Scan(&opt.ShopCode, &opt.ShopName); err != nil {
+			return KdFilterOptions{}, err
+		}
+		if opt.ShopCode != "" {
+			shops = append(shops, opt)
+		}
+	}
+	if err := shopRows.Err(); err != nil {
+		return KdFilterOptions{}, err
+	}
+
+	statusSQL := fmt.Sprintf(
+		`SELECT DISTINCT %s FROM %s WHERE %s AND %s != '' ORDER BY %s`,
+		"`TrangThaiDon`", spec.table, where, "`TrangThaiDon`", "`TrangThaiDon`",
+	)
+	statusRows, err := r.conn.Query(queryCtx, statusSQL, args...)
+	if err != nil {
+		return KdFilterOptions{}, err
+	}
+	defer statusRows.Close()
+
+	statuses := make([]string, 0, 16)
+	for statusRows.Next() {
+		var status string
+		if err := statusRows.Scan(&status); err != nil {
+			return KdFilterOptions{}, err
+		}
+		if status != "" {
+			statuses = append(statuses, status)
+		}
+	}
+
+	return KdFilterOptions{Shops: shops, OrderStatuses: statuses}, statusRows.Err()
+}

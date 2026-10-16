@@ -112,7 +112,8 @@ def run_deploy(opts: DeployOptions) -> int:
 
     if not opts.dry_run and api is not None:
         print("\n--- Save chart query_context (embedded filters) ---")
-        run_save_query_context()
+        # force deploy also refreshes query_context / Deploy --force cũng ghi đè query_context
+        run_save_query_context(force=opts.force)
 
     print("\nDone.")
     return 0
