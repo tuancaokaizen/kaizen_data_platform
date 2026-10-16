@@ -1,0 +1,56 @@
+# Airflow lab optimizations: PYTHONPATH, persistent logs, log cleanup sidecar
+# Tối ưu Airflow lab: PYTHONPATH, log PVC, sidecar dọn log
+#
+# Apply: ./patch_airflow_optimize.sh
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: airflow-lab-scheduler
+  namespace: orchestrator
+spec:
+  template:
+    spec:
+      containers:
+        - name: log-cleanup
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              # Prune task logs older than 7 days / Xóa log task cũ hơn 7 ngày
+              while true; do
+                BEFORE=$(du -sh /opt/airflow/logs 2>/dev/null | cut -f1 || echo "?")
+                DELETED=$(find /opt/airflow/logs -type f -mtime +7 2>/dev/null | wc -l)
+                find /opt/airflow/logs -type f -mtime +7 -delete 2>/dev/null || true
+                find /opt/airflow/logs -type d -empty -delete 2>/dev/null || true
+                echo "[$(date -Iseconds)] log-cleanup before=${BEFORE} deleted=${DELETED}"
+                sleep 86400
+              done
+          volumeMounts:
+            - name: logs
+              mountPath: /opt/airflow/logs
+        - name: scheduler
+          env:
+            - name: PYTHONPATH
+              value: /opt/airflow/dags
+          volumeMounts:
+            - name: logs
+              mountPath: /opt/airflow/logs
+      volumes:
+        - name: logs
+          persistentVolumeClaim:
+            claimName: logs-airflow-lab-scheduler-0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-lab-webserver
+  namespace: orchestrator
+spec:
+  template:
+    spec:
+      containers:
+        - name: webserver
+          env:
+            - name: PYTHONPATH
+              value: /opt/airflow/dags
