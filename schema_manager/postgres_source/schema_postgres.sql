@@ -1,3 +1,7 @@
+-- Unified DDL for the master schemas. "order" and "payment" are v2 and live in
+-- order.sql / payment.sql (run those after this file).
+-- DDL gộp cho các schema master. "order" và "payment" đã lên v2, nằm ở
+-- order.sql / payment.sql (chạy sau file này).
 BEGIN;
 
 -- =========================================================
@@ -8,8 +12,6 @@ CREATE SCHEMA IF NOT EXISTS shop;
 CREATE SCHEMA IF NOT EXISTS customer;
 CREATE SCHEMA IF NOT EXISTS product;
 CREATE SCHEMA IF NOT EXISTS promotion;
-CREATE SCHEMA IF NOT EXISTS "order";
-CREATE SCHEMA IF NOT EXISTS payment;
 
 -- =========================================================
 -- 1. TẠO CẤU TRÚC CÁC BẢNG (TABLE SCHEMAS)
@@ -169,124 +171,6 @@ CREATE TABLE IF NOT EXISTS promotion."Gift"
     PRIMARY KEY ("Id")
 );
 
--- SCHEMA ORDER
-CREATE TABLE IF NOT EXISTS "order"."Order"
-(
-    "Id" text NOT NULL,
-    "CustomerId" text NOT NULL,
-    "ShopCode" text,
-    "TransactionDate" timestamp(6) with time zone,
-    "TotalBill" integer,
-    "TotalDiscount" integer,
-    "TotalPayment" integer,
-    "EmployeeSaleId" text NOT NULL,
-    "Status" text,
-    "CreatedDate" timestamp(6) with time zone NOT NULL,
-    "ModifiedDate" timestamp(6) with time zone NOT NULL,
-    "VoucherSeriesCode" text,
-    PRIMARY KEY ("Id")
-);
-
-CREATE TABLE IF NOT EXISTS "order"."OrderItem"
-(
-    "Id" text NOT NULL,
-    "OrderId" text NOT NULL,
-    "ProductId" text,
-    "Quantity" integer,
-    "UnitPrice" integer,
-    "CreatedDate" timestamp(6) with time zone,
-    "ModifiedDate" timestamp(6) with time zone,
-    PRIMARY KEY ("Id", "OrderId")
-);
-
-CREATE TABLE IF NOT EXISTS "order"."Return"
-(
-    "Id" text NOT NULL,
-    "OrderId" text NOT NULL,
-    "ReturnAmount" integer,
-    "CreatedDate" timestamp(6) with time zone,
-    "ModifiedDate" timestamp(6) with time zone,
-    PRIMARY KEY ("Id", "OrderId")
-);
-
-CREATE TABLE IF NOT EXISTS "order"."ReturnItem"
-(
-    "Id" text NOT NULL,
-    "ReturnId" text NOT NULL,
-    "ProductId" text,
-    "Quantity" integer NOT NULL,
-    "UnitPrice" integer,
-    "OrderItemId" text,      
-    "OrderId" text,           
-    "TotalAmount" integer,
-    "CreatedDate" timestamp(6) with time zone,
-    "ModifiedDate" timestamp(6) with time zone,
-    PRIMARY KEY ("Id")
-);
-
--- SCHEMA PAYMENT
-CREATE TABLE IF NOT EXISTS payment."Payment"
-(
-    "Id" text NOT NULL,
-    "PaymentType" smallint NOT NULL,
-    "Status" text,
-    "TotalPayment" integer NOT NULL,
-    "CreatedDate" timestamp(6) with time zone NOT NULL,
-    "ModifiedDate" timestamp(6) with time zone NOT NULL,
-    PRIMARY KEY ("Id")
-);
-
-CREATE TABLE IF NOT EXISTS payment."PaymentType"
-(
-    "Type" smallint NOT NULL,
-    "Name" text NOT NULL,
-    "CreatedDate" timestamp(6) with time zone NOT NULL,
-    "ModifiedDate" timestamp(6) with time zone NOT NULL,
-    PRIMARY KEY ("Type")
-);
-
-CREATE TABLE IF NOT EXISTS payment."OrderPayment"
-(
-    "Id" text NOT NULL,
-    "PaymentId" text NOT NULL,
-    "OrderId" text NOT NULL,
-    "CreatedDate" timestamp(6) with time zone NOT NULL,
-    "ModifiedDate" timestamp(6) with time zone NOT NULL,
-    PRIMARY KEY ("Id")
-);
-
-CREATE TABLE IF NOT EXISTS payment."PaymentMethod"
-(
-    "Id" smallint NOT NULL,
-    "Name" text NOT NULL,
-    "CreatedDate" timestamp(6) with time zone NOT NULL,
-    "ModifiedDate" timestamp(6) with time zone NOT NULL,
-    PRIMARY KEY ("Id")
-);
-
-CREATE TABLE IF NOT EXISTS payment."Transaction"
-(
-    "Id" text NOT NULL,
-    "PaymentId" text NOT NULL,
-    "PaymentMethodId" smallint NOT NULL,
-    "Amount" integer NOT NULL DEFAULT 0,
-    "CreatedDate" timestamp(6) with time zone NOT NULL,
-    "ModifiedDate" timestamp(6) with time zone NOT NULL,
-    PRIMARY KEY ("Id")
-);
-
-CREATE TABLE IF NOT EXISTS payment."ReturnPayment"
-(
-    "Id" text NOT NULL,
-    "PaymentId" text NOT NULL,
-    "ReturnId" text NOT NULL,
-    "OrderId" text NOT NULL,   
-    "CreatedDate" timestamp(6) with time zone NOT NULL,
-    "ModifiedDate" timestamp(6) with time zone NOT NULL,
-    PRIMARY KEY ("Id")
-);
-
-
 -- =========================================================
 -- 2. ĐỊNH NGHĨA KHÓA NGOẠI (FOREIGN KEYS)
 -- =========================================================
@@ -335,83 +219,12 @@ ALTER TABLE IF EXISTS promotion."Gift"
     ADD CONSTRAINT "fk_promotionCode" FOREIGN KEY ("PromotionCode")
     REFERENCES promotion."Promotion" ("Code") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
 
-ALTER TABLE IF EXISTS "order"."Order"
-    ADD CONSTRAINT "fk_customerId" FOREIGN KEY ("CustomerId")
-    REFERENCES customer."Customer" ("Id") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS "order"."Order"
-    ADD CONSTRAINT fk_shop FOREIGN KEY ("ShopCode")
-    REFERENCES shop."Shop" ("Code") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS "order"."Order"
-    ADD CONSTRAINT fk_employee FOREIGN KEY ("EmployeeSaleId")
-    REFERENCES shop."Employee" ("Id") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS "order"."Order"
-    ADD CONSTRAINT "fk_voucherSeriesCode" FOREIGN KEY ("VoucherSeriesCode")
-    REFERENCES promotion."VoucherSeries" ("SeriesCode") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS "order"."OrderItem"
-    ADD CONSTRAINT fk_product FOREIGN KEY ("ProductId")
-    REFERENCES product."Product" ("Id") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS "order"."OrderItem"
-    ADD CONSTRAINT fk_order FOREIGN KEY ("OrderId")
-    REFERENCES "order"."Order" ("Id") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS "order"."Return"
-    ADD CONSTRAINT fk_order FOREIGN KEY ("OrderId")
-    REFERENCES "order"."Order" ("Id") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS "order"."ReturnItem"
-    ADD CONSTRAINT "fk_orderItem" FOREIGN KEY ("OrderItemId", "OrderId")
-    REFERENCES "order"."OrderItem" ("Id", "OrderId") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS "order"."ReturnItem"
-    ADD CONSTRAINT fk_product FOREIGN KEY ("ProductId")
-    REFERENCES product."Product" ("Id") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS "order"."ReturnItem"
-    ADD CONSTRAINT fk_return FOREIGN KEY ("ReturnId", "OrderId")
-    REFERENCES "order"."Return" ("Id", "OrderId") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS payment."Payment"
-    ADD CONSTRAINT "fk_paymentType" FOREIGN KEY ("PaymentType")
-    REFERENCES payment."PaymentType" ("Type") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS payment."OrderPayment"
-    ADD CONSTRAINT fk_payment FOREIGN KEY ("PaymentId")
-    REFERENCES payment."Payment" ("Id") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS payment."OrderPayment"
-    ADD CONSTRAINT fk_order FOREIGN KEY ("OrderId")
-    REFERENCES "order"."Order" ("Id") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS payment."Transaction"
-    ADD CONSTRAINT fk_payment FOREIGN KEY ("PaymentId")
-    REFERENCES payment."Payment" ("Id") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS payment."Transaction"
-    ADD CONSTRAINT "fk_paymentMethod" FOREIGN KEY ("PaymentMethodId")
-    REFERENCES payment."PaymentMethod" ("Id") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS payment."ReturnPayment"
-    ADD CONSTRAINT fk_return FOREIGN KEY ("ReturnId", "OrderId")
-    REFERENCES "order"."Return" ("Id", "OrderId") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
-ALTER TABLE IF EXISTS payment."ReturnPayment"
-    ADD CONSTRAINT fk_payment FOREIGN KEY ("PaymentId")
-    REFERENCES payment."Payment" ("Id") MATCH SIMPLE ON UPDATE NO ACTION ON DELETE NO ACTION NOT VALID;
-
 
 -- =========================================================
 -- 3. HỆ THỐNG CHỈ MỤC TỐI ƯU HÓA TRUY VẤN (INDEXES)
 -- =========================================================
 
 -- 3.1 Index cho bộ lọc Khoảng thời gian (DateTime Range Queries)
-CREATE INDEX IF NOT EXISTS idx_order_tx_date ON "order"."Order" ("TransactionDate" DESC);
-CREATE INDEX IF NOT EXISTS idx_return_created_date ON "order"."Return" ("CreatedDate" DESC);
-CREATE INDEX IF NOT EXISTS idx_transaction_created_date ON payment."Transaction" ("CreatedDate" DESC);
 CREATE INDEX IF NOT EXISTS idx_promotion_date ON promotion."Promotion" ("StartDate", "EndDate");
 CREATE INDEX IF NOT EXISTS idx_voucher_date ON promotion."Voucher" ("StartDate", "EndDate");
 
@@ -421,18 +234,9 @@ CREATE INDEX IF NOT EXISTS idx_employee_phone ON shop."Employee" ("Phone");
 CREATE INDEX IF NOT EXISTS idx_product_name ON product."Product" ("Name");
 
 -- 3.3 Composite Index cho các bộ lọc Tìm kiếm nâng cao kết hợp điều kiện
-CREATE INDEX IF NOT EXISTS idx_order_shop_status_date ON "order"."Order" ("ShopCode", "Status", "TransactionDate" DESC);
-CREATE INDEX IF NOT EXISTS idx_return_order_date ON "order"."Return" ("OrderId", "CreatedDate" DESC);
 CREATE INDEX IF NOT EXISTS idx_salary_emp_month ON shop."EmployeeSalary" ("EmployeeId", "SalaryMonth");
 
 -- 3.4 Index cho Khóa ngoại (Tối ưu hiệu năng các câu lệnh JOIN bảng)
-CREATE INDEX IF NOT EXISTS idx_order_customer ON "order"."Order" ("CustomerId");
-CREATE INDEX IF NOT EXISTS idx_order_employee ON "order"."Order" ("EmployeeSaleId");
-CREATE INDEX IF NOT EXISTS idx_orderitem_product ON "order"."OrderItem" ("ProductId");
-CREATE INDEX IF NOT EXISTS idx_returnitem_product ON "order"."ReturnItem" ("ProductId");
-CREATE INDEX IF NOT EXISTS idx_orderpayment_payid ON payment."OrderPayment" ("PaymentId");
-CREATE INDEX IF NOT EXISTS idx_returnpayment_payid ON payment."ReturnPayment" ("PaymentId");
-CREATE INDEX IF NOT EXISTS idx_transaction_payid ON payment."Transaction" ("PaymentId");
 CREATE INDEX IF NOT EXISTS idx_shop_ward ON shop."Shop" ("WardId");
 CREATE INDEX IF NOT EXISTS idx_customer_ward ON customer."Customer" ("WardId");
 

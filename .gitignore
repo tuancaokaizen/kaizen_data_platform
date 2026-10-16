@@ -71,6 +71,12 @@ dist/
 !**/.env.example
 !**/.env.tailscale.example
 
+# Downloaded raw reference data / Dữ liệu tham chiếu tải về
+.cache/
+
+# Docs / thesis / guides (local only) / Tài liệu / đồ án / guide (chỉ local)
+docs/
+
 # Local check and setup scripts at root level
 /*.sh
 /.scalafmt.conf

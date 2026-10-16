@@ -1,61 +1,79 @@
 {
   "settings": {
     "index": {
-      "number_of_shards": 2
+      "number_of_shards": 2,
+      "number_of_replicas": 0
     }
   },
   "mappings": {
+    "dynamic": false,
     "properties": {
-      "order": {
+      "meta": {
         "properties": {
-          "id": { "type": "keyword" },
-          "customerId": { "type": "keyword" },
-          "shopCode": { "type": "keyword" },
-          "transactionDate": { "type": "date" },
-          "totalBill": { "type": "integer" },
-          "totalDiscount": { "type": "integer" },
-          "totalPayment": { "type": "integer" },
-          "employeeSaleId": { "type": "keyword" },
-          "status": { "type": "keyword" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" },
-          "voucherSeriesCode": { "type": "keyword" }
+          "eventId": { "type": "keyword" },
+          "eventType": { "type": "keyword" },
+          "schemaVersion": { "type": "short" },
+          "source": { "type": "keyword" },
+          "eventTime": { "type": "date" },
+          "aggregateId": { "type": "keyword" },
+          "version": { "type": "long" }
         }
       },
-      "orderItems": {
-        "type": "nested",
+      "data": {
         "properties": {
-          "id": { "type": "keyword" },
-          "orderId": { "type": "keyword" },
-          "productId": { "type": "keyword" },
-          "quantity": { "type": "integer" },
-          "unitPrice": { "type": "integer" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" }
-        }
-      },
-      "returnRecord": {
-        "properties": {
-          "id": { "type": "keyword" },
-          "orderId": { "type": "keyword" },
-          "returnAmount": { "type": "integer" },
-          "createdDate": { "type": "date" },
-          "modifiedTimeMs": { "type": "long" }
-        }
-      },
-      "returnItems": {
-        "type": "nested",
-        "properties": {
-          "id": { "type": "keyword" },
-          "returnId": { "type": "keyword" },
-          "productId": { "type": "keyword" },
-          "quantity": { "type": "integer" },
-          "unitPrice": { "type": "integer" },
-          "orderItemId": { "type": "keyword" },
-          "orderId": { "type": "keyword" },
-          "totalAmount": { "type": "integer" },
-          "createdDate": { "type": "date" },
-          "modifiedDate": { "type": "date" }
+          "order": {
+            "properties": {
+              "id": { "type": "keyword" },
+              "shopCode": { "type": "keyword" },
+              "customerId": { "type": "keyword" },
+              "employeeSaleId": { "type": "keyword" },
+              "transactionDate": { "type": "date" },
+              "totalBill": { "type": "long" },
+              "totalDiscount": { "type": "long" },
+              "totalPayment": { "type": "long" },
+              "voucherSeriesCode": { "type": "keyword" },
+              "status": { "type": "keyword" },
+              "createdDate": { "type": "date" },
+              "modifiedDate": { "type": "date" }
+            }
+          },
+          "items": {
+            "type": "nested",
+            "properties": {
+              "id": { "type": "keyword" },
+              "lineNo": { "type": "integer" },
+              "productId": { "type": "keyword" },
+              "quantity": { "type": "integer" },
+              "unitPrice": { "type": "long" },
+              "discountAmount": { "type": "long" },
+              "lineAmount": { "type": "long" },
+              "isGift": { "type": "boolean" },
+              "unitCost": { "type": "long" }
+            }
+          },
+          "returns": {
+            "type": "nested",
+            "properties": {
+              "id": { "type": "keyword" },
+              "createdDate": { "type": "date" },
+              "reason": { "type": "keyword" },
+              "returnAmount": { "type": "long" },
+              "items": {
+                "type": "nested",
+                "properties": {
+                  "id": { "type": "keyword" },
+                  "orderItemId": { "type": "keyword" },
+                  "productId": { "type": "keyword" },
+                  "quantity": { "type": "integer" },
+                  "restockQty": { "type": "integer" },
+                  "damageQty": { "type": "integer" },
+                  "unitPrice": { "type": "long" },
+                  "unitCost": { "type": "long" },
+                  "lineAmount": { "type": "long" }
+                }
+              }
+            }
+          }
         }
       }
     }
