@@ -1,46 +1,65 @@
-from datetime import datetime
-import sys
+"""Daily: migrate hot ClickHouse realtime_business_by_order older than hotDays into Iceberg cold.
+Hàng ngày: chuyển hot ClickHouse realtime_business_by_order cũ hơn hotDays sang Iceberg cold.
+
+Conf: {"hotDays": "14"} (optional). fromDate/toDate are unused by the job but kept positional.
+Conf: {"hotDays": "14"} (tuỳ chọn). fromDate/toDate job không dùng nhưng vẫn truyền theo vị trí.
+"""
+from datetime import datetime, timedelta
 import os
+import sys
 
 # pyrefly: ignore [missing-import]
 from airflow import DAG
+# pyrefly: ignore [missing-import]
+from airflow.models.param import Param
 # pyrefly: ignore [missing-import]
 from airflow.operators.python import PythonOperator
 # pyrefly: ignore [missing-import]
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from jobs.spark_generic_ingest import (
-    get_migrate_biz_rt_to_cold_task,
-    get_refresh_biz_rt_serving_task,
-)
-from jobs.clickhouse_utils import run_clickhouse_views_setup
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from jobs.clickhouse_utils import refresh_realtime_business_serving_table, run_clickhouse_views_setup
+from jobs.spark_task import spark_job_task
+
+# hotDays from conf or DAG param, default 14 / hotDays từ conf hoặc param DAG, mặc định 14
+HOT_DAYS = "{{ (dag_run.conf.get('hotDays') if dag_run.conf else None) or params.hotDays }}"
 
 default_args = {
-    'owner': 'kaizen',
-    'depends_on_past': False,
-    'start_date': datetime(2026, 6, 11),
-    'retries': 0,
+    "owner": "kaizen",
+    "depends_on_past": False,
+    "start_date": datetime(2026, 6, 11),
+    "retries": 0,
+    "retry_delay": timedelta(minutes=5),
 }
 
 with DAG(
-        'spark_biz_rt_cold_migrate_pipeline',
+        "spark_realtime_business_cold_migrate_pipeline",
         default_args=default_args,
         description=(
-            'Migrate realtime biz_rt_order from ClickHouse hot to Iceberg cold, '
-            'then refresh serving.* Iceberg pointer and report views.'
+            "Migrate realtime_business_by_order from ClickHouse hot to Iceberg cold, "
+            "then refresh serving.* Iceberg pointer and report views"
         ),
-        # Daily after midnight — keep cold history, hot TTL handles purge
-        # Hàng ngày sau nửa đêm — giữ lịch sử cold, TTL hot tự xóa
-        schedule_interval='30 1 * * *',
+        schedule_interval="30 1 * * *",  # 01:30 UTC after lakehouse daily / sau lakehouse daily
         catchup=False,
         max_active_runs=1,
-        tags=['maintenance', 'clickhouse', 'realtime', 'biz_rt'],
+        is_paused_upon_creation=True,
+        tags=["kaizen", "maintenance", "clickhouse", "realtime", "realtime_business"],
+        params={
+            "hotDays": Param("14", type="string", description="Hot window days kept in ClickHouse"),
+        },
 ) as dag:
-    migrate = KubernetesPodOperator(**get_migrate_biz_rt_to_cold_task())
-    refresh_serving = PythonOperator(**get_refresh_biz_rt_serving_task())
+    migrate = KubernetesPodOperator(**spark_job_task(
+        "migrate_realtime_business_to_cold",
+        "publish.clickhouse.MigrateRealtimeBusinessToCold",
+        job_arguments=[HOT_DAYS],
+    ))
+    refresh_serving = PythonOperator(
+        task_id="refresh_realtime_business_serving",
+        python_callable=refresh_realtime_business_serving_table,
+        retries=1,
+    )
     refresh_views = PythonOperator(
-        task_id='refresh_biz_rt_views',
+        task_id="refresh_realtime_business_views",
         python_callable=run_clickhouse_views_setup,
         retries=1,
     )

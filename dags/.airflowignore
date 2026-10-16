@@ -1,0 +1,5 @@
+jobs/
+tests/
+scripts/
+k8s/
+schema_manager/

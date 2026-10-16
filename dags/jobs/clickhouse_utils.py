@@ -1,3 +1,32 @@
+import re
+
+NESSIE_URI = "http://nessie-catalog-svc.compute.svc.cluster.local:19120/api/v1"
+ICEBERG_BUCKET = "iceberg-data"
+
+
+def folder_from_metadata_location(location):
+    """Table folder `<ns>/<table>_<uuid>` of an Iceberg metadata file, or None outside the bucket.
+    Thư mục bảng `<ns>/<table>_<uuid>` của file metadata Iceberg, None nếu không thuộc bucket."""
+    bucket, _, key = (location or "").split("://", 1)[-1].partition("/")
+    if bucket != ICEBERG_BUCKET or "/metadata/" not in key:
+        return None
+    return key.split("/metadata/", 1)[0]
+
+
+def table_folder_pattern(lyr, tbl):
+    """Folders of exactly this table: `financial_report` must not match `financial_report_detail_<uuid>`.
+    Thư mục của đúng bảng này: `financial_report` không được khớp `financial_report_detail_<uuid>`."""
+    uuid = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    return re.compile(rf"^{re.escape(lyr)}/{re.escape(tbl)}_{uuid}/?$")
+
+
+def newest_folder(candidates):
+    """Pick the folder whose metadata changed last from (folder, last_modified) pairs.
+    Chọn thư mục có metadata đổi gần nhất từ các cặp (thư mục, thời điểm sửa)."""
+    dated = [(modified, folder) for folder, modified in candidates if modified is not None]
+    return max(dated)[1] if dated else None
+
+
 def run_clickhouse_setup(table_name, layer=None):
     import requests
     import os
@@ -33,13 +62,25 @@ def run_clickhouse_setup(table_name, layer=None):
     minio_endpoint = config.get('minio', 'endpoint', fallback='http://minio.storage.svc.cluster.local:9000')
     minio_user = config.get('minio', 'access_key', fallback='admin')
     minio_pass = config.get('minio', 'secret_key', fallback='kaizen123')
+    nessie_uri = config.get('nessie', 'uri', fallback=NESSIE_URI)
 
     params = {
         "user": user,
         "password": password
     }
 
-    def resolve_iceberg_path(lyr, tbl):
+    def nessie_folder(lyr, tbl):
+        # Nessie knows the live folder; dropped tables leave old ones behind / Nessie biết thư mục đang dùng; bảng bị drop còn để lại thư mục cũ
+        try:
+            response = requests.get(f"{nessie_uri}/contents/{lyr}.{tbl}", params={"ref": "main"}, timeout=10)
+            if response.status_code == 200:
+                return folder_from_metadata_location(response.json().get("metadataLocation"))
+            print(f"WARNING: Nessie has no {lyr}.{tbl} (HTTP {response.status_code}).")
+        except Exception as e:
+            print(f"WARNING: Nessie lookup for {lyr}.{tbl} failed: {e}")
+        return None
+
+    def newest_minio_folder(lyr, tbl):
         import boto3
         from botocore.client import Config
         try:
@@ -51,26 +92,30 @@ def run_clickhouse_setup(table_name, layer=None):
                 config=Config(signature_version='s3v4'),
                 verify=False
             )
-            bucket_name = 'iceberg-data'
-            prefix = f"{lyr}/{tbl}_"
-
-            response = s3.list_objects_v2(
-                Bucket=bucket_name,
-                Prefix=prefix,
-                Delimiter='/'
-            )
-            prefixes = response.get('CommonPrefixes', [])
-            if prefixes:
-                folder_path = prefixes[0]['Prefix'].rstrip('/')
-                resolved = f"{minio_endpoint}/{bucket_name}/{folder_path}"
-                print(f"Resolved Iceberg path for {lyr}.{tbl} to: {resolved}")
-                return resolved
-            else:
-                print(f"WARNING: No Iceberg folder found for prefix '{prefix}' in MinIO. Falling back to S3 wildcard.")
-                return None
+            pattern = table_folder_pattern(lyr, tbl)
+            candidates = []
+            for page in s3.get_paginator('list_objects_v2').paginate(
+                    Bucket=ICEBERG_BUCKET, Prefix=f"{lyr}/{tbl}_", Delimiter='/'):
+                for entry in page.get('CommonPrefixes', []):
+                    folder = entry['Prefix'].rstrip('/')
+                    if not pattern.match(folder):
+                        continue
+                    metadata = s3.list_objects_v2(Bucket=ICEBERG_BUCKET, Prefix=f"{folder}/metadata/")
+                    modified = [obj['LastModified'] for obj in metadata.get('Contents', [])]
+                    candidates.append((folder, max(modified) if modified else None))
+            return newest_folder(candidates)
         except Exception as e:
-            print(f"WARNING: Error resolving Iceberg path via boto3: {e}. Falling back to S3 wildcard.")
+            print(f"WARNING: Error listing Iceberg folders via boto3: {e}")
             return None
+
+    def resolve_iceberg_path(lyr, tbl):
+        folder = nessie_folder(lyr, tbl) or newest_minio_folder(lyr, tbl)
+        if not folder:
+            print(f"WARNING: No Iceberg folder found for {lyr}.{tbl}. Falling back to S3 wildcard.")
+            return None
+        resolved = f"{minio_endpoint}/{ICEBERG_BUCKET}/{folder}"
+        print(f"Resolved Iceberg path for {lyr}.{tbl} to: {resolved}")
+        return resolved
 
     if layer == "report":
         db_name = "report"
@@ -234,7 +279,11 @@ REPORT_BASE_TABLES = [
     "fund_report",
     "fund_report_shop",
     "fund_report_order",
-    "biz_rt_order",
+    "inventory_health",
+    "shop_capacity_utilization",
+    "carrier_scorecard",
+    "supplier_performance",
+    "realtime_business_by_order",
 ]
 
 
@@ -247,16 +296,16 @@ def ensure_all_report_base_tables():
     print("All ClickHouse report base tables are ready.")
 
 
-def refresh_biz_rt_serving_table():
-    """Point serving.biz_rt_order at Iceberg after MigrateBizRtToColdJob.
-    Trỏ serving.biz_rt_order sang Iceberg sau job migrate cold."""
+def refresh_realtime_business_serving_table():
+    """Point serving.realtime_business_by_order at Iceberg after MigrateRealtimeBusinessToColdJob.
+    Trỏ serving.realtime_business_by_order sang Iceberg sau job migrate cold."""
     try:
-        run_clickhouse_setup("biz_rt_order", layer="serving")
-        print("serving.biz_rt_order refreshed as Iceberg engine table.")
+        run_clickhouse_setup("realtime_business_by_order", layer="serving")
+        print("serving.realtime_business_by_order refreshed as Iceberg engine table.")
     except Exception as e:
         # Cold may be empty on first days (nothing older than hot window yet)
         # Cold có thể trống những ngày đầu (chưa có dòng cũ hơn hot window)
-        print(f"WARNING: could not refresh serving.biz_rt_order: {e}")
+        print(f"WARNING: could not refresh serving.realtime_business_by_order: {e}")
 
 
 
@@ -354,7 +403,11 @@ SERVING_REPORT_TABLES = [
     "fund_report",
     "fund_report_shop",
     "fund_report_order",
-    "biz_rt_order",
+    "inventory_health",
+    "shop_capacity_utilization",
+    "carrier_scorecard",
+    "supplier_performance",
+    "realtime_business_by_order",
     # Legacy grains / Grain cũ đã bỏ
     "fund_report_detail",
     "fund_report_product",
@@ -460,9 +513,9 @@ def run_clickhouse_clear_serving():
         "DROP VIEW IF EXISTS serving.v_bao_cao_quy_chi_tiet",
         "DROP VIEW IF EXISTS serving.v_bao_cao_quy_theo_don",
         # Realtime business-by-order / Tình hình KD theo đơn realtime
-        "DROP VIEW IF EXISTS report.v_bao_cao_kd_theo_don_rt_tong_hop",
-        "DROP VIEW IF EXISTS report.v_bao_cao_kd_theo_don_rt",
-        "DROP VIEW IF EXISTS serving.v_bao_cao_kd_theo_don_rt",
+        "DROP VIEW IF EXISTS report.v_bao_cao_kinh_doanh_theo_don_realtime_tong_hop",
+        "DROP VIEW IF EXISTS report.v_bao_cao_kinh_doanh_theo_don_realtime",
+        "DROP VIEW IF EXISTS serving.v_bao_cao_kinh_doanh_theo_don_realtime",
     ]
 
     table_drops = []
