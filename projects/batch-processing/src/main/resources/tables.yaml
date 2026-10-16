@@ -1,0 +1,689 @@
+# Source tables ingested from Postgres information_system into stg (bronze) and fnd (silver).
+# Bảng nguồn ingest từ Postgres information_system vào stg (bronze) và fnd (silver).
+#
+# Fields / Trường:
+#   table           snake_case name of stg.<table> and fnd.<table>
+#   group           ingest group: master | sales | payment | inventory | supply | hr
+#   source          Postgres <schema>.<Table> (schema datagen is rejected)
+#   load            full (read the whole table each run) | incremental (read by modified_column window)
+#   key             merge key of fnd.<table>
+#   modified_column newer value wins in the fnd MERGE; required for incremental
+#   partition       none | months(<column>) | days(<column>) | identity(<column>), applied to fnd
+#   columns         explicit columns and types (string, int, long, boolean, date, timestamp, decimal(p,s));
+#                   a new column in Postgres never reaches the lakehouse until it is listed here
+#
+# Not ingested / Không ingest:
+#   rules and parameters: ReplenishmentPolicy, SupplierProduct, CarrierRate, Lane, DeliverySchedule, DistanceMatrix
+#   derivable: InventoryBalance (from stock_movement), OrderPayment and ReturnPayment (Payment.OrderId / ReturnId)
+#   technical: Outbox, PostingCutover; every datagen table
+#   personal data: Customer FullName/Phone/Address, Employee Phone/Address
+#   simulation parameters: Supplier FillRate/LeadTimeStdDays, Carrier BaseOnTimeRate, Geography CoordMethod/CoordSource
+
+# ── master ────────────────────────────────────────────────────────────────
+- table: geography
+  group: master
+  source: public.Geography
+  load: full
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    Name: string
+    AdminCode: string
+    WardType: string
+    ProvinceCode: string
+    LegacyProvince: string
+    SubRegion: string
+    Population: int
+    Latitude: decimal(9,6)
+    Longitude: decimal(9,6)
+    AreaKm2: decimal(10,2)
+    IsRoadAccessible: boolean
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: customer
+  group: master
+  source: customer.Customer
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    WardId: string
+    YearOfBirth: int
+    Gender: string
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: shop
+  group: master
+  source: shop.Shop
+  load: full
+  key: [Code]
+  modified_column: ModifiedDate
+  columns:
+    Code: string
+    Name: string
+    Address: string
+    WardId: string
+    ManagerId: string
+    Tier: string
+    OpenDate: date
+    CloseDate: date
+    ServingWarehouseId: string
+    Latitude: decimal(9,6)
+    Longitude: decimal(9,6)
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: shop_capacity
+  group: master
+  source: shop.ShopCapacity
+  load: full
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    ShopCode: string
+    StorageM3: decimal(8,2)
+    ColdStorageL: int
+    ShelfSlots: int
+    ReceivingSlotsPerDay: int
+    StaffCount: int
+    EffectiveFrom: date
+    EffectiveTo: date
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: employee
+  group: master
+  source: shop.Employee
+  load: full
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    Name: string
+    Degree: string
+    Status: boolean
+    ShopCode: string
+    IsManager: boolean
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: product
+  group: master
+  source: product.Product
+  load: full
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    Name: string
+    Type: string
+    Unit: string
+    StockPrice: int
+    RetailPrice: int
+    TaxRate: int
+    IsPromotion: boolean
+    Status: boolean
+    SupplierId: string
+    UnitVolumeCm3: int
+    UnitWeightG: int
+    CasePack: int
+    ShelfLifeDays: int
+    IsColdChain: boolean
+    LaunchDate: date
+    DiscontinuedDate: date
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: product_medicine
+  group: master
+  source: product.ProductMedicine
+  load: full
+  key: [ProductId]
+  columns:
+    ProductId: string
+    Indication: string
+    IsPrescription: boolean
+    SpecialtyDisease: string
+
+- table: product_supplement
+  group: master
+  source: product.ProductSupplement
+  load: full
+  key: [ProductId]
+  columns:
+    ProductId: string
+    PrimaryFunction: string
+    Brand: string
+
+- table: inventory_lot
+  group: master
+  source: inventory.InventoryLot
+  load: full
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    ProductId: string
+    LotNo: string
+    ExpiryDate: date
+    ReceivedDate: date
+    SupplierId: string
+    PurchaseOrderId: string
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: warehouse
+  group: master
+  source: inventory.Warehouse
+  load: full
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    Name: string
+    WardId: string
+    Latitude: decimal(9,6)
+    Longitude: decimal(9,6)
+    StorageM3: decimal(10,2)
+    ColdStorageL: int
+    DockSlotsPerDay: int
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: supplier
+  group: master
+  source: procurement.Supplier
+  load: full
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    Name: string
+    LeadTimeMeanDays: decimal(5,2)
+    MinOrderValue: long
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: carrier
+  group: master
+  source: logistics.Carrier
+  load: full
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    Name: string
+    Type: string
+    FixedCostPerTrip: long
+    CostPerKm: long
+    CostPerKg: long
+    CostPerStop: long
+    SupportsColdChain: boolean
+    WeeklyCapacityKg: int
+    ContractMinKgPerWeek: int
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: vehicle
+  group: master
+  source: logistics.Vehicle
+  load: full
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    CarrierId: string
+    VehicleType: string
+    CapacityKg: int
+    CapacityM3: decimal(6,2)
+    GrossWeightT: decimal(4,1)
+    IsCold: boolean
+    HomeWarehouseId: string
+    Status: string
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: payment_method
+  group: master
+  source: payment.PaymentMethod
+  load: full
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: int
+    Name: string
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: payment_type
+  group: master
+  source: payment.PaymentType
+  load: full
+  key: [Type]
+  modified_column: ModifiedDate
+  columns:
+    Type: int
+    Name: string
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: promotion
+  group: master
+  source: promotion.Promotion
+  load: full
+  key: [Code]
+  modified_column: ModifiedDate
+  columns:
+    Code: string
+    Name: string
+    Type: string
+    StartDate: timestamp
+    EndDate: timestamp
+    Status: boolean
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: gift
+  group: master
+  source: promotion.Gift
+  load: full
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    ProductId: string
+    PromotionCode: string
+    PromotionQuantity: int
+    Status: boolean
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: voucher
+  group: master
+  source: promotion.Voucher
+  load: full
+  key: [Code]
+  modified_column: ModifiedDate
+  columns:
+    Code: string
+    Name: string
+    PromotionCode: string
+    VoucherAmount: int
+    MinOrderValue: int
+    StartDate: timestamp
+    EndDate: timestamp
+    IssuedQuantity: int
+    Status: boolean
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: voucher_series
+  group: master
+  source: promotion.VoucherSeries
+  load: full
+  key: [SeriesCode]
+  modified_column: ModifiedDate
+  columns:
+    SeriesCode: string
+    VoucherCode: string
+    ExpiryDay: int
+    Status: string
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+# ── sales ─────────────────────────────────────────────────────────────────
+- table: order
+  group: sales
+  source: order.Order
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  partition: months(OrderDate)
+  columns:
+    Id: string
+    ShopCode: string
+    CustomerId: string
+    EmployeeSaleId: string
+    TransactionDate: timestamp
+    OrderDate: date
+    TotalBill: long
+    TotalDiscount: long
+    TotalPayment: long
+    VoucherSeriesCode: string
+    Status: string
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: order_item
+  group: sales
+  source: order.OrderItem
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  partition: months(OrderDate)
+  columns:
+    Id: string
+    OrderId: string
+    LineNo: int
+    ProductId: string
+    Quantity: int
+    UnitPrice: long
+    DiscountAmount: long
+    LineAmount: long
+    IsGift: boolean
+    UnitCost: long
+    OrderDate: date
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: return
+  group: sales
+  source: order.Return
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  partition: months(ReturnDate)
+  columns:
+    Id: string
+    OrderId: string
+    ShopCode: string
+    ReturnDate: date
+    Reason: string
+    ReturnAmount: long
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: return_item
+  group: sales
+  source: order.ReturnItem
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  partition: months(ReturnDate)
+  columns:
+    Id: string
+    ReturnId: string
+    OrderId: string
+    OrderItemId: string
+    ProductId: string
+    Quantity: int
+    RestockQty: int
+    DamageQty: int
+    UnitPrice: long
+    UnitCost: long
+    LineAmount: long
+    ReturnDate: date
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: lost_sale
+  group: sales
+  source: order.LostSale
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  partition: months(BusinessDate)
+  columns:
+    Id: string
+    BusinessDate: date
+    ShopCode: string
+    ProductId: string
+    RequestedQty: int
+    SubstitutedQty: int
+    SubstituteProductId: string
+    Reason: string
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+# ── payment ───────────────────────────────────────────────────────────────
+- table: payment
+  group: payment
+  source: payment.Payment
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  partition: months(PaymentDate)
+  columns:
+    Id: string
+    PaymentType: int
+    Status: string
+    OrderId: string
+    ReturnId: string
+    ShopCode: string
+    TotalPayment: long
+    Attempt: int
+    PaymentDate: date
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: transaction
+  group: payment
+  source: payment.Transaction
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  partition: months(PaymentDate)
+  columns:
+    Id: string
+    PaymentId: string
+    PaymentMethodId: int
+    Amount: long
+    PaymentDate: date
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+# ── inventory ─────────────────────────────────────────────────────────────
+- table: stock_movement
+  group: inventory
+  source: inventory.StockMovement
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  partition: months(MovementDate)
+  columns:
+    Id: string
+    Seq: long
+    MovementType: string
+    LocationType: string
+    LocationId: string
+    ProductId: string
+    LotId: string
+    Qty: int
+    UnitCost: long
+    RefDocType: string
+    RefDocId: string
+    RefLineId: string
+    Reason: string
+    MovementTime: timestamp
+    MovementDate: date
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: inventory_snapshot
+  group: inventory
+  source: inventory.InventorySnapshot
+  load: incremental
+  key: [SnapshotDate, LocationType, LocationId, ProductId]
+  modified_column: ModifiedDate
+  partition: months(SnapshotDate)
+  columns:
+    SnapshotDate: date
+    LocationType: string
+    LocationId: string
+    ProductId: string
+    OnHandQty: int
+    InTransitQty: int
+    OnOrderQty: int
+    ExpiredQty: int
+    StockoutFlag: boolean
+    OverCapacityFlag: boolean
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+# ── supply ────────────────────────────────────────────────────────────────
+- table: transfer_order
+  group: supply
+  source: inventory.TransferOrder
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  partition: months(RequestedDate)
+  columns:
+    Id: string
+    FromWarehouseId: string
+    ToShopCode: string
+    Status: string
+    RequestedDate: date
+    PlannedDeliveryDate: date
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: transfer_order_item
+  group: supply
+  source: inventory.TransferOrderItem
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    TransferOrderId: string
+    ProductId: string
+    RequestedQty: int
+    ShippedQty: int
+    ReceivedQty: int
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: purchase_order
+  group: supply
+  source: procurement.PurchaseOrder
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  partition: months(OrderDate)
+  columns:
+    Id: string
+    SupplierId: string
+    WarehouseId: string
+    Status: string
+    OrderDate: timestamp
+    ExpectedDate: date
+    ReceivedDate: timestamp
+    TotalAmount: long
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: purchase_order_item
+  group: supply
+  source: procurement.PurchaseOrderItem
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    PurchaseOrderId: string
+    ProductId: string
+    OrderedQty: int
+    ReceivedQty: int
+    UnitCost: long
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: shipment
+  group: supply
+  source: logistics.Shipment
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  partition: months(ShipmentDate)
+  columns:
+    Id: string
+    WarehouseId: string
+    CarrierId: string
+    VehicleId: string
+    Status: string
+    PlannedDepartureTime: timestamp
+    ActualDepartureTime: timestamp
+    DistanceKm: decimal(7,2)
+    TotalWeightKg: decimal(9,2)
+    TotalVolumeM3: decimal(8,3)
+    StopCount: int
+    TransportCost: long
+    ShipmentDate: date
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: shipment_stop
+  group: supply
+  source: logistics.ShipmentStop
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    ShipmentId: string
+    StopSeq: int
+    ShopCode: string
+    TransferOrderId: string
+    PlannedArrivalTime: timestamp
+    ActualArrivalTime: timestamp
+    Status: string
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: shipment_item
+  group: supply
+  source: logistics.ShipmentItem
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    ShipmentStopId: string
+    TransferOrderItemId: string
+    ProductId: string
+    LotId: string
+    Qty: int
+    ReceivedQty: int
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+- table: shipment_event
+  group: supply
+  source: logistics.ShipmentEvent
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  partition: months(EventTime)
+  columns:
+    Id: string
+    ShipmentId: string
+    EventSeq: int
+    ShipmentStopId: string
+    EventType: string
+    EventTime: timestamp
+    ReasonCode: string
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
+
+# ── hr ────────────────────────────────────────────────────────────────────
+- table: employee_salary
+  group: hr
+  source: shop.EmployeeSalary
+  load: incremental
+  key: [Id]
+  modified_column: ModifiedDate
+  columns:
+    Id: string
+    EmployeeId: string
+    ShopCode: string
+    SalaryMonth: timestamp
+    BaseSalary: long
+    CommissionRate: int
+    CreatedDate: timestamp
+    ModifiedDate: timestamp
