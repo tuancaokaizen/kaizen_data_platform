@@ -80,11 +80,23 @@ SELECT
 FROM serving.financial_report;
 
 CREATE VIEW report.v_bao_cao_tai_chinh_tong_hop AS
+-- Cold from serving / Dữ liệu lạnh từ serving
 SELECT * FROM serving.v_bao_cao_tai_chinh
 WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
 UNION ALL
+-- Hot from report / Dữ liệu nóng từ report (Flink/hot store)
 SELECT * FROM report.v_bao_cao_tai_chinh
-WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30);
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+UNION ALL
+-- Hot fallback from serving when report has no rows for that date / Fallback serving khi report trống ngày đó
+SELECT * FROM serving.v_bao_cao_tai_chinh AS s
+WHERE s.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+  AND s.`NgayBaoCao` NOT IN (
+    SELECT DISTINCT r.`NgayBaoCao`
+    FROM report.v_bao_cao_tai_chinh AS r
+    WHERE r.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+      AND r.`NgayBaoCao` IS NOT NULL
+  );
 
 -- ============================================================================
 -- FINANCIAL — detail grain (shop + product + line)
@@ -136,7 +148,16 @@ SELECT * FROM serving.v_bao_cao_tai_chinh_chi_tiet
 WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
 UNION ALL
 SELECT * FROM report.v_bao_cao_tai_chinh_chi_tiet
-WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30);
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+UNION ALL
+SELECT * FROM serving.v_bao_cao_tai_chinh_chi_tiet AS s
+WHERE s.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+  AND s.`NgayBaoCao` NOT IN (
+    SELECT DISTINCT r.`NgayBaoCao`
+    FROM report.v_bao_cao_tai_chinh_chi_tiet AS r
+    WHERE r.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+      AND r.`NgayBaoCao` IS NOT NULL
+  );
 
 -- ============================================================================
 -- FINANCIAL — product grain
@@ -184,7 +205,16 @@ SELECT * FROM serving.v_bao_cao_tai_chinh_theo_san_pham
 WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
 UNION ALL
 SELECT * FROM report.v_bao_cao_tai_chinh_theo_san_pham
-WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30);
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+UNION ALL
+SELECT * FROM serving.v_bao_cao_tai_chinh_theo_san_pham AS s
+WHERE s.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+  AND s.`NgayBaoCao` NOT IN (
+    SELECT DISTINCT r.`NgayBaoCao`
+    FROM report.v_bao_cao_tai_chinh_theo_san_pham AS r
+    WHERE r.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+      AND r.`NgayBaoCao` IS NOT NULL
+  );
 
 -- ============================================================================
 -- FUND — payment grain (shop + PTTT, backward compatible)
@@ -222,7 +252,16 @@ SELECT * FROM serving.v_bao_cao_quy
 WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
 UNION ALL
 SELECT * FROM report.v_bao_cao_quy
-WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30);
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+UNION ALL
+SELECT * FROM serving.v_bao_cao_quy AS s
+WHERE s.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+  AND s.`NgayBaoCao` NOT IN (
+    SELECT DISTINCT r.`NgayBaoCao`
+    FROM report.v_bao_cao_quy AS r
+    WHERE r.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+      AND r.`NgayBaoCao` IS NOT NULL
+  );
 
 -- ============================================================================
 -- FUND — shop grain
@@ -258,7 +297,16 @@ SELECT * FROM serving.v_bao_cao_quy_theo_shop
 WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
 UNION ALL
 SELECT * FROM report.v_bao_cao_quy_theo_shop
-WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30);
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+UNION ALL
+SELECT * FROM serving.v_bao_cao_quy_theo_shop AS s
+WHERE s.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+  AND s.`NgayBaoCao` NOT IN (
+    SELECT DISTINCT r.`NgayBaoCao`
+    FROM report.v_bao_cao_quy_theo_shop AS r
+    WHERE r.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+      AND r.`NgayBaoCao` IS NOT NULL
+  );
 
 -- ============================================================================
 -- FINANCIAL — order grain (hot 7 days in push job) / Theo từng đơn hàng
@@ -312,7 +360,16 @@ SELECT * FROM serving.v_bao_cao_tai_chinh_theo_don
 WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7)
 UNION ALL
 SELECT * FROM report.v_bao_cao_tai_chinh_theo_don
-WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7);
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7)
+UNION ALL
+SELECT * FROM serving.v_bao_cao_tai_chinh_theo_don AS s
+WHERE s.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7)
+  AND s.`NgayBaoCao` NOT IN (
+    SELECT DISTINCT r.`NgayBaoCao`
+    FROM report.v_bao_cao_tai_chinh_theo_don AS r
+    WHERE r.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7)
+      AND r.`NgayBaoCao` IS NOT NULL
+  );
 
 -- ============================================================================
 -- FUND — order grain (hot 7 days in push job) / Quỹ theo từng đơn × PTTT
@@ -354,7 +411,16 @@ SELECT * FROM serving.v_bao_cao_quy_theo_don
 WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7)
 UNION ALL
 SELECT * FROM report.v_bao_cao_quy_theo_don
-WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7);
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7)
+UNION ALL
+SELECT * FROM serving.v_bao_cao_quy_theo_don AS s
+WHERE s.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7)
+  AND s.`NgayBaoCao` NOT IN (
+    SELECT DISTINCT r.`NgayBaoCao`
+    FROM report.v_bao_cao_quy_theo_don AS r
+    WHERE r.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(7)
+      AND r.`NgayBaoCao` IS NOT NULL
+  );
 
 -- ============================================================================
 -- REALTIME business-by-order (Flink) — view hot 14d / cold Iceberg (CH table TTL 16d buffer)
@@ -443,3 +509,256 @@ WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(14)
 UNION ALL
 SELECT * FROM report.v_bao_cao_kinh_doanh_theo_don_realtime
 WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(14);
+
+-- ============================================================================
+-- SUPPLY — inventory health (hot 30d) / Sức khỏe tồn kho
+-- ============================================================================
+DROP VIEW IF EXISTS report.v_bao_cao_suc_khoe_ton_kho;
+DROP VIEW IF EXISTS serving.v_bao_cao_suc_khoe_ton_kho;
+DROP VIEW IF EXISTS report.v_bao_cao_suc_khoe_ton_kho_tong_hop;
+
+CREATE VIEW report.v_bao_cao_suc_khoe_ton_kho AS
+SELECT
+    ReportDate AS `NgayBaoCao`,
+    ShopCode AS `MaCuaHang`,
+    ShopName AS `TenCuaHang`,
+    ProductLineCode AS `MaNganhHang`,
+    ProductLineName AS `TenNganhHang`,
+    OnHandQuantity AS `SoLuongTon`,
+    OnHandValue AS `GiaTriTon`,
+    OnHandVolumeM3 AS `TheTichTonM3`,
+    ExpiredQuantity AS `SoLuongHetHan`,
+    SkuCount AS `SoMatHang`,
+    StockoutSkuCount AS `SoMatHangHetHang`,
+    StockoutRate AS `TyLeHetHang`,
+    AverageDaysOfSupply AS `SoNgayDuHangTrungBinh`,
+    RequestedQuantity AS `SoLuongYeuCau`,
+    LostQuantity AS `SoLuongMatBan`,
+    LostRevenueEstimate AS `DoanhThuMatUocTinh`,
+    FillRate AS `TyLeDapUng`
+FROM report.inventory_health;
+
+-- Cast Iceberg Decimal/Nullable → Float64/Int64 to match hot report.* for UNION
+-- Ép kiểu Iceberg Decimal/Nullable → Float64/Int64 khớp hot report.* khi UNION
+CREATE VIEW serving.v_bao_cao_suc_khoe_ton_kho AS
+SELECT
+    toDate(ReportDate) AS `NgayBaoCao`,
+    CAST(ShopCode AS String) AS `MaCuaHang`,
+    CAST(ShopName AS String) AS `TenCuaHang`,
+    CAST(ProductLineCode AS String) AS `MaNganhHang`,
+    CAST(ProductLineName AS String) AS `TenNganhHang`,
+    toInt64(OnHandQuantity) AS `SoLuongTon`,
+    toInt64(OnHandValue) AS `GiaTriTon`,
+    toFloat64(OnHandVolumeM3) AS `TheTichTonM3`,
+    toInt64(ExpiredQuantity) AS `SoLuongHetHan`,
+    toInt64(SkuCount) AS `SoMatHang`,
+    toInt64(StockoutSkuCount) AS `SoMatHangHetHang`,
+    toFloat64(StockoutRate) AS `TyLeHetHang`,
+    toFloat64(AverageDaysOfSupply) AS `SoNgayDuHangTrungBinh`,
+    toInt64(RequestedQuantity) AS `SoLuongYeuCau`,
+    toInt64(LostQuantity) AS `SoLuongMatBan`,
+    toInt64(LostRevenueEstimate) AS `DoanhThuMatUocTinh`,
+    toFloat64(FillRate) AS `TyLeDapUng`
+FROM serving.inventory_health;
+
+CREATE VIEW report.v_bao_cao_suc_khoe_ton_kho_tong_hop AS
+SELECT * FROM serving.v_bao_cao_suc_khoe_ton_kho
+WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+UNION ALL
+SELECT * FROM report.v_bao_cao_suc_khoe_ton_kho
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+UNION ALL
+SELECT * FROM serving.v_bao_cao_suc_khoe_ton_kho AS s
+WHERE s.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+  AND s.`NgayBaoCao` NOT IN (
+    SELECT DISTINCT r.`NgayBaoCao`
+    FROM report.v_bao_cao_suc_khoe_ton_kho AS r
+    WHERE r.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+      AND r.`NgayBaoCao` IS NOT NULL
+  );
+
+-- ============================================================================
+-- SUPPLY — shop capacity utilization (hot 30d) / Công suất cửa hàng
+-- ============================================================================
+DROP VIEW IF EXISTS report.v_bao_cao_cong_suat_cua_hang;
+DROP VIEW IF EXISTS serving.v_bao_cao_cong_suat_cua_hang;
+DROP VIEW IF EXISTS report.v_bao_cao_cong_suat_cua_hang_tong_hop;
+
+CREATE VIEW report.v_bao_cao_cong_suat_cua_hang AS
+SELECT
+    ReportDate AS `NgayBaoCao`,
+    ShopCode AS `MaCuaHang`,
+    ShopName AS `TenCuaHang`,
+    OnHandVolumeM3 AS `TheTichTonM3`,
+    OnHandValue AS `GiaTriTon`,
+    StorageM3 AS `SucChuaKhoM3`,
+    ColdStorageL AS `SucChuaKhoLanhLit`,
+    ShelfSlots AS `SoKeHang`,
+    ReceivingSlotsPerDay AS `SlotNhanHangNgay`,
+    ReceivingCount AS `SoLuotNhanHang`,
+    OverCapacitySkuCount AS `SoMatHangVuotSucChua`,
+    StorageUtilization AS `TyLeSuDungKho`,
+    ReceivingUtilization AS `TyLeSuDungSlotNhan`
+FROM report.shop_capacity_utilization;
+
+-- Cast Iceberg Decimal/Nullable → match hot report.* / Ép kiểu Iceberg khớp hot report.*
+CREATE VIEW serving.v_bao_cao_cong_suat_cua_hang AS
+SELECT
+    toDate(ReportDate) AS `NgayBaoCao`,
+    CAST(ShopCode AS String) AS `MaCuaHang`,
+    CAST(ShopName AS String) AS `TenCuaHang`,
+    toFloat64(OnHandVolumeM3) AS `TheTichTonM3`,
+    toInt64(OnHandValue) AS `GiaTriTon`,
+    toFloat64(StorageM3) AS `SucChuaKhoM3`,
+    toInt32(ColdStorageL) AS `SucChuaKhoLanhLit`,
+    toInt32(ShelfSlots) AS `SoKeHang`,
+    toInt32(ReceivingSlotsPerDay) AS `SlotNhanHangNgay`,
+    toInt64(ReceivingCount) AS `SoLuotNhanHang`,
+    toInt64(OverCapacitySkuCount) AS `SoMatHangVuotSucChua`,
+    toFloat64(StorageUtilization) AS `TyLeSuDungKho`,
+    toFloat64(ReceivingUtilization) AS `TyLeSuDungSlotNhan`
+FROM serving.shop_capacity_utilization;
+
+CREATE VIEW report.v_bao_cao_cong_suat_cua_hang_tong_hop AS
+SELECT * FROM serving.v_bao_cao_cong_suat_cua_hang
+WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+UNION ALL
+SELECT * FROM report.v_bao_cao_cong_suat_cua_hang
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+UNION ALL
+SELECT * FROM serving.v_bao_cao_cong_suat_cua_hang AS s
+WHERE s.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+  AND s.`NgayBaoCao` NOT IN (
+    SELECT DISTINCT r.`NgayBaoCao`
+    FROM report.v_bao_cao_cong_suat_cua_hang AS r
+    WHERE r.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(30)
+      AND r.`NgayBaoCao` IS NOT NULL
+  );
+
+-- ============================================================================
+-- SUPPLY — carrier scorecard (hot 90d) / Thẻ điểm nhà vận chuyển
+-- ============================================================================
+DROP VIEW IF EXISTS report.v_bao_cao_the_diem_nha_van_chuyen;
+DROP VIEW IF EXISTS serving.v_bao_cao_the_diem_nha_van_chuyen;
+DROP VIEW IF EXISTS report.v_bao_cao_the_diem_nha_van_chuyen_tong_hop;
+
+CREATE VIEW report.v_bao_cao_the_diem_nha_van_chuyen AS
+SELECT
+    ReportDate AS `NgayBaoCao`,
+    CarrierId AS `MaNhaVanChuyen`,
+    CarrierName AS `TenNhaVanChuyen`,
+    ShipmentCount AS `SoChuyenHang`,
+    StopCount AS `SoDiemGiao`,
+    DeliveredStopCount AS `SoDiemDaGiao`,
+    OnTimeStopCount AS `SoDiemDungHan`,
+    OnTimeInFullStopCount AS `SoDiemOTIF`,
+    OnTimeInFullRate AS `TyLeOTIF`,
+    AverageDelayMinutes AS `ThoiGianTreTrungBinhPhut`,
+    TransportCost AS `ChiPhiVanChuyen`,
+    TotalWeightKg AS `TongTrongLuongKg`,
+    TotalVolumeM3 AS `TongTheTichM3`,
+    CostPerKg AS `ChiPhiTrenKg`,
+    CostPerStop AS `ChiPhiTrenDiemGiao`,
+    AverageWeightLoadFactor AS `HeSoChatTaiTrongLuong`,
+    AverageVolumeLoadFactor AS `HeSoChatTaiTheTich`
+FROM report.carrier_scorecard;
+
+-- Cast Iceberg Nullable → match hot report.* / Ép kiểu Iceberg khớp hot report.*
+CREATE VIEW serving.v_bao_cao_the_diem_nha_van_chuyen AS
+SELECT
+    toDate(ReportDate) AS `NgayBaoCao`,
+    CAST(CarrierId AS String) AS `MaNhaVanChuyen`,
+    CAST(CarrierName AS String) AS `TenNhaVanChuyen`,
+    toInt64(ShipmentCount) AS `SoChuyenHang`,
+    toInt64(StopCount) AS `SoDiemGiao`,
+    toInt64(DeliveredStopCount) AS `SoDiemDaGiao`,
+    toInt64(OnTimeStopCount) AS `SoDiemDungHan`,
+    toInt64(OnTimeInFullStopCount) AS `SoDiemOTIF`,
+    toFloat64(OnTimeInFullRate) AS `TyLeOTIF`,
+    toFloat64(AverageDelayMinutes) AS `ThoiGianTreTrungBinhPhut`,
+    toInt64(TransportCost) AS `ChiPhiVanChuyen`,
+    toFloat64(TotalWeightKg) AS `TongTrongLuongKg`,
+    toFloat64(TotalVolumeM3) AS `TongTheTichM3`,
+    toFloat64(CostPerKg) AS `ChiPhiTrenKg`,
+    toFloat64(CostPerStop) AS `ChiPhiTrenDiemGiao`,
+    toFloat64(AverageWeightLoadFactor) AS `HeSoChatTaiTrongLuong`,
+    toFloat64(AverageVolumeLoadFactor) AS `HeSoChatTaiTheTich`
+FROM serving.carrier_scorecard;
+
+CREATE VIEW report.v_bao_cao_the_diem_nha_van_chuyen_tong_hop AS
+SELECT * FROM serving.v_bao_cao_the_diem_nha_van_chuyen
+WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(90)
+UNION ALL
+SELECT * FROM report.v_bao_cao_the_diem_nha_van_chuyen
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(90)
+UNION ALL
+SELECT * FROM serving.v_bao_cao_the_diem_nha_van_chuyen AS s
+WHERE s.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(90)
+  AND s.`NgayBaoCao` NOT IN (
+    SELECT DISTINCT r.`NgayBaoCao`
+    FROM report.v_bao_cao_the_diem_nha_van_chuyen AS r
+    WHERE r.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(90)
+      AND r.`NgayBaoCao` IS NOT NULL
+  );
+
+-- ============================================================================
+-- SUPPLY — supplier performance (hot 365d) / Hiệu suất nhà cung cấp
+-- ============================================================================
+DROP VIEW IF EXISTS report.v_bao_cao_hieu_suat_nha_cung_cap;
+DROP VIEW IF EXISTS serving.v_bao_cao_hieu_suat_nha_cung_cap;
+DROP VIEW IF EXISTS report.v_bao_cao_hieu_suat_nha_cung_cap_tong_hop;
+
+CREATE VIEW report.v_bao_cao_hieu_suat_nha_cung_cap AS
+SELECT
+    ReportDate AS `NgayBaoCao`,
+    SupplierId AS `MaNhaCungCap`,
+    SupplierName AS `TenNhaCungCap`,
+    PurchaseLineCount AS `SoDongDonMua`,
+    ReceivedLineCount AS `SoDongDaNhan`,
+    OnTimeLineCount AS `SoDongDungHan`,
+    OnTimeRate AS `TyLeDungHan`,
+    AverageLeadTimeDays AS `LeadTimeThucTeNgay`,
+    AveragePromisedLeadTimeDays AS `LeadTimeCamKetNgay`,
+    LeadTimeVarianceDays AS `ChenhLechLeadTimeNgay`,
+    AverageFillRate AS `TyLeDapUngTrungBinh`,
+    OrderedQuantity AS `SoLuongDat`,
+    ReceivedQuantity AS `SoLuongNhan`,
+    OrderedAmount AS `GiaTriDat`,
+    ReceivedAmount AS `GiaTriNhan`
+FROM report.supplier_performance;
+
+-- Cast Iceberg Nullable → match hot report.* / Ép kiểu Iceberg khớp hot report.*
+CREATE VIEW serving.v_bao_cao_hieu_suat_nha_cung_cap AS
+SELECT
+    toDate(ReportDate) AS `NgayBaoCao`,
+    CAST(SupplierId AS String) AS `MaNhaCungCap`,
+    CAST(SupplierName AS String) AS `TenNhaCungCap`,
+    toInt64(PurchaseLineCount) AS `SoDongDonMua`,
+    toInt64(ReceivedLineCount) AS `SoDongDaNhan`,
+    toInt64(OnTimeLineCount) AS `SoDongDungHan`,
+    toFloat64(OnTimeRate) AS `TyLeDungHan`,
+    toFloat64(AverageLeadTimeDays) AS `LeadTimeThucTeNgay`,
+    toFloat64(AveragePromisedLeadTimeDays) AS `LeadTimeCamKetNgay`,
+    toFloat64(LeadTimeVarianceDays) AS `ChenhLechLeadTimeNgay`,
+    toFloat64(AverageFillRate) AS `TyLeDapUngTrungBinh`,
+    toInt64(OrderedQuantity) AS `SoLuongDat`,
+    toInt64(ReceivedQuantity) AS `SoLuongNhan`,
+    toInt64(OrderedAmount) AS `GiaTriDat`,
+    toInt64(ReceivedAmount) AS `GiaTriNhan`
+FROM serving.supplier_performance;
+
+CREATE VIEW report.v_bao_cao_hieu_suat_nha_cung_cap_tong_hop AS
+SELECT * FROM serving.v_bao_cao_hieu_suat_nha_cung_cap
+WHERE `NgayBaoCao` < toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(365)
+UNION ALL
+SELECT * FROM report.v_bao_cao_hieu_suat_nha_cung_cap
+WHERE `NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(365)
+UNION ALL
+SELECT * FROM serving.v_bao_cao_hieu_suat_nha_cung_cap AS s
+WHERE s.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(365)
+  AND s.`NgayBaoCao` NOT IN (
+    SELECT DISTINCT r.`NgayBaoCao`
+    FROM report.v_bao_cao_hieu_suat_nha_cung_cap AS r
+    WHERE r.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(365)
+      AND r.`NgayBaoCao` IS NOT NULL
+  );

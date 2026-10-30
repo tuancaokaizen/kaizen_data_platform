@@ -4,7 +4,11 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
+	"path"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -49,9 +53,15 @@ func main() {
 	mux.HandleFunc("/api/v1/reports/kd", reportHTTP.GetKdReport)
 	mux.HandleFunc("/api/v1/reports/kd/summary", reportHTTP.GetKdSummary)
 	mux.HandleFunc("/api/v1/reports/kd/filter-options", reportHTTP.GetKdFilterOptions)
+	mux.HandleFunc("/api/v1/reports/supply", reportHTTP.GetSupplyReport)
 	mux.HandleFunc("/api/v1/bi/embed-config", biHTTP.GetEmbedConfig)
 	mux.HandleFunc("/api/v1/bi/guest-token", biHTTP.PostGuestToken)
 	swaggerHTTP.Register(mux)
+
+	// Optional SPA static files for single-pod deploy / File tĩnh SPA khi deploy 1 pod
+	if staticDir := os.Getenv("STATIC_DIR"); staticDir != "" {
+		registerSPA(mux, staticDir)
+	}
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -81,4 +91,27 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("graceful shutdown failed: %v", err)
 	}
+}
+
+// registerSPA serves the React build and falls back to index.html for client routes.
+// Phục vụ bản build React và fallback index.html cho route phía client.
+func registerSPA(mux *http.ServeMux, staticDir string) {
+	fileServer := http.FileServer(http.Dir(staticDir))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") ||
+			strings.HasPrefix(r.URL.Path, "/healthz") ||
+			strings.HasPrefix(r.URL.Path, "/swagger") {
+			http.NotFound(w, r)
+			return
+		}
+		// Prefer real file when it exists / Ưu tiên file thật nếu có
+		clean := path.Clean("/" + r.URL.Path)
+		target := filepath.Join(staticDir, filepath.FromSlash(clean))
+		if info, err := os.Stat(target); err == nil && !info.IsDir() {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
+	})
+	log.Printf("serving SPA from %s", staticDir)
 }

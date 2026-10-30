@@ -20,6 +20,14 @@ const (
 	KdViewOrder = "order"
 )
 
+// Supply view keys map to ClickHouse supply *_tong_hop views / View chuỗi cung ứng
+const (
+	SupplyViewInventory = "inventory"
+	SupplyViewCapacity  = "capacity"
+	SupplyViewCarrier   = "carrier"
+	SupplyViewSupplier  = "supplier"
+)
+
 type FinancialFilter struct {
 	ShopCode        string
 	ProductId       string
@@ -40,6 +48,13 @@ type KdFilter struct {
 	OrderId      string
 	DocumentType string
 	OrderStatus  string
+}
+
+type SupplyFilter struct {
+	ShopCode        string
+	ProductLineCode string
+	CarrierId       string
+	SupplierId      string
 }
 
 type financialViewSpec struct {
@@ -183,6 +198,64 @@ func appendFundFilters(view string, filter FundFilter, where string, args []any)
 	if filter.OrderId != "" && view == FundViewOrder {
 		where += " AND `MaDonHang` = ?"
 		args = append(args, filter.OrderId)
+	}
+	return where, args
+}
+
+func supplyViewSpecFor(view string) financialViewSpec {
+	switch view {
+	case SupplyViewCapacity:
+		return financialViewSpec{
+			table: "report.v_bao_cao_cong_suat_cua_hang_tong_hop",
+			columns: "`NgayBaoCao`, `MaCuaHang`, `TenCuaHang`, `TheTichTonM3`, `GiaTriTon`, `SucChuaKhoM3`, " +
+				"`SucChuaKhoLanhLit`, `SoKeHang`, `SlotNhanHangNgay`, `SoLuotNhanHang`, `SoMatHangVuotSucChua`, " +
+				"`TyLeSuDungKho`, `TyLeSuDungSlotNhan`",
+			orderBy: "`NgayBaoCao` DESC, `MaCuaHang`",
+		}
+	case SupplyViewCarrier:
+		return financialViewSpec{
+			table: "report.v_bao_cao_the_diem_nha_van_chuyen_tong_hop",
+			columns: "`NgayBaoCao`, `MaNhaVanChuyen`, `TenNhaVanChuyen`, `SoChuyenHang`, `SoDiemGiao`, " +
+				"`SoDiemDaGiao`, `SoDiemDungHan`, `SoDiemOTIF`, `TyLeOTIF`, `ThoiGianTreTrungBinhPhut`, " +
+				"`ChiPhiVanChuyen`, `TongTrongLuongKg`, `TongTheTichM3`, `ChiPhiTrenKg`, `ChiPhiTrenDiemGiao`, " +
+				"`HeSoChatTaiTrongLuong`, `HeSoChatTaiTheTich`",
+			orderBy: "`NgayBaoCao` DESC, `MaNhaVanChuyen`",
+		}
+	case SupplyViewSupplier:
+		return financialViewSpec{
+			table: "report.v_bao_cao_hieu_suat_nha_cung_cap_tong_hop",
+			columns: "`NgayBaoCao`, `MaNhaCungCap`, `TenNhaCungCap`, `SoDongDonMua`, `SoDongDaNhan`, " +
+				"`SoDongDungHan`, `TyLeDungHan`, `LeadTimeThucTeNgay`, `LeadTimeCamKetNgay`, `ChenhLechLeadTimeNgay`, " +
+				"`TyLeDapUngTrungBinh`, `SoLuongDat`, `SoLuongNhan`, `GiaTriDat`, `GiaTriNhan`",
+			orderBy: "`NgayBaoCao` DESC, `MaNhaCungCap`",
+		}
+	default:
+		return financialViewSpec{
+			table: "report.v_bao_cao_suc_khoe_ton_kho_tong_hop",
+			columns: "`NgayBaoCao`, `MaCuaHang`, `TenCuaHang`, `MaNganhHang`, `TenNganhHang`, `SoLuongTon`, " +
+				"`GiaTriTon`, `TheTichTonM3`, `SoLuongHetHan`, `SoMatHang`, `SoMatHangHetHang`, `TyLeHetHang`, " +
+				"`SoNgayDuHangTrungBinh`, `SoLuongYeuCau`, `SoLuongMatBan`, `DoanhThuMatUocTinh`, `TyLeDapUng`",
+			orderBy: "`NgayBaoCao` DESC, `MaCuaHang`, `MaNganhHang`",
+		}
+	}
+}
+
+func appendSupplyFilters(view string, filter SupplyFilter, where string, args []any) (string, []any) {
+	if filter.ShopCode != "" && (view == SupplyViewInventory || view == SupplyViewCapacity) {
+		where += " AND `MaCuaHang` = ?"
+		args = append(args, filter.ShopCode)
+	}
+	if filter.ProductLineCode != "" && view == SupplyViewInventory {
+		where += " AND `MaNganhHang` = ?"
+		args = append(args, filter.ProductLineCode)
+	}
+	if filter.CarrierId != "" && view == SupplyViewCarrier {
+		where += " AND `MaNhaVanChuyen` = ?"
+		args = append(args, filter.CarrierId)
+	}
+	if filter.SupplierId != "" && view == SupplyViewSupplier {
+		where += " AND `MaNhaCungCap` = ?"
+		args = append(args, filter.SupplierId)
 	}
 	return where, args
 }

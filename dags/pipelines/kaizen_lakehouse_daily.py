@@ -140,11 +140,23 @@ def snake_case(class_name):
     return "".join(f"_{c.lower()}" if c.isupper() else c for c in class_name).lstrip("_")
 
 
+# ClickHouse dw.* Iceberg pointers — same names as nessie.dw.*
+# Con trỏ Iceberg dw.* trên ClickHouse — cùng tên với nessie.dw.*
+DW_TABLES = [snake_case(name) for name in DIMENSIONS + FACTS + DERIVED_FACTS]
+
+
 def chain_sequential(tasks):
     """Wire tasks[0] >> tasks[1] >> … / Nối tasks[0] >> tasks[1] >> …"""
     for upstream, downstream in zip(tasks, tasks[1:]):
         upstream >> downstream
     return tasks[-1] if tasks else None
+
+
+def register_dw_tables():
+    """Point ClickHouse dw.* at the current Iceberg folder of each dim/fact.
+    Trỏ dw.* của ClickHouse tới thư mục Iceberg hiện tại của từng dim/fact."""
+    for table in DW_TABLES:
+        run_clickhouse_setup(table, layer="dw")
 
 
 def register_serving_tables():
@@ -221,9 +233,14 @@ with DAG(
         ])
 
     with TaskGroup("clickhouse") as clickhouse:
-        register = PythonOperator(task_id="register_serving_tables", python_callable=register_serving_tables)
+        # dw Iceberg pointers → serving pointers → views → hot publish
+        # Con trỏ Iceberg dw → serving → view → đẩy hot
+        register_dw = PythonOperator(task_id="register_dw_tables", python_callable=register_dw_tables)
+        register_serving = PythonOperator(
+            task_id="register_serving_tables", python_callable=register_serving_tables
+        )
         views = PythonOperator(task_id="report_views", python_callable=run_clickhouse_views_setup)
         publish = spark_task("publish_report", "publish.clickhouse.PublishReportToClickHouse")
-        register >> views >> publish
+        register_dw >> register_serving >> views >> publish
 
     source >> dimension >> fact >> report >> clickhouse

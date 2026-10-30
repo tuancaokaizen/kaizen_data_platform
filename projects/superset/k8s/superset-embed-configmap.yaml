@@ -18,8 +18,63 @@ data:
         os.environ.get("SUPERSET_SECRET_KEY", "kaizen_report_dashboard_secret_key_123"),
     )
     GUEST_ROLE_NAME = "Gamma"
-    # Disable strict JWT audience check for dev proxy / Tắt kiểm tra audience khi dev qua proxy
-    GUEST_TOKEN_JWT_AUDIENCE = None
+    # Fixed audience so mint (in-cluster) and verify (browser) always match
+    # Audience cố định — mint trong cluster và verify từ browser luôn khớp
+    GUEST_TOKEN_JWT_AUDIENCE = os.environ.get(
+        "GUEST_TOKEN_JWT_AUDIENCE", "kaizen-embedded"
+    )
+
+    # Allow iframe from Report UI (:31090). Talisman default X-Frame-Options=SAMEORIGIN blocks it.
+    # Cho phép iframe từ Report UI. Mặc định SAMEORIGIN chặn cross-origin embed.
+    _frame_ancestors = [
+        "'self'",
+        # LAN
+        "http://192.168.100.172:31090",
+        "http://192.168.100.172:8092",
+        # Tailscale (k3s master) / Tailscale master
+        "http://100.104.250.97:31090",
+        "http://100.104.250.97:8092",
+        "http://localhost:8092",
+        "http://127.0.0.1:8092",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ]
+    _extra = os.environ.get("SUPERSET_EMBED_FRAME_ANCESTORS", "")
+    for _part in _extra.replace(",", " ").split():
+        _part = _part.strip().rstrip("/")
+        if _part and _part not in _frame_ancestors:
+            _frame_ancestors.append(_part)
+
+    TALISMAN_ENABLED = True
+    TALISMAN_CONFIG = {
+        "force_https": False,
+        "session_cookie_secure": False,
+        # Disable X-Frame-Options; use CSP frame-ancestors instead
+        # Tắt X-Frame-Options; dùng CSP frame-ancestors
+        "frame_options": None,
+        "content_security_policy": {
+            "base-uri": ["'self'"],
+            "default-src": ["'self'"],
+            "img-src": [
+                "'self'",
+                "blob:",
+                "data:",
+                "https://apachesuperset.gateway.scarf.sh",
+                "https://static.scarf.sh/",
+            ],
+            "worker-src": ["'self'", "blob:"],
+            "connect-src": [
+                "'self'",
+                "https://api.mapbox.com",
+                "https://events.mapbox.com",
+            ],
+            "object-src": "'none'",
+            "style-src": ["'self'", "'unsafe-inline'"],
+            "script-src": ["'self'", "'strict-dynamic'"],
+            "frame-ancestors": _frame_ancestors,
+        },
+        "content_security_policy_nonce_in": ["script-src"],
+    }
 
     # Guest grants run via scripts/grant_guest_embed_permissions.sh (not on every worker boot)
     # Cấp quyền guest chạy bằng script — tránh sync_role_definitions mỗi lần khởi động worker

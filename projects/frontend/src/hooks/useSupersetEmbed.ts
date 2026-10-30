@@ -2,8 +2,28 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { embedDashboard } from "@superset-ui/embedded-sdk";
 import { fetchEmbedConfig, fetchGuestToken } from "../api/biApi";
 
-/** Parent page origin — Vite proxies /embedded to Superset / Origin trang cha qua proxy Vite */
-export function resolveSupersetEmbedDomain(_backendHint: string): string {
+/**
+ * Dev (Vite): same origin so /embedded is proxied to Superset.
+ * Prod: prefer same hostname as Report UI with Superset NodePort 32288
+ * (LAN 192.168.x or Tailscale 100.x) so iframe matches how the user opened the UI.
+ * Dev: cùng origin (Vite proxy). Prod: cùng hostname UI, port Superset 32288.
+ */
+export function resolveSupersetEmbedDomain(backendHint: string): string {
+  // Vite dev always proxies /embedded on the page origin / Dev Vite luôn proxy /embedded trên origin trang
+  if (import.meta.env.DEV) {
+    return window.location.origin;
+  }
+
+  // Same host as UI (Tailscale or LAN), fixed Superset NodePort / Cùng host UI, NodePort Superset cố định
+  const { protocol, hostname, port } = window.location;
+  if (hostname && (port === "31090" || port === "8090" || port === "8092" || port === "")) {
+    return `${protocol}//${hostname}:32288`;
+  }
+
+  const hint = (backendHint || "").trim().replace(/\/$/, "");
+  if (hint && hint !== window.location.origin) {
+    return hint;
+  }
   return window.location.origin;
 }
 

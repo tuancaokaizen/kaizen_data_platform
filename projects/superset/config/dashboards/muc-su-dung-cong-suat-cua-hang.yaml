@@ -1,0 +1,65 @@
+id: db_supply_capacity
+title: Mức sử dụng công suất cửa hàng
+dataset: v_bao_cao_cong_suat_cua_hang_tong_hop
+slug: muc-su-dung-cong-suat-cua-hang
+description: Tỷ lệ sử dụng kho và slot nhận hàng theo ngày × cửa hàng
+native_filters:
+- column: NgayBaoCao
+  type: filter_time
+  label: Khoảng ngày
+  required: true
+  default: Last 30 days
+- column: MaCuaHang
+  type: filter_select
+  label: Cửa hàng
+  multi: true
+  select_all: true
+layout:
+  row1_kpi:
+  - chart: kpi_ty_le_kho
+    viz: big_number_total
+    metric: AVG(TyLeSuDungKho)
+    title: Tỷ lệ sử dụng kho trung bình
+  - chart: kpi_ty_le_slot
+    viz: big_number_total
+    metric: AVG(TyLeSuDungSlotNhan)
+    title: Tỷ lệ sử dụng slot nhận trung bình
+  - chart: kpi_vuot_suc_chua
+    viz: big_number_total
+    metric: SUM(SoMatHangVuotSucChua)
+    title: Số mặt hàng vượt sức chứa
+    format: ',d'
+  row2_trend:
+  - chart: trend_cong_suat
+    viz: echarts_timeseries_line
+    x: NgayBaoCao
+    metrics:
+    - AVG(TyLeSuDungKho)
+    - AVG(TyLeSuDungSlotNhan)
+    title: Xu hướng sử dụng công suất
+    granularity: day
+  row3_compare:
+  - chart: bar_top_shop
+    viz: echarts_timeseries_bar
+    x: TenCuaHang
+    categorical: true
+    metric: AVG(TyLeSuDungKho)
+    title: Top cửa hàng theo tỷ lệ sử dụng kho
+    sort: desc
+    row_limit: 15
+    orientation: horizontal
+  row4_detail:
+  - chart: table_chi_tiet
+    viz: table
+    columns:
+    - NgayBaoCao
+    - MaCuaHang
+    - TenCuaHang
+    - TheTichTonM3
+    - SucChuaKhoM3
+    - TyLeSuDungKho
+    - SoLuotNhanHang
+    - SlotNhanHangNgay
+    - TyLeSuDungSlotNhan
+    title: Chi tiết công suất cửa hàng
+    page_size: 50

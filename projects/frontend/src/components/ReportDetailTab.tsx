@@ -40,6 +40,8 @@ export type FilterFormValues = {
   documentType?: string;
   orderStatus?: string;
   paymentMethodName?: string;
+  carrierId?: string;
+  supplierId?: string;
 };
 
 type ReportDetailTabProps = {
@@ -59,6 +61,15 @@ type ReportDetailTabProps = {
     netCashFlow: number;
     reconciliationDiff?: number;
     pendingOrderCount?: number;
+    onHandValue?: number;
+    fillRate?: number;
+    stockoutRate?: number;
+    storageUtilization?: number;
+    receivingUtilization?: number;
+    onTimeInFullRate?: number;
+    transportCost?: number;
+    onTimeRate?: number;
+    receivedAmount?: number;
   };
   columns: ColumnsType<ReportRow>;
   reportData?: ListResponse<ReportRow>;
@@ -188,6 +199,20 @@ export function ReportDetailTab({
                 </Form.Item>
               </Col>
             )}
+            {showFilter("carrierId") && (
+              <Col xs={24} sm={12} lg={4}>
+                <Form.Item label={FILTER_LABELS.carrierId} name="carrierId">
+                  <Input placeholder={FILTER_PLACEHOLDERS.carrierId} allowClear />
+                </Form.Item>
+              </Col>
+            )}
+            {showFilter("supplierId") && (
+              <Col xs={24} sm={12} lg={4}>
+                <Form.Item label={FILTER_LABELS.supplierId} name="supplierId">
+                  <Input placeholder={FILTER_PLACEHOLDERS.supplierId} allowClear />
+                </Form.Item>
+              </Col>
+            )}
             <Col xs={24} sm={12} lg={3} className="search-col">
               <Button type="primary" onClick={onSearch} loading={loading} block>
                 Áp dụng
@@ -256,6 +281,106 @@ export function ReportDetailTab({
                 />
               </Card>
             </Col>
+          </>
+        ) : viewConfig.category === "supply" ? (
+          <>
+            {viewConfig.view === "inventory" && (
+              <>
+                <Col xs={24} sm={12} lg={8}>
+                  <Card size="small">
+                    <Statistic
+                      title="Giá trị tồn (trang hiện tại)"
+                      value={summary.onHandValue ?? 0}
+                      formatter={(v) => formatNumber(v as number)}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={12} lg={8}>
+                  <Card size="small">
+                    <Statistic
+                      title="Tỷ lệ hết hàng TB (trang hiện tại)"
+                      value={summary.stockoutRate ?? 0}
+                      formatter={(v) => formatNumber(v as number)}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={12} lg={8}>
+                  <Card size="small">
+                    <Statistic
+                      title="Tỷ lệ đáp ứng TB (trang hiện tại)"
+                      value={summary.fillRate ?? 0}
+                      formatter={(v) => formatNumber(v as number)}
+                    />
+                  </Card>
+                </Col>
+              </>
+            )}
+            {viewConfig.view === "capacity" && (
+              <>
+                <Col xs={24} sm={12}>
+                  <Card size="small">
+                    <Statistic
+                      title="Tỷ lệ sử dụng kho TB (trang hiện tại)"
+                      value={summary.storageUtilization ?? 0}
+                      formatter={(v) => formatNumber(v as number)}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={12}>
+                  <Card size="small">
+                    <Statistic
+                      title="Tỷ lệ sử dụng slot nhận TB (trang hiện tại)"
+                      value={summary.receivingUtilization ?? 0}
+                      formatter={(v) => formatNumber(v as number)}
+                    />
+                  </Card>
+                </Col>
+              </>
+            )}
+            {viewConfig.view === "carrier" && (
+              <>
+                <Col xs={24} sm={12}>
+                  <Card size="small">
+                    <Statistic
+                      title="Tỷ lệ đúng hạn đủ hàng TB (trang hiện tại)"
+                      value={summary.onTimeInFullRate ?? 0}
+                      formatter={(v) => formatNumber(v as number)}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={12}>
+                  <Card size="small">
+                    <Statistic
+                      title="Chi phí vận chuyển (trang hiện tại)"
+                      value={summary.transportCost ?? 0}
+                      formatter={(v) => formatNumber(v as number)}
+                    />
+                  </Card>
+                </Col>
+              </>
+            )}
+            {viewConfig.view === "supplier" && (
+              <>
+                <Col xs={24} sm={12}>
+                  <Card size="small">
+                    <Statistic
+                      title="Tỷ lệ đúng hạn TB (trang hiện tại)"
+                      value={summary.onTimeRate ?? 0}
+                      formatter={(v) => formatNumber(v as number)}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={12}>
+                  <Card size="small">
+                    <Statistic
+                      title="Giá trị nhận (trang hiện tại)"
+                      value={summary.receivedAmount ?? 0}
+                      formatter={(v) => formatNumber(v as number)}
+                    />
+                  </Card>
+                </Col>
+              </>
+            )}
           </>
         ) : (
           <>

@@ -150,6 +150,8 @@ function App() {
           !formValues.paymentMethodName || formValues.paymentMethodName === FILTER_ALL_VALUE
             ? undefined
             : formValues.paymentMethodName,
+        carrierId: formValues.carrierId || undefined,
+        supplierId: formValues.supplierId || undefined,
         page: resolvedPage,
         pageSize: resolvedPageSize
       };
@@ -259,7 +261,9 @@ function App() {
       "orderId",
       "documentType",
       "orderStatus",
-      "paymentMethodName"
+      "paymentMethodName",
+      "carrierId",
+      "supplierId"
     ]);
     void (async () => {
       try {
@@ -306,57 +310,72 @@ function App() {
 
   const summary = useMemo(() => {
     const rows = reportData?.data ?? [];
+    const empty = {
+      netRevenue: 0,
+      grossProfit: 0,
+      totalReceipts: 0,
+      netCashFlow: 0,
+      reconciliationDiff: 0,
+      pendingOrderCount: 0,
+      onHandValue: 0,
+      fillRate: 0,
+      stockoutRate: 0,
+      storageUtilization: 0,
+      receivingUtilization: 0,
+      onTimeInFullRate: 0,
+      transportCost: 0,
+      onTimeRate: 0,
+      receivedAmount: 0
+    };
     if (viewConfig.category === "financial") {
-      return rows.reduce(
-        (acc, row) => {
-          acc.netRevenue += row.netRevenue ?? 0;
-          acc.grossProfit += row.grossProfit ?? 0;
-          return acc;
-        },
-        {
-          netRevenue: 0,
-          grossProfit: 0,
-          totalReceipts: 0,
-          netCashFlow: 0,
-          reconciliationDiff: 0,
-          pendingOrderCount: 0
-        }
-      );
+      return rows.reduce((acc, row) => {
+        acc.netRevenue += row.netRevenue ?? 0;
+        acc.grossProfit += row.grossProfit ?? 0;
+        return acc;
+      }, { ...empty });
     }
     if (viewConfig.category === "kd") {
-      return rows.reduce(
+      return rows.reduce((acc, row) => {
+        acc.netRevenue += row.netRevenue ?? 0;
+        acc.netCashFlow += row.netCashFlow ?? 0;
+        acc.reconciliationDiff += row.reconciliationDiff ?? 0;
+        if (row.pendingOrder === 1) acc.pendingOrderCount += 1;
+        return acc;
+      }, { ...empty });
+    }
+    if (viewConfig.category === "supply") {
+      // Sum totals; average rate metrics / Cộng tổng; trung bình các chỉ số tỷ lệ
+      const summed = rows.reduce(
         (acc, row) => {
-          acc.netRevenue += row.netRevenue ?? 0;
-          acc.netCashFlow += row.netCashFlow ?? 0;
-          acc.reconciliationDiff += row.reconciliationDiff ?? 0;
-          if (row.pendingOrder === 1) acc.pendingOrderCount += 1;
+          acc.onHandValue += row.onHandValue ?? 0;
+          acc.fillRate += row.fillRate ?? 0;
+          acc.stockoutRate += row.stockoutRate ?? 0;
+          acc.storageUtilization += row.storageUtilization ?? 0;
+          acc.receivingUtilization += row.receivingUtilization ?? 0;
+          acc.onTimeInFullRate += row.onTimeInFullRate ?? 0;
+          acc.transportCost += row.transportCost ?? 0;
+          acc.onTimeRate += row.onTimeRate ?? 0;
+          acc.receivedAmount += row.receivedAmount ?? 0;
           return acc;
         },
-        {
-          netRevenue: 0,
-          grossProfit: 0,
-          totalReceipts: 0,
-          netCashFlow: 0,
-          reconciliationDiff: 0,
-          pendingOrderCount: 0
-        }
+        { ...empty }
       );
+      const n = rows.length || 1;
+      return {
+        ...summed,
+        fillRate: summed.fillRate / n,
+        stockoutRate: summed.stockoutRate / n,
+        storageUtilization: summed.storageUtilization / n,
+        receivingUtilization: summed.receivingUtilization / n,
+        onTimeInFullRate: summed.onTimeInFullRate / n,
+        onTimeRate: summed.onTimeRate / n
+      };
     }
-    return rows.reduce(
-      (acc, row) => {
-        acc.totalReceipts += row.totalReceipts ?? 0;
-        acc.netCashFlow += row.netCashFlow ?? 0;
-        return acc;
-      },
-      {
-        netRevenue: 0,
-        grossProfit: 0,
-        totalReceipts: 0,
-        netCashFlow: 0,
-        reconciliationDiff: 0,
-        pendingOrderCount: 0
-      }
-    );
+    return rows.reduce((acc, row) => {
+      acc.totalReceipts += row.totalReceipts ?? 0;
+      acc.netCashFlow += row.netCashFlow ?? 0;
+      return acc;
+    }, { ...empty });
   }, [reportData?.data, viewConfig.category]);
 
   const showFilter = (field: FilterField) => viewConfig.filters.includes(field);

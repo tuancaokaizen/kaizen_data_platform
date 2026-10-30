@@ -43,3 +43,23 @@ datasets:
     schema: report
     description: "Báo cáo tình hình kinh doanh realtime — theo đơn hàng"
     main_dttm_col: NgayBaoCao
+
+  - table_name: v_bao_cao_suc_khoe_ton_kho_tong_hop
+    schema: report
+    description: "Chuỗi cung ứng — sức khỏe tồn kho theo cửa hàng và ngành hàng"
+    main_dttm_col: NgayBaoCao
+
+  - table_name: v_bao_cao_cong_suat_cua_hang_tong_hop
+    schema: report
+    description: "Chuỗi cung ứng — mức sử dụng công suất cửa hàng"
+    main_dttm_col: NgayBaoCao
+
+  - table_name: v_bao_cao_the_diem_nha_van_chuyen_tong_hop
+    schema: report
+    description: "Chuỗi cung ứng — thẻ điểm nhà vận chuyển"
+    main_dttm_col: NgayBaoCao
+
+  - table_name: v_bao_cao_hieu_suat_nha_cung_cap_tong_hop
+    schema: report
+    description: "Chuỗi cung ứng — hiệu suất nhà cung cấp"
+    main_dttm_col: NgayBaoCao

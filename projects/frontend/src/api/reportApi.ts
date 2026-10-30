@@ -18,22 +18,33 @@ export type ReportFilter = {
   documentType?: string;
   orderStatus?: string;
   paymentMethodName?: string;
+  carrierId?: string;
+  supplierId?: string;
   page?: number;
   pageSize?: number;
 };
+
+function reportPath(category: ReportCategory): string {
+  switch (category) {
+    case "financial":
+      return "/api/v1/reports/financial";
+    case "fund":
+      return "/api/v1/reports/fund";
+    case "kd":
+      return "/api/v1/reports/kd";
+    case "supply":
+      return "/api/v1/reports/supply";
+    default:
+      return "/api/v1/reports/financial";
+  }
+}
 
 export async function fetchReport(
   category: ReportCategory,
   filter: ReportFilter
 ): Promise<ListResponse<ReportRow>> {
-  const path =
-    category === "financial"
-      ? "/api/v1/reports/financial"
-      : category === "fund"
-        ? "/api/v1/reports/fund"
-        : "/api/v1/reports/kd";
   const timeout = filter.pageSize === 0 ? 120_000 : 20_000;
-  const response = await apiClient.get<ListResponse<ReportRow>>(path, {
+  const response = await apiClient.get<ListResponse<ReportRow>>(reportPath(category), {
     params: filter,
     timeout
   });

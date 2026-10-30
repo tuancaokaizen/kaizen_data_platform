@@ -128,6 +128,30 @@ func (h *ReportHandler) GetKdReport(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *ReportHandler) GetSupplyReport(w http.ResponseWriter, r *http.Request) {
+	query, err := buildReportQuery(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	data, total, err := h.reportService.GetSupplyReport(r.Context(), query)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"data": data,
+		"view": query.View,
+		"pagination": map[string]any{
+			"page":     query.Page,
+			"pageSize": query.PageSize,
+			"total":    total,
+		},
+	})
+}
+
 func (h *ReportHandler) GetKdSummary(w http.ResponseWriter, r *http.Request) {
 	query, err := buildReportQuery(r)
 	if err != nil {
@@ -248,6 +272,8 @@ func buildReportQuery(r *http.Request) (service.ReportQuery, error) {
 		DocumentType:      r.URL.Query().Get("documentType"),
 		OrderStatus:       r.URL.Query().Get("orderStatus"),
 		PaymentMethodName: r.URL.Query().Get("paymentMethodName"),
+		CarrierId:         r.URL.Query().Get("carrierId"),
+		SupplierId:        r.URL.Query().Get("supplierId"),
 		Page:              page,
 		PageSize:          pageSize,
 	}, nil
@@ -259,6 +285,9 @@ func defaultViewForPath(path string) string {
 	}
 	if path == "/api/v1/reports/kd" || path == "/api/v1/reports/kd/summary" {
 		return "order"
+	}
+	if path == "/api/v1/reports/supply" {
+		return "inventory"
 	}
 	return "shop"
 }
