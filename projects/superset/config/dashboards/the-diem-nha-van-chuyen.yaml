@@ -1,0 +1,65 @@
+id: db_supply_carrier
+title: Thẻ điểm nhà vận chuyển
+dataset: v_bao_cao_the_diem_nha_van_chuyen_tong_hop
+slug: the-diem-nha-van-chuyen
+description: Tỷ lệ OTIF, thời gian trễ và chi phí vận chuyển theo tuần × nhà vận chuyển
+native_filters:
+- column: NgayBaoCao
+  type: filter_time
+  label: Khoảng ngày
+  required: true
+  default: Last 90 days
+- column: MaNhaVanChuyen
+  type: filter_select
+  label: Nhà vận chuyển
+  multi: true
+  select_all: true
+layout:
+  row1_kpi:
+  - chart: kpi_otif
+    viz: big_number_total
+    metric: AVG(TyLeOTIF)
+    title: Tỷ lệ OTIF trung bình
+  - chart: kpi_tre
+    viz: big_number_total
+    metric: AVG(ThoiGianTreTrungBinhPhut)
+    title: Thời gian trễ trung bình (phút)
+  - chart: kpi_chi_phi
+    viz: big_number_total
+    metric: SUM(ChiPhiVanChuyen)
+    title: Tổng chi phí vận chuyển
+  row2_trend:
+  - chart: trend_otif
+    viz: echarts_timeseries_line
+    x: NgayBaoCao
+    metrics:
+    - AVG(TyLeOTIF)
+    - AVG(ChiPhiTrenKg)
+    title: Xu hướng OTIF và chi phí trên kg
+    granularity: day
+  row3_compare:
+  - chart: bar_carrier
+    viz: echarts_timeseries_bar
+    x: TenNhaVanChuyen
+    categorical: true
+    metric: AVG(TyLeOTIF)
+    title: Nhà vận chuyển theo tỷ lệ OTIF
+    sort: desc
+    row_limit: 15
+    orientation: horizontal
+  row4_detail:
+  - chart: table_chi_tiet
+    viz: table
+    columns:
+    - NgayBaoCao
+    - MaNhaVanChuyen
+    - TenNhaVanChuyen
+    - SoChuyenHang
+    - SoDiemGiao
+    - TyLeOTIF
+    - ThoiGianTreTrungBinhPhut
+    - ChiPhiVanChuyen
+    - ChiPhiTrenKg
+    - ChiPhiTrenDiemGiao
+    title: Chi tiết thẻ điểm nhà vận chuyển
+    page_size: 50

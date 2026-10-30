@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -59,11 +60,23 @@ type guestTokenResponse struct {
 	Token string `json:"token"`
 }
 
+// clearSessionLocked drops cached JWT/CSRF (caller must hold mu).
+// Xóa JWT/CSRF cache (caller phải đang giữ mu).
+func (c *Client) clearSessionLocked() {
+	c.accessToken = ""
+	c.csrfToken = ""
+}
+
 func (c *Client) ensureSession(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.loginLocked(ctx)
+}
 
-	if c.accessToken != "" {
+// loginLocked refreshes access + CSRF tokens. Caller must hold mu.
+// Làm mới access + CSRF. Caller phải đang giữ mu.
+func (c *Client) loginLocked(ctx context.Context) error {
+	if c.accessToken != "" && c.csrfToken != "" {
 		return nil
 	}
 
@@ -119,7 +132,35 @@ func (c *Client) ensureSession(ctx context.Context) error {
 
 // GuestToken mints a short-lived embed token / Tạo guest token nhúng dashboard
 func (c *Client) GuestToken(ctx context.Context, dashboardID int) (string, error) {
-	if err := c.ensureSession(ctx); err != nil {
+	// One retry after re-login when admin JWT expired (~15m TTL)
+	// Thử lại sau re-login khi JWT admin hết hạn (~15 phút)
+	token, err := c.guestTokenOnce(ctx, dashboardID)
+	if err == nil {
+		return token, nil
+	}
+	if !isUnauthorized(err) {
+		return "", err
+	}
+	c.mu.Lock()
+	c.clearSessionLocked()
+	c.mu.Unlock()
+	return c.guestTokenOnce(ctx, dashboardID)
+}
+
+func isUnauthorized(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "401") ||
+		strings.Contains(msg, "Token has expired") ||
+		strings.Contains(msg, "Signature has expired")
+}
+
+func (c *Client) guestTokenOnce(ctx context.Context, dashboardID int) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.loginLocked(ctx); err != nil {
 		return "", err
 	}
 
@@ -152,6 +193,10 @@ func (c *Client) GuestToken(ctx context.Context, dashboardID int) (string, error
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
+		// Stale session → clear so caller can re-login / Session cũ → xóa để caller login lại
+		if resp.StatusCode == http.StatusUnauthorized {
+			c.clearSessionLocked()
+		}
 		return "", fmt.Errorf("guest token %d: %s", resp.StatusCode, string(body))
 	}
 

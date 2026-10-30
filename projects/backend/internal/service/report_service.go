@@ -26,6 +26,8 @@ type ReportQuery struct {
 	DocumentType      string
 	OrderStatus       string
 	PaymentMethodName string
+	CarrierId         string
+	SupplierId        string
 	Page              int
 	PageSize          int
 }
@@ -114,6 +116,21 @@ func (s *ReportService) GetKdSummary(
 		OrderStatus:  query.OrderStatus,
 	}
 	return s.repo.GetKdSummary(ctx, query.FromDate, query.ToDate, query.View, filter)
+}
+
+func (s *ReportService) GetSupplyReport(
+	ctx context.Context,
+	query ReportQuery,
+) ([]repository.ReportRow, int64, error) {
+	filter := repository.SupplyFilter{
+		ShopCode:        query.ShopCode,
+		ProductLineCode: query.ProductLineCode,
+		CarrierId:       query.CarrierId,
+		SupplierId:      query.SupplierId,
+	}
+	return s.repo.GetSupplyReport(
+		ctx, query.FromDate, query.ToDate, query.View, filter, query.Page, query.PageSize,
+	)
 }
 
 // GetFinancialDetailFilterOptions returns distinct shop/product values for detail view filters

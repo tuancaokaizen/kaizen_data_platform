@@ -1,0 +1,69 @@
+id: db_supply_inventory
+title: Sức khỏe tồn kho theo cửa hàng và ngành hàng
+dataset: v_bao_cao_suc_khoe_ton_kho_tong_hop
+slug: suc-khoe-ton-kho-cua-hang-nganh-hang
+description: Tồn kho, tỷ lệ hết hàng và tỷ lệ đáp ứng theo ngày × cửa hàng × ngành hàng
+native_filters:
+- column: NgayBaoCao
+  type: filter_time
+  label: Khoảng ngày
+  required: true
+  default: Last 30 days
+- column: MaCuaHang
+  type: filter_select
+  label: Cửa hàng
+  multi: true
+  select_all: true
+- column: MaNganhHang
+  type: filter_select
+  label: Ngành hàng
+  multi: true
+  select_all: true
+layout:
+  row1_kpi:
+  - chart: kpi_gia_tri_ton
+    viz: big_number_total
+    metric: SUM(GiaTriTon)
+    title: Giá trị tồn
+  - chart: kpi_ty_le_het_hang
+    viz: big_number_total
+    metric: AVG(TyLeHetHang)
+    title: Tỷ lệ hết hàng trung bình
+  - chart: kpi_ty_le_dap_ung
+    viz: big_number_total
+    metric: AVG(TyLeDapUng)
+    title: Tỷ lệ đáp ứng trung bình
+  row2_trend:
+  - chart: trend_ton
+    viz: echarts_timeseries_line
+    x: NgayBaoCao
+    metrics:
+    - SUM(GiaTriTon)
+    - SUM(SoLuongMatBan)
+    title: Xu hướng giá trị tồn và mất bán
+    granularity: day
+  row3_compare:
+  - chart: bar_top_shop
+    viz: echarts_timeseries_bar
+    x: TenCuaHang
+    categorical: true
+    metric: SUM(GiaTriTon)
+    title: Top cửa hàng theo giá trị tồn
+    sort: desc
+    row_limit: 15
+    orientation: horizontal
+  row4_detail:
+  - chart: table_chi_tiet
+    viz: table
+    columns:
+    - NgayBaoCao
+    - MaCuaHang
+    - TenCuaHang
+    - TenNganhHang
+    - SoLuongTon
+    - GiaTriTon
+    - TyLeHetHang
+    - SoNgayDuHangTrungBinh
+    - TyLeDapUng
+    title: Chi tiết sức khỏe tồn kho
+    page_size: 50

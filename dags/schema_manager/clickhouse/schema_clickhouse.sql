@@ -280,3 +280,166 @@ ORDER BY ShipmentId
 -- Trips older than 30 days are only needed in the lakehouse / Chuyến quá 30 ngày chỉ cần trong lakehouse
 TTL ShipmentDate + INTERVAL 30 DAY DELETE
 SETTINGS ttl_only_drop_parts = 1;
+
+-- ============================================================================
+-- Supply chain serving reports (Spark PublishReportToClickHouse → report.*; cold stub serving.*)
+-- Báo cáo chuỗi cung ứng (Spark đẩy hot vào report.*; stub cold serving.*)
+-- Hot windows: inventory/capacity 30d, carrier 90d, supplier 365d
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS report.inventory_health (
+    ReportDate Date,
+    ShopCode String,
+    ShopName String,
+    ProductLineCode String,
+    ProductLineName String,
+    OnHandQuantity Int64,
+    OnHandValue Int64,
+    OnHandVolumeM3 Float64,
+    ExpiredQuantity Int64,
+    SkuCount Int64,
+    StockoutSkuCount Int64,
+    StockoutRate Float64,
+    AverageDaysOfSupply Float64,
+    RequestedQuantity Int64,
+    LostQuantity Int64,
+    LostRevenueEstimate Int64,
+    FillRate Float64
+) ENGINE = ReplacingMergeTree()
+ORDER BY (ReportDate, ShopCode, ProductLineCode);
+
+-- Cold stub (Iceberg engine can replace later) / Stub cold (có thể đổi sang Iceberg sau)
+CREATE TABLE IF NOT EXISTS serving.inventory_health (
+    ReportDate Date,
+    ShopCode String,
+    ShopName String,
+    ProductLineCode String,
+    ProductLineName String,
+    OnHandQuantity Int64,
+    OnHandValue Int64,
+    OnHandVolumeM3 Float64,
+    ExpiredQuantity Int64,
+    SkuCount Int64,
+    StockoutSkuCount Int64,
+    StockoutRate Float64,
+    AverageDaysOfSupply Float64,
+    RequestedQuantity Int64,
+    LostQuantity Int64,
+    LostRevenueEstimate Int64,
+    FillRate Float64
+) ENGINE = ReplacingMergeTree()
+ORDER BY (ReportDate, ShopCode, ProductLineCode);
+
+CREATE TABLE IF NOT EXISTS report.shop_capacity_utilization (
+    ReportDate Date,
+    ShopCode String,
+    ShopName String,
+    OnHandVolumeM3 Float64,
+    OnHandValue Int64,
+    StorageM3 Float64,
+    ColdStorageL Int32,
+    ShelfSlots Int32,
+    ReceivingSlotsPerDay Int32,
+    ReceivingCount Int64,
+    OverCapacitySkuCount Int64,
+    StorageUtilization Float64,
+    ReceivingUtilization Float64
+) ENGINE = ReplacingMergeTree()
+ORDER BY (ReportDate, ShopCode);
+
+CREATE TABLE IF NOT EXISTS serving.shop_capacity_utilization (
+    ReportDate Date,
+    ShopCode String,
+    ShopName String,
+    OnHandVolumeM3 Float64,
+    OnHandValue Int64,
+    StorageM3 Float64,
+    ColdStorageL Int32,
+    ShelfSlots Int32,
+    ReceivingSlotsPerDay Int32,
+    ReceivingCount Int64,
+    OverCapacitySkuCount Int64,
+    StorageUtilization Float64,
+    ReceivingUtilization Float64
+) ENGINE = ReplacingMergeTree()
+ORDER BY (ReportDate, ShopCode);
+
+CREATE TABLE IF NOT EXISTS report.carrier_scorecard (
+    ReportDate Date,
+    CarrierId String,
+    CarrierName String,
+    ShipmentCount Int64,
+    StopCount Int64,
+    DeliveredStopCount Int64,
+    OnTimeStopCount Int64,
+    OnTimeInFullStopCount Int64,
+    OnTimeInFullRate Float64,
+    AverageDelayMinutes Float64,
+    TransportCost Int64,
+    TotalWeightKg Float64,
+    TotalVolumeM3 Float64,
+    CostPerKg Float64,
+    CostPerStop Float64,
+    AverageWeightLoadFactor Float64,
+    AverageVolumeLoadFactor Float64
+) ENGINE = ReplacingMergeTree()
+ORDER BY (ReportDate, CarrierId);
+
+CREATE TABLE IF NOT EXISTS serving.carrier_scorecard (
+    ReportDate Date,
+    CarrierId String,
+    CarrierName String,
+    ShipmentCount Int64,
+    StopCount Int64,
+    DeliveredStopCount Int64,
+    OnTimeStopCount Int64,
+    OnTimeInFullStopCount Int64,
+    OnTimeInFullRate Float64,
+    AverageDelayMinutes Float64,
+    TransportCost Int64,
+    TotalWeightKg Float64,
+    TotalVolumeM3 Float64,
+    CostPerKg Float64,
+    CostPerStop Float64,
+    AverageWeightLoadFactor Float64,
+    AverageVolumeLoadFactor Float64
+) ENGINE = ReplacingMergeTree()
+ORDER BY (ReportDate, CarrierId);
+
+CREATE TABLE IF NOT EXISTS report.supplier_performance (
+    ReportDate Date,
+    SupplierId String,
+    SupplierName String,
+    PurchaseLineCount Int64,
+    ReceivedLineCount Int64,
+    OnTimeLineCount Int64,
+    OnTimeRate Float64,
+    AverageLeadTimeDays Float64,
+    AveragePromisedLeadTimeDays Float64,
+    LeadTimeVarianceDays Float64,
+    AverageFillRate Float64,
+    OrderedQuantity Int64,
+    ReceivedQuantity Int64,
+    OrderedAmount Int64,
+    ReceivedAmount Int64
+) ENGINE = ReplacingMergeTree()
+ORDER BY (ReportDate, SupplierId);
+
+CREATE TABLE IF NOT EXISTS serving.supplier_performance (
+    ReportDate Date,
+    SupplierId String,
+    SupplierName String,
+    PurchaseLineCount Int64,
+    ReceivedLineCount Int64,
+    OnTimeLineCount Int64,
+    OnTimeRate Float64,
+    AverageLeadTimeDays Float64,
+    AveragePromisedLeadTimeDays Float64,
+    LeadTimeVarianceDays Float64,
+    AverageFillRate Float64,
+    OrderedQuantity Int64,
+    ReceivedQuantity Int64,
+    OrderedAmount Int64,
+    ReceivedAmount Int64
+) ENGINE = ReplacingMergeTree()
+ORDER BY (ReportDate, SupplierId);

@@ -233,6 +233,166 @@ export function getColumnsForView(viewKey: ReportViewKey): ColumnsType<ReportRow
           render: (value?: number) => (value === 1 ? "Có" : value === 0 ? "Không" : "-")
         }
       ];
+    case "supply:inventory":
+      return [
+        dateCol,
+        ...shopCols,
+        {
+          title: "Mã ngành hàng",
+          dataIndex: "productLineCode",
+          width: 140,
+          render: formatProductLine
+        },
+        {
+          title: "Tên ngành hàng",
+          dataIndex: "productLineName",
+          width: 180,
+          ellipsis: true
+        },
+        { title: "Số lượng tồn", dataIndex: "onHandQuantity", render: numCell, align: "right", width: 120 },
+        { title: "Giá trị tồn", dataIndex: "onHandValue", render: numCell, align: "right", width: 130 },
+        { title: "Thể tích tồn (m³)", dataIndex: "onHandVolumeM3", render: numCell, align: "right", width: 140 },
+        { title: "Số lượng hết hạn", dataIndex: "expiredQuantity", render: numCell, align: "right", width: 130 },
+        { title: "Số mặt hàng", dataIndex: "skuCount", render: numCell, align: "right", width: 110 },
+        { title: "Số mặt hàng hết hàng", dataIndex: "stockoutSkuCount", render: numCell, align: "right", width: 160 },
+        { title: "Tỷ lệ hết hàng", dataIndex: "stockoutRate", render: numCell, align: "right", width: 120 },
+        {
+          title: "Số ngày đủ hàng trung bình",
+          dataIndex: "averageDaysOfSupply",
+          render: numCell,
+          align: "right",
+          width: 180
+        },
+        { title: "Số lượng yêu cầu", dataIndex: "requestedQuantity", render: numCell, align: "right", width: 130 },
+        { title: "Số lượng mất bán", dataIndex: "lostQuantity", render: numCell, align: "right", width: 130 },
+        {
+          title: "Doanh thu mất ước tính",
+          dataIndex: "lostRevenueEstimate",
+          render: numCell,
+          align: "right",
+          width: 160
+        },
+        { title: "Tỷ lệ đáp ứng", dataIndex: "fillRate", render: numCell, align: "right", width: 120 }
+      ];
+    case "supply:capacity":
+      return [
+        dateCol,
+        ...shopCols,
+        { title: "Thể tích tồn (m³)", dataIndex: "onHandVolumeM3", render: numCell, align: "right", width: 140 },
+        { title: "Giá trị tồn", dataIndex: "onHandValue", render: numCell, align: "right", width: 130 },
+        { title: "Sức chứa kho (m³)", dataIndex: "storageM3", render: numCell, align: "right", width: 140 },
+        { title: "Sức chứa kho lạnh (lít)", dataIndex: "coldStorageL", render: numCell, align: "right", width: 160 },
+        { title: "Số kệ hàng", dataIndex: "shelfSlots", render: numCell, align: "right", width: 110 },
+        {
+          title: "Slot nhận hàng mỗi ngày",
+          dataIndex: "receivingSlotsPerDay",
+          render: numCell,
+          align: "right",
+          width: 170
+        },
+        { title: "Số lượt nhận hàng", dataIndex: "receivingCount", render: numCell, align: "right", width: 140 },
+        {
+          title: "Số mặt hàng vượt sức chứa",
+          dataIndex: "overCapacitySkuCount",
+          render: numCell,
+          align: "right",
+          width: 180
+        },
+        { title: "Tỷ lệ sử dụng kho", dataIndex: "storageUtilization", render: numCell, align: "right", width: 140 },
+        {
+          title: "Tỷ lệ sử dụng slot nhận",
+          dataIndex: "receivingUtilization",
+          render: numCell,
+          align: "right",
+          width: 170
+        }
+      ];
+    case "supply:carrier":
+      return [
+        dateCol,
+        { title: "Mã nhà vận chuyển", dataIndex: "carrierId", width: 140 },
+        { title: "Tên nhà vận chuyển", dataIndex: "carrierName", width: 200, ellipsis: true },
+        { title: "Số chuyến hàng", dataIndex: "shipmentCount", render: numCell, align: "right", width: 120 },
+        { title: "Số điểm giao", dataIndex: "stopCount", render: numCell, align: "right", width: 120 },
+        { title: "Số điểm đã giao", dataIndex: "deliveredStopCount", render: numCell, align: "right", width: 130 },
+        { title: "Số điểm đúng hạn", dataIndex: "onTimeStopCount", render: numCell, align: "right", width: 130 },
+        {
+          title: "Số điểm đúng hạn đủ hàng",
+          dataIndex: "onTimeInFullStopCount",
+          render: numCell,
+          align: "right",
+          width: 180
+        },
+        { title: "Tỷ lệ đúng hạn đủ hàng", dataIndex: "onTimeInFullRate", render: numCell, align: "right", width: 160 },
+        {
+          title: "Thời gian trễ trung bình (phút)",
+          dataIndex: "averageDelayMinutes",
+          render: numCell,
+          align: "right",
+          width: 200
+        },
+        { title: "Chi phí vận chuyển", dataIndex: "transportCost", render: numCell, align: "right", width: 140 },
+        { title: "Tổng trọng lượng (kg)", dataIndex: "totalWeightKg", render: numCell, align: "right", width: 150 },
+        { title: "Tổng thể tích (m³)", dataIndex: "totalVolumeM3", render: numCell, align: "right", width: 140 },
+        { title: "Chi phí trên kg", dataIndex: "costPerKg", render: numCell, align: "right", width: 120 },
+        { title: "Chi phí trên điểm giao", dataIndex: "costPerStop", render: numCell, align: "right", width: 160 },
+        {
+          title: "Hệ số chất tải trọng lượng",
+          dataIndex: "averageWeightLoadFactor",
+          render: numCell,
+          align: "right",
+          width: 180
+        },
+        {
+          title: "Hệ số chất tải thể tích",
+          dataIndex: "averageVolumeLoadFactor",
+          render: numCell,
+          align: "right",
+          width: 170
+        }
+      ];
+    case "supply:supplier":
+      return [
+        dateCol,
+        { title: "Mã nhà cung cấp", dataIndex: "supplierId", width: 140 },
+        { title: "Tên nhà cung cấp", dataIndex: "supplierName", width: 200, ellipsis: true },
+        { title: "Số dòng đơn mua", dataIndex: "purchaseLineCount", render: numCell, align: "right", width: 130 },
+        { title: "Số dòng đã nhận", dataIndex: "receivedLineCount", render: numCell, align: "right", width: 130 },
+        { title: "Số dòng đúng hạn", dataIndex: "onTimeLineCount", render: numCell, align: "right", width: 130 },
+        { title: "Tỷ lệ đúng hạn", dataIndex: "onTimeRate", render: numCell, align: "right", width: 120 },
+        {
+          title: "Lead time thực tế (ngày)",
+          dataIndex: "averageLeadTimeDays",
+          render: numCell,
+          align: "right",
+          width: 170
+        },
+        {
+          title: "Lead time cam kết (ngày)",
+          dataIndex: "averagePromisedLeadTimeDays",
+          render: numCell,
+          align: "right",
+          width: 180
+        },
+        {
+          title: "Chênh lệch lead time (ngày)",
+          dataIndex: "leadTimeVarianceDays",
+          render: numCell,
+          align: "right",
+          width: 190
+        },
+        {
+          title: "Tỷ lệ đáp ứng trung bình",
+          dataIndex: "averageFillRate",
+          render: numCell,
+          align: "right",
+          width: 170
+        },
+        { title: "Số lượng đặt", dataIndex: "orderedQuantity", render: numCell, align: "right", width: 120 },
+        { title: "Số lượng nhận", dataIndex: "receivedQuantity", render: numCell, align: "right", width: 120 },
+        { title: "Giá trị đặt", dataIndex: "orderedAmount", render: numCell, align: "right", width: 120 },
+        { title: "Giá trị nhận", dataIndex: "receivedAmount", render: numCell, align: "right", width: 120 }
+      ];
     default:
       return [dateCol, ...shopCols, ...financialMetricColumns];
   }
@@ -242,10 +402,13 @@ export function rowKeyForView(viewKey: ReportViewKey, row: ReportRow, index: num
   const parts = [row.reportDate, viewKey, String(index)];
   if (row.shopCode) parts.push(row.shopCode);
   if (row.productId) parts.push(row.productId);
+  if (row.productLineCode) parts.push(row.productLineCode);
   if (row.orderId) parts.push(row.orderId);
   if (row.paymentMethodName) parts.push(row.paymentMethodName);
   if (row.paymentMethodSummary) parts.push(row.paymentMethodSummary);
   if (row.documentType) parts.push(row.documentType);
+  if (row.carrierId) parts.push(row.carrierId);
+  if (row.supplierId) parts.push(row.supplierId);
   return parts.join("-");
 }
 

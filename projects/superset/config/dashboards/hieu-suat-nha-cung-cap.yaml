@@ -1,0 +1,66 @@
+id: db_supply_supplier
+title: Hiệu suất nhà cung cấp
+dataset: v_bao_cao_hieu_suat_nha_cung_cap_tong_hop
+slug: hieu-suat-nha-cung-cap
+description: Lead time, tỷ lệ đúng hạn và tỷ lệ đáp ứng theo tháng × nhà cung cấp
+native_filters:
+- column: NgayBaoCao
+  type: filter_time
+  label: Khoảng ngày
+  required: true
+  default: Last year
+- column: MaNhaCungCap
+  type: filter_select
+  label: Nhà cung cấp
+  multi: true
+  select_all: true
+layout:
+  row1_kpi:
+  - chart: kpi_dung_han
+    viz: big_number_total
+    metric: AVG(TyLeDungHan)
+    title: Tỷ lệ đúng hạn trung bình
+  - chart: kpi_dap_ung
+    viz: big_number_total
+    metric: AVG(TyLeDapUngTrungBinh)
+    title: Tỷ lệ đáp ứng trung bình
+  - chart: kpi_gia_tri_nhan
+    viz: big_number_total
+    metric: SUM(GiaTriNhan)
+    title: Tổng giá trị nhận
+  row2_trend:
+  - chart: trend_lead_time
+    viz: echarts_timeseries_line
+    x: NgayBaoCao
+    metrics:
+    - AVG(LeadTimeThucTeNgay)
+    - AVG(LeadTimeCamKetNgay)
+    title: Lead time thực tế so với cam kết
+    granularity: day
+  row3_compare:
+  - chart: bar_supplier
+    viz: echarts_timeseries_bar
+    x: TenNhaCungCap
+    categorical: true
+    metric: AVG(TyLeDungHan)
+    title: Nhà cung cấp theo tỷ lệ đúng hạn
+    sort: desc
+    row_limit: 15
+    orientation: horizontal
+  row4_detail:
+  - chart: table_chi_tiet
+    viz: table
+    columns:
+    - NgayBaoCao
+    - MaNhaCungCap
+    - TenNhaCungCap
+    - SoDongDonMua
+    - SoDongDaNhan
+    - TyLeDungHan
+    - LeadTimeThucTeNgay
+    - LeadTimeCamKetNgay
+    - ChenhLechLeadTimeNgay
+    - TyLeDapUngTrungBinh
+    - GiaTriNhan
+    title: Chi tiết hiệu suất nhà cung cấp
+    page_size: 50

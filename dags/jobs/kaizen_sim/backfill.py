@@ -37,9 +37,9 @@ HOUR_WEIGHTS = {
     17: 0.09, 18: 0.11, 19: 0.10, 20: 0.08, 21: 0.05,
 }
 
-# Historical / backfill ids use ORD-… (data_model_v2); stream live uses SORD-… — never collide.
-# Id lịch sử / backfill dùng ORD-… (data_model_v2); stream live dùng SORD-… — không trùng.
-ID_PREFIX = "ORD"
+# Historical / backfill ids use BORD-…; stream live uses SORD-… — never collide.
+# Id lịch sử / backfill dùng BORD-…; stream live dùng SORD-… — không trùng.
+ID_PREFIX = "BORD"
 
 
 def _parse_date(text: str) -> date:
@@ -90,13 +90,14 @@ def gap_days(existing: dict[date, int], days: Iterable[date], target: int) -> di
 
 
 def _new_id(kind: str, day: date, shop: str, index: int, line: int = 0) -> str:
-    """Build a deterministic id: ORD-/OI-/PAY-/TX-/OP- with yyyymmdd + shop + seq (legacy style).
-    Sinh id tất định: ORD-/OI-/PAY-/TX-/OP- với yyyymmdd + shop + seq (kiểu legacy).
+    """Build a deterministic id: BORD-/OI-/PAY-/TX-/OP- with yyyymmdd + shop + seq.
+    Sinh id tất định: BORD-/OI-/PAY-/TX-/OP- với yyyymmdd + shop + seq.
     """
     ymd = day.strftime("%Y%m%d")
     seq = f"{index:05d}"
     if kind == "ORD":
-        return f"ORD-{ymd}-{shop}-{seq}"
+        # Batch prefix BORD vs stream SORD / Tiền tố batch BORD đối lập stream SORD
+        return f"{ID_PREFIX}-{ymd}-{shop}-{seq}"
     if kind == "OI":
         return f"OI-{ymd}-{shop}-{seq}-{line:02d}"
     if kind == "PAY":
@@ -145,8 +146,8 @@ def _existing_counts(cur, from_date: date, to_date: date) -> dict[date, int]:
 
 
 def _insert_orders(cur, day: date, count: int, masters: dict, start_index: int = 0) -> int:
-    """Insert `count` orders; seq starts at start_index so FILL_GAP does not reuse ORD-…-seq.
-    Chèn `count` đơn; seq bắt đầu từ start_index để FILL_GAP không tái sử dụng ORD-…-seq.
+    """Insert `count` orders; seq starts at start_index so FILL_GAP does not reuse BORD-…-seq.
+    Chèn `count` đơn; seq bắt đầu từ start_index để FILL_GAP không tái sử dụng BORD-…-seq.
     """
     if count <= 0:
         return 0
@@ -230,26 +231,30 @@ def run(
     days = days_in_range(from_date, to_date)
     summary = {"mode": mode, "days": 0, "orders": 0, "per_day": {}}
 
+    # Commit per day so long windows survive and progress is visible
+    # Commit từng ngày để cửa sổ dài không mất hết và thấy tiến độ
     with db.connection() as conn:
-        def work(cur):
+        with conn.cursor() as cur:
             masters = _load_masters(cur)
             existing = _existing_counts(cur, from_date, to_date) if mode == "FILL_GAP" else {}
-            plan = (
-                gap_days(existing, days, target_orders_per_day)
-                if mode == "FILL_GAP"
-                else {day: target_orders_per_day for day in days}
-            )
-            total = 0
-            for day, need in sorted(plan.items()):
-                # Seq continues after rows already on that day (ORD or SORD) / Seq nối tiếp số dòng đã có trong ngày
-                n = _insert_orders(cur, day, need, masters, start_index=existing.get(day, 0))
-                summary["per_day"][day.isoformat()] = n
-                total += n
-            summary["days"] = len(plan)
-            summary["orders"] = total
-            return summary
+        conn.commit()
+        plan = (
+            gap_days(existing, days, target_orders_per_day)
+            if mode == "FILL_GAP"
+            else {day: target_orders_per_day for day in days}
+        )
+        total = 0
+        for day, need in sorted(plan.items()):
+            def work(cur, day=day, need=need):
+                # Seq continues after rows already on that day / Seq nối tiếp số dòng đã có trong ngày
+                return _insert_orders(cur, day, need, masters, start_index=existing.get(day, 0))
 
-        db.retry(conn, work)
+            n = db.retry(conn, work)
+            summary["per_day"][day.isoformat()] = n
+            total += n
+            log.info("backfill day %s orders=%s (running total=%s)", day, n, total)
+        summary["days"] = len(plan)
+        summary["orders"] = total
 
     if run_daily_close:
         now = datetime.now(ICT)

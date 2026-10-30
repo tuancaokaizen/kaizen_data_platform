@@ -36,3 +36,19 @@ dashboards:
     report_key: kd:order
     title: Tình hình kinh doanh realtime theo đơn
     chart_label: THKD realtime
+  - slug: suc-khoe-ton-kho-cua-hang-nganh-hang
+    report_key: supply:inventory
+    title: Sức khỏe tồn kho theo cửa hàng và ngành hàng
+    chart_label: Tồn kho
+  - slug: muc-su-dung-cong-suat-cua-hang
+    report_key: supply:capacity
+    title: Mức sử dụng công suất cửa hàng
+    chart_label: Công suất CH
+  - slug: the-diem-nha-van-chuyen
+    report_key: supply:carrier
+    title: Thẻ điểm nhà vận chuyển
+    chart_label: Nhà vận chuyển
+  - slug: hieu-suat-nha-cung-cap
+    report_key: supply:supplier
+    title: Hiệu suất nhà cung cấp
+    chart_label: Nhà cung cấp
