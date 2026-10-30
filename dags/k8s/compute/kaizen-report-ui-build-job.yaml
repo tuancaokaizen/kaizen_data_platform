@@ -1,0 +1,67 @@
+# One-shot build Job on k3s (amd64): npm + go → /data/artifacts
+# Job build một lần trên k3s (amd64): npm + go → /data/artifacts
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kaizen-report-ui-build
+  namespace: compute
+  labels:
+    app: kaizen-report-ui
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: kaizen-report-ui
+        job: build
+    spec:
+      restartPolicy: Never
+      # Prefer control-plane or any amd64 node / Ưu tiên node amd64 bất kỳ
+      containers:
+        - name: build
+          image: golang:1.22-bookworm
+          imagePullPolicy: IfNotPresent
+          workingDir: /data/context
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              echo "=== Install Node 20 ==="
+              apt-get update -qq
+              apt-get install -y -qq curl ca-certificates gnupg >/dev/null
+              curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+              apt-get install -y -qq nodejs >/dev/null
+              node -v && npm -v && go version
+
+              echo "=== Build frontend ==="
+              cd /data/context/frontend
+              npm ci
+              VITE_API_BASE_URL= npm run build
+
+              echo "=== Build backend (linux/amd64) ==="
+              cd /data/context/backend
+              CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /data/artifacts/kaizen-report-api ./cmd/api
+
+              echo "=== Stage static ==="
+              rm -rf /data/artifacts/static
+              mkdir -p /data/artifacts/static
+              cp -a /data/context/frontend/dist/. /data/artifacts/static/
+              chmod 755 /data/artifacts/kaizen-report-api
+              chown -R 1000:1000 /data/artifacts || true
+              ls -lah /data/artifacts /data/artifacts/static | head -40
+              echo "=== Build done ==="
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 3Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kaizen-report-ui-data

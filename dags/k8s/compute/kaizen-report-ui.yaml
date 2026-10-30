@@ -1,0 +1,117 @@
+# Kaizen Report Dashboard — run pod (artifacts from PVC built by Job on k3s).
+# Dashboard báo cáo — pod chạy (artifact từ PVC do Job build trên k3s).
+# PVC: kaizen-report-ui-pvc.yaml | Build: kaizen-report-ui-build-job.yaml
+# Deploy: dags/k8s/compute/deploy_report_ui.sh
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kaizen-report-ui
+  namespace: compute
+  labels:
+    app: kaizen-report-ui
+    app.kubernetes.io/name: kaizen-report-ui
+    app.kubernetes.io/part-of: kaizen-data-platform
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kaizen-report-ui
+  template:
+    metadata:
+      labels:
+        app: kaizen-report-ui
+        app.kubernetes.io/name: kaizen-report-ui
+      annotations:
+        kaizen/code-sha: "__CODE_SHA__"
+    spec:
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+      containers:
+        - name: report
+          # Public base image — binary + SPA come from PVC built by the Job
+          # Image public — binary + SPA lấy từ PVC do Job build
+          image: alpine:3.20
+          imagePullPolicy: IfNotPresent
+          command: ["/data/artifacts/kaizen-report-api"]
+          ports:
+            - name: http
+              containerPort: 8090
+          env:
+            - name: API_PORT
+              value: "8090"
+            - name: STATIC_DIR
+              value: /data/artifacts/static
+            - name: CLICKHOUSE_HOST
+              value: clickhouse-service.databases.svc.cluster.local
+            - name: CLICKHOUSE_PORT
+              value: "9000"
+            - name: CLICKHOUSE_DATABASE
+              value: report
+            - name: CLICKHOUSE_USER
+              value: admin
+            - name: CLICKHOUSE_PASSWORD
+              value: "kaizen123"
+            # In-cluster Superset (apps/apache-superset:8888) / Superset trong cluster
+            - name: SUPERSET_HOST
+              value: http://apache-superset.apps.svc.cluster.local:8888
+            - name: SUPERSET_USERNAME
+              value: admin
+            - name: SUPERSET_PASSWORD
+              value: admin
+            # Browser iframe via Tailscale NodePort (fallback; FE prefers window.hostname:32288)
+            # Iframe qua Tailscale NodePort (FE ưu tiên hostname hiện tại:32288)
+            - name: SUPERSET_EMBED_DOMAIN
+              value: http://100.104.250.97:32288
+            - name: QUERY_TIMEOUT_SECONDS
+              value: "30"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kaizen-report-ui-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kaizen-report-ui
+  namespace: compute
+  labels:
+    app: kaizen-report-ui
+    app.kubernetes.io/name: kaizen-report-ui
+spec:
+  type: NodePort
+  selector:
+    app: kaizen-report-ui
+  ports:
+    - name: http
+      port: 8090
+      targetPort: http
+      nodePort: 31090

@@ -80,3 +80,8 @@ docs/
 # Local check and setup scripts at root level
 /*.sh
 /.scalafmt.conf
+
+# Marp export toolchain (local Node 20 + npm)
+docs/slides/.tools/
+docs/slides/package-lock.json
+docs/slides/package.json
