@@ -1,0 +1,154 @@
+id: db_customer_rfm
+title: Phân loại khách hàng theo gần đây, tần suất và doanh thu
+dataset: v_phan_khuc_khach_hang
+slug: khach-hang-phan-khuc-rfm
+description: Phân khúc theo số ngày mua gần nhất, số đơn và doanh thu thuần; khách mới được dự đoán bằng mô hình học máy
+color_scheme: modernSunset
+native_filters:
+- column: NgayChot
+  type: filter_time
+  label: Ngày chốt
+  required: true
+  default: Last 7 days
+- column: TenPhanKhuc
+  type: filter_select
+  label: Phân khúc khách hàng
+  multi: true
+  select_all: true
+- column: NguonNhan
+  type: filter_select
+  label: Nguồn nhãn phân loại
+  multi: true
+  select_all: true
+layout:
+  row1_kpi:
+  - chart: kpi_khach
+    viz: big_number_total
+    metric: COUNT(DISTINCT MaKhachHang)
+    title: Số khách hàng
+  - chart: kpi_doanh_thu
+    viz: big_number_total
+    metric: SUM(DoanhThuThuan)
+    title: Doanh thu thuần (VNĐ)
+  - chart: kpi_don_tb
+    viz: big_number_total
+    metric: AVG(SoDon)
+    title: Số đơn trung bình mỗi khách
+
+  row2_portfolio:
+  - chart: treemap_segment
+    viz: treemap_v2
+    groupby:
+    - TenPhanKhuc
+    metric: COUNT(DISTINCT MaKhachHang)
+    title: Quy mô phân khúc (treemap — ô lớn = nhiều khách hơn)
+    color_scheme: modernSunset
+    row_limit: 20
+    height: 72
+  - chart: donut_revenue
+    viz: pie
+    groupby:
+    - TenPhanKhuc
+    metric: SUM(DoanhThuThuan)
+    title: Tỷ trọng doanh thu thuần (donut)
+    donut: true
+    color_scheme: modernSunset
+    time_column: NgayChot
+
+  # heatmap_v2 không đăng ký trên cluster → dùng treemap 2 tầng điểm R×F
+  # heatmap_v2 not registered on cluster → nested treemap of R×F scores
+  row3_rank_rfm:
+  - chart: bar_revenue_avg
+    dataset: v_thong_ke_phan_khuc
+    viz: echarts_timeseries_bar
+    x: TenPhanKhuc
+    categorical: true
+    metric: AVG(DoanhThuTB)
+    title: Doanh thu trung bình theo phân khúc (lớn → nhỏ)
+    sort: desc
+    orientation: horizontal
+    color_scheme: modernSunset
+    time_column: NgayChot
+    height: 64
+  # No color legend needed: color = category group, not a metric scale.
+  # Không cần legend màu: màu = nhóm điểm, không phải thang metric.
+  # Labels are raw scores 1–5 → title must explain hierarchy (outer R, inner F).
+  # Nhãn chỉ là điểm 1–5 → title phải giải thích (ngoài = gần đây, trong = tần suất).
+  - chart: treemap_rfm_scores
+    viz: treemap_v2
+    groupby:
+    - DiemR
+    - DiemF
+    metric: COUNT(DISTINCT MaKhachHang)
+    title: "Mật độ khách — ô ngoài: điểm gần đây (1→5), ô trong: điểm tần suất (1→5)"
+    color_scheme: modernSunset
+    row_limit: 50
+    height: 68
+
+
+  row4_stats:
+  - chart: bar_recency
+    dataset: v_thong_ke_phan_khuc
+    viz: echarts_timeseries_bar
+    x: TenPhanKhuc
+    categorical: true
+    metric: AVG(NgayGanNhatTB)
+    title: Số ngày mua gần nhất TB (lớn → nhỏ = lâu hơn)
+    sort: desc
+    orientation: horizontal
+    color_scheme: modernSunset
+    time_column: NgayChot
+  - chart: treemap_share
+    dataset: v_thong_ke_phan_khuc
+    viz: treemap_v2
+    groupby:
+    - TenPhanKhuc
+    metric: AVG(TyTrongPct)
+    title: Tỷ trọng khách theo phân khúc (treemap)
+    color_scheme: modernSunset
+    row_limit: 20
+
+  row5_profile_table:
+  - chart: table_stats
+    dataset: v_thong_ke_phan_khuc
+    viz: table
+    columns:
+    - NgayChot
+    - TenPhanKhuc
+    - SoKhach
+    - NgayGanNhatTB
+    - SoDonTB
+    - DoanhThuTB
+    - DoanhThuP50
+    - TyTrongPct
+    - TuoiTB
+    - TyLeNuPct
+    - TyLeNamPct
+    order_by: SoKhach
+    sort: desc
+    title: Thống kê mô tả theo phân khúc (sắp theo số khách giảm dần)
+    page_size: 20
+    time_column: NgayChot
+
+  row6_detail:
+  - chart: table_customers
+    viz: table
+    columns:
+    - NgayChot
+    - MaKhachHang
+    - TenPhanKhuc
+    - NguonNhan
+    - SoNgayGanNhat
+    - SoDon
+    - DoanhThuThuan
+    - DiemR
+    - DiemF
+    - DiemM
+    - Tuoi
+    - GioiTinh
+    - TapHuanLuyen
+    order_by: DoanhThuThuan
+    sort: desc
+    title: Chi tiết khách hàng theo phân khúc (sắp theo doanh thu giảm dần)
+    page_size: 50
+    time_column: NgayChot

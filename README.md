@@ -54,10 +54,11 @@ flowchart TD
         DAG_M["spark_master_data_ingest"]
         DAG_I["spark_transaction_data_ingest"]
         DAG_T["spark_dw_transform"]
-        DAG_SIL["sil_daily_pipeline"]
+        DAG_SIL["kaizen_lakehouse_daily"]
         DAG_MA["spark_dw_maintenance"]
+        DAG_AN["kaizen_analytics_pipeline"]
     end
-    class DAG_M,DAG_I,DAG_T,DAG_SIL,DAG_MA airflow;
+    class DAG_M,DAG_I,DAG_T,DAG_SIL,DAG_MA,DAG_AN airflow;
 
     subgraph BATCH ["Batch (Spark)"]
         INGEST["GenericIngestJob"]
@@ -101,11 +102,15 @@ flowchart TD
     SRV_TBL --> PUSH --> CH
     DAG_MA --> MAINT
     MAINT --> FND & DW & STG
+    DW --> DAG_AN
+    DAG_AN --> CH
 
     CH --> UI
 ```
 
-**Luồng báo cáo:** Spark transform → `nessie.srv.*` → `PushServingToClickHouseJob` → ClickHouse `report.*` → Go API → React UI.
+**Luồng báo cáo vận hành:** Spark transform → `nessie.srv.*` → `PushServingToClickHouseJob` → ClickHouse `report.*` → Go API → React UI / Superset.
+
+**Luồng DSS (analytics):** `kaizen_analytics_pipeline` đọc DW → RFM + FP-Growth + PuLP bổ sung tồn → ghi `report.customer_segment` / `association_rule` / `replenishment_plan` (+ derived facts `dw.fact_*`).
 
 ---
 
@@ -114,18 +119,19 @@ flowchart TD
 ```text
 kaizen_data_platform/
 ├── dags/                              # Airflow DAGs & jobs (sync lên MinIO)
-│   ├── jobs/                          # Python jobs, table_configs.yaml, clickhouse_utils
-│   ├── pipelines/                     # DAG definitions
+│   ├── jobs/                          # Python jobs (sim, lakehouse, kaizen_analytics)
+│   ├── pipelines/                     # DAG definitions (incl. kaizen_analytics_pipeline)
 │   ├── schema_manager/clickhouse/     # DDL bundled cho Airflow (sync cùng DAGs)
 │   ├── deploy_airflow.sh              # Upload DAGs → MinIO bucket airflow
 │   └── config.k3s-new                 # kubeconfig (gitignore — copy thủ công)
 │
 ├── projects/
 │   ├── stream-processing/             # Flink (Java) + deploy_stream.sh
-│   ├── batch-processing/                # Spark (Scala) + deploy_batch.sh
-│   ├── backend/                         # Go Report API
-│   ├── frontend/                        # React + Vite Report UI
-│   └── run_local.sh                     # Một lệnh: CH + backend + frontend
+│   ├── batch-processing/              # Spark (Scala) + deploy_batch.sh
+│   ├── backend/                       # Go Report API
+│   ├── frontend/                      # React + Vite Report UI
+│   ├── superset/                      # BI dashboards + deploy embed
+│   └── run_local.sh                   # Một lệnh: CH + backend + frontend
 │
 ├── schema_manager/                    # DDL toàn hệ thống
 │   ├── postgres_source/               # PostgreSQL DDL
@@ -274,7 +280,9 @@ UI **không deploy lên K3s** — chạy local, đọc data từ ClickHouse trê
 
 Hướng dẫn chi tiết: **[projects/README.md](projects/README.md)**
 
-**Phân tích BI (Superset):** `./publish_superset.sh --force --embed` — xem [projects/docs/publish-superset.md](projects/docs/publish-superset.md)
+**Nhóm báo cáo trên UI:** Tài chính · Quỹ · KD realtime · Chuỗi cung ứng (gồm kế hoạch bổ sung tồn / PuLP) · Phân tích khách hàng (RFM + luật kết hợp).
+
+**Phân tích BI (Superset):** `./publish_superset.sh --force --embed` — xem [projects/docs/publish-superset.md](projects/docs/publish-superset.md). Dashboard DSS: phân khúc RFM, luật bán kèm, kế hoạch bổ sung tồn.
 
 ---
 
@@ -373,10 +381,14 @@ Deploy: `projects/stream-processing/deploy_stream.sh {build|upload|stream|stop|c
 | `spark_master_data_ingest_pipeline` | Ingest master → FND |
 | `spark_transaction_data_ingest_pipeline` | Ingest transaction → FND |
 | `spark_dw_transform_pipeline` | DW + serving + push ClickHouse |
-| `sil_daily_pipeline` | Daily 00:30: ingest → transform |
+| `kaizen_lakehouse_daily` | Daily lakehouse: Postgres → Bronze/Silver/Gold → serving |
+| `kaizen_supply_daily_close` | Đóng ngày mô phỏng chuỗi cung ứng |
+| `kaizen_analytics_pipeline` | DSS hàng ngày: RFM + FP-Growth + PuLP bổ sung tồn → ClickHouse |
 | `spark_dw_maintenance_pipeline` | Compaction + snapshot cleanup |
 | `spark_dw_partition_realignment_pipeline` | Partition realignment (once) |
 | `spark_transaction_simulation_pipeline` | Mô phỏng giao dịch batch |
+
+Chi tiết analytics: **[dags/jobs/kaizen_analytics/README.md](dags/jobs/kaizen_analytics/README.md)**.
 
 ---
 
@@ -385,6 +397,7 @@ Deploy: `projects/stream-processing/deploy_stream.sh {build|upload|stream|stop|c
 | Tài liệu | Nội dung |
 |----------|----------|
 | **[docs/DEPLOY.md](docs/DEPLOY.md)** | **Hướng dẫn deploy toàn bộ platform** |
+| [dags/jobs/kaizen_analytics/README.md](dags/jobs/kaizen_analytics/README.md) | RFM / association / replenishment solver |
 | [projects/docs/publish-superset.md](projects/docs/publish-superset.md) | Publish Superset + BI embed |
 | [projects/README.md](projects/README.md) | Report UI, Tailscale, ports |
 | [schema_manager/README.md](schema_manager/README.md) | DDL Postgres, ES, ClickHouse |

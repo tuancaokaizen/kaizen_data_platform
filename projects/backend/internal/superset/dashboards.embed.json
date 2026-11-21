@@ -1,7 +1,23 @@
 {
+  "gio-hang-luat-ket-hop": {
+    "dashboardId": 14,
+    "embeddedUuid": "37d56dca-7fb8-4a82-b961-7132611d0896"
+  },
+  "hieu-suat-nha-cung-cap": {
+    "dashboardId": 12,
+    "embeddedUuid": "b57de663-913e-4c01-9121-4a29fc90f932"
+  },
+  "khach-hang-phan-khuc-rfm": {
+    "dashboardId": 13,
+    "embeddedUuid": "6f0e7b61-5e46-41de-a82e-e500c4ad0745"
+  },
   "kinh-doanh-realtime-theo-don": {
     "dashboardId": 8,
     "embeddedUuid": "ae543b6a-c542-4bc4-adc2-3ffaeb47b758"
+  },
+  "muc-su-dung-cong-suat-cua-hang": {
+    "dashboardId": 10,
+    "embeddedUuid": "6f6401ef-b424-49d9-8828-01be6aadd0c4"
   },
   "quy-chi-tiet-don-hang": {
     "dashboardId": 1,
@@ -14,6 +30,10 @@
   "quy-tong-hop-cua-hang": {
     "dashboardId": 3,
     "embeddedUuid": "2eed120e-1fac-49c3-98ac-9a007cd40c5f"
+  },
+  "suc-khoe-ton-kho-cua-hang-nganh-hang": {
+    "dashboardId": 9,
+    "embeddedUuid": "0b0adc59-6bf1-4e2a-a7e0-fc10ddffcc60"
   },
   "tc-chi-tiet-don-hang": {
     "dashboardId": 4,
@@ -31,20 +51,12 @@
     "dashboardId": 7,
     "embeddedUuid": "087d9ae6-6838-4bdf-a4a8-0b649b0e8553"
   },
-  "suc-khoe-ton-kho-cua-hang-nganh-hang": {
-    "dashboardId": 9,
-    "embeddedUuid": "0b0adc59-6bf1-4e2a-a7e0-fc10ddffcc60"
-  },
-  "muc-su-dung-cong-suat-cua-hang": {
-    "dashboardId": 10,
-    "embeddedUuid": "6f6401ef-b424-49d9-8828-01be6aadd0c4"
-  },
   "the-diem-nha-van-chuyen": {
     "dashboardId": 11,
     "embeddedUuid": "1c12041b-49e1-409b-a409-e412510ce083"
   },
-  "hieu-suat-nha-cung-cap": {
-    "dashboardId": 12,
-    "embeddedUuid": "b57de663-913e-4c01-9121-4a29fc90f932"
+  "toi-uu-bo-sung-ton": {
+    "dashboardId": 15,
+    "embeddedUuid": "840e2cec-dee3-491e-b94e-c91071e1c41f"
   }
 }

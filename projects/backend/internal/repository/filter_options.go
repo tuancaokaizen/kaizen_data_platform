@@ -157,3 +157,168 @@ func (r *ReportRepository) GetKdFilterOptions(
 
 	return KdFilterOptions{Shops: shops, OrderStatuses: statuses}, statusRows.Err()
 }
+
+// SegmentOption — RFM segment dropdown / Dropdown phân khúc RFM
+type SegmentOption struct {
+	SegmentCode string `json:"segmentCode"`
+	SegmentName string `json:"segmentName"`
+}
+
+// ClusterOption — KMeans cluster dropdown / Dropdown nhóm (cụm) khách hàng
+type ClusterOption struct {
+	ClusterCode string `json:"clusterCode"`
+	ClusterName string `json:"clusterName"`
+}
+
+// AnalyticsFilterOptions — distinct segments/clusters for analytics views
+// Giá trị distinct phân khúc / nhóm cho báo cáo analytics
+type AnalyticsFilterOptions struct {
+	Segments []SegmentOption `json:"segments"`
+	Clusters []ClusterOption `json:"clusters"`
+}
+
+// SupplyFilterOptions — distinct shops/products for supply views
+// Giá trị distinct cửa hàng / sản phẩm cho báo cáo chuỗi cung ứng
+type SupplyFilterOptions struct {
+	Shops    []ShopOption    `json:"shops"`
+	Products []ProductOption `json:"products"`
+}
+
+// GetAnalyticsFilterOptions lists distinct segments (and clusters for customer view)
+// Lấy phân khúc distinct (và nhóm cụm khi view=customer)
+func (r *ReportRepository) GetAnalyticsFilterOptions(
+	ctx context.Context,
+	fromDate time.Time,
+	toDate time.Time,
+	view string,
+) (AnalyticsFilterOptions, error) {
+	view = normalizeAnalyticsView(view)
+	spec := analyticsViewSpecFor(view)
+	queryCtx, cancel := context.WithTimeout(ctx, r.queryTimeout)
+	defer cancel()
+
+	dateCol := dateColumnForSpec(view, "analytics")
+	where := fmt.Sprintf("%s >= ? AND %s <= ?", dateCol, dateCol)
+	args := []any{fromDate, toDate}
+
+	segmentSQL := fmt.Sprintf(
+		`SELECT %s, any(%s) FROM %s WHERE %s AND %s != '' GROUP BY %s ORDER BY %s`,
+		"`MaPhanKhuc`", "`TenPhanKhuc`", spec.table, where, "`MaPhanKhuc`", "`MaPhanKhuc`", "`MaPhanKhuc`",
+	)
+	segmentRows, err := r.conn.Query(queryCtx, segmentSQL, args...)
+	if err != nil {
+		return AnalyticsFilterOptions{}, err
+	}
+	defer segmentRows.Close()
+
+	segments := make([]SegmentOption, 0, 16)
+	for segmentRows.Next() {
+		var opt SegmentOption
+		if err := segmentRows.Scan(&opt.SegmentCode, &opt.SegmentName); err != nil {
+			return AnalyticsFilterOptions{}, err
+		}
+		if opt.SegmentCode != "" {
+			segments = append(segments, opt)
+		}
+	}
+	if err := segmentRows.Err(); err != nil {
+		return AnalyticsFilterOptions{}, err
+	}
+
+	clusters := make([]ClusterOption, 0)
+	if view == AnalyticsViewCustomer {
+		clusterSQL := fmt.Sprintf(
+			`SELECT %s, any(%s) FROM %s WHERE %s AND %s != '' GROUP BY %s ORDER BY %s`,
+			"`MaCumMoHinh`", "`TenCum`", spec.table, where, "`MaCumMoHinh`", "`MaCumMoHinh`", "`MaCumMoHinh`",
+		)
+		clusterRows, err := r.conn.Query(queryCtx, clusterSQL, args...)
+		if err != nil {
+			return AnalyticsFilterOptions{}, err
+		}
+		defer clusterRows.Close()
+		for clusterRows.Next() {
+			var opt ClusterOption
+			if err := clusterRows.Scan(&opt.ClusterCode, &opt.ClusterName); err != nil {
+				return AnalyticsFilterOptions{}, err
+			}
+			if opt.ClusterCode != "" {
+				clusters = append(clusters, opt)
+			}
+		}
+		if err := clusterRows.Err(); err != nil {
+			return AnalyticsFilterOptions{}, err
+		}
+	}
+
+	return AnalyticsFilterOptions{Segments: segments, Clusters: clusters}, nil
+}
+
+// GetSupplyFilterOptions lists distinct shops/products for a supply view in date range
+// Lấy cửa hàng / sản phẩm distinct theo view chuỗi cung ứng trong khoảng ngày
+func (r *ReportRepository) GetSupplyFilterOptions(
+	ctx context.Context,
+	fromDate time.Time,
+	toDate time.Time,
+	view string,
+) (SupplyFilterOptions, error) {
+	view = normalizeSupplyView(view)
+	spec := supplyViewSpecFor(view)
+	queryCtx, cancel := context.WithTimeout(ctx, r.queryTimeout)
+	defer cancel()
+
+	dateCol := dateColumnForSpec(view, "supply")
+	where := fmt.Sprintf("%s >= ? AND %s <= ?", dateCol, dateCol)
+	args := []any{fromDate, toDate}
+
+	shops := make([]ShopOption, 0)
+	if view == SupplyViewInventory || view == SupplyViewCapacity || view == SupplyViewSolver {
+		shopSQL := fmt.Sprintf(
+			`SELECT %s, any(%s) FROM %s WHERE %s AND %s != '' GROUP BY %s ORDER BY %s`,
+			"`MaCuaHang`", "`TenCuaHang`", spec.table, where, "`MaCuaHang`", "`MaCuaHang`", "`MaCuaHang`",
+		)
+		shopRows, err := r.conn.Query(queryCtx, shopSQL, args...)
+		if err != nil {
+			return SupplyFilterOptions{}, err
+		}
+		defer shopRows.Close()
+		for shopRows.Next() {
+			var opt ShopOption
+			if err := shopRows.Scan(&opt.ShopCode, &opt.ShopName); err != nil {
+				return SupplyFilterOptions{}, err
+			}
+			if opt.ShopCode != "" {
+				shops = append(shops, opt)
+			}
+		}
+		if err := shopRows.Err(); err != nil {
+			return SupplyFilterOptions{}, err
+		}
+	}
+
+	products := make([]ProductOption, 0)
+	if view == SupplyViewSolver {
+		productSQL := fmt.Sprintf(
+			`SELECT %s, any(%s) FROM %s WHERE %s AND %s != '' GROUP BY %s ORDER BY %s`,
+			"`MaSanPham`", "`TenSanPham`", spec.table, where, "`MaSanPham`", "`MaSanPham`", "`MaSanPham`",
+		)
+		productRows, err := r.conn.Query(queryCtx, productSQL, args...)
+		if err != nil {
+			return SupplyFilterOptions{}, err
+		}
+		defer productRows.Close()
+		for productRows.Next() {
+			var opt ProductOption
+			if err := productRows.Scan(&opt.ProductId, &opt.ProductName); err != nil {
+				return SupplyFilterOptions{}, err
+			}
+			if opt.ProductId != "" {
+				products = append(products, opt)
+			}
+		}
+		if err := productRows.Err(); err != nil {
+			return SupplyFilterOptions{}, err
+		}
+	}
+
+	return SupplyFilterOptions{Shops: shops, Products: products}, nil
+}

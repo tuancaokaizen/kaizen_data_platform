@@ -90,9 +90,16 @@ def run_deploy(opts: DeployOptions) -> int:
             for idx, chart_spec in enumerate(row_specs):
                 deploy_key = chart_deploy_key(slug, chart_spec)
                 slice_name = resolve_chart_slice_name(chart_spec, title, slug, used_slice_names)
+                # Optional per-chart dataset (e.g. descriptive stats mart)
+                # Dataset theo chart (vd. mart thống kê mô tả)
+                chart_ds_name = chart_spec.get("dataset", dataset_name)
+                chart_ds_id = dataset_ids.get(chart_ds_name, dataset_id)
+                if chart_ds_id is None and not opts.dry_run:
+                    print(f"❌ Unknown chart dataset: {chart_ds_name} ({deploy_key})")
+                    continue
                 chart_id = upsert_chart(
                     api,
-                    dataset_id or 0,
+                    chart_ds_id or 0,
                     deploy_key,
                     slice_name,
                     chart_spec,

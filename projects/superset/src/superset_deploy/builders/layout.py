@@ -40,6 +40,8 @@ def resolve_chart_height(
         return int(h.get("table", 78 if width >= 8 else 58))
     if viz == "heatmap_v2":
         return int(h.get("heatmap", 68))
+    if viz == "treemap_v2":
+        return int(h.get("treemap", 70))
     if viz == "echarts_timeseries_bar" and spec.get("orientation") == "horizontal":
         return int(h.get("bar_horizontal", 64))
     if width >= 12:

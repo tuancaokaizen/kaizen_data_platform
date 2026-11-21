@@ -443,3 +443,116 @@ CREATE TABLE IF NOT EXISTS serving.supplier_performance (
     ReceivedAmount Int64
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ReportDate, SupplierId);
+
+-- ============================================================================
+-- Analytics marts (RFM / FP-Growth / replenishment solver)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS report.customer_segment (
+    AsOfDate Date,
+    CustomerId String,
+    RecencyDays Int32,
+    Frequency Int32,
+    Monetary Float64,
+    RecencyScore Int8,
+    FrequencyScore Int8,
+    MonetaryScore Int8,
+    RfmScore Int16,
+    SegmentCode LowCardinality(String),
+    SegmentName String,
+    ClusterId Int16,
+    ClusterCode LowCardinality(String),
+    ClusterName String,
+    LabelSource LowCardinality(String),
+    Age Int16,
+    Gender LowCardinality(String),
+    -- Train features + split live on derived fact (no separate Feature Store)
+    -- Feature train + split nằm trên derived fact (không bảng Feature Store riêng)
+    RecencyLog1p Float64,
+    FrequencyLog1p Float64,
+    MonetaryLog1p Float64,
+    GenderCode Int8,
+    SplitSet LowCardinality(String)
+) ENGINE = ReplacingMergeTree()
+ORDER BY (AsOfDate, CustomerId);
+
+CREATE TABLE IF NOT EXISTS report.segment_profile (
+    AsOfDate Date,
+    SegmentCode LowCardinality(String),
+    SegmentName String,
+    CustomerCount Int64,
+    AvgRecencyDays Float64,
+    AvgFrequency Float64,
+    AvgMonetary Float64,
+    P50Monetary Float64,
+    SharePct Float64,
+    AvgAge Float64,
+    PctFemale Float64,
+    PctMale Float64,
+    PctOtherGender Float64
+) ENGINE = ReplacingMergeTree()
+ORDER BY (AsOfDate, SegmentCode);
+
+-- Legacy Feature Store table kept for old readers; new jobs write SplitSet on customer_segment
+-- Bảng Feature Store cũ giữ cho reader cũ; job mới ghi SplitSet trên customer_segment
+CREATE TABLE IF NOT EXISTS report.feature_customer_rfm (
+    AsOfDate Date,
+    CustomerId String,
+    RecencyDays Int32,
+    Frequency Int32,
+    Monetary Float64,
+    RecencyLog1p Float64,
+    FrequencyLog1p Float64,
+    MonetaryLog1p Float64,
+    Age Int16,
+    Gender LowCardinality(String),
+    GenderCode Int8,
+    SplitSet LowCardinality(String)
+) ENGINE = ReplacingMergeTree()
+ORDER BY (AsOfDate, CustomerId);
+
+-- Binary artifacts live on MinIO (s3://ml-models/kaizen/...); CH holds the catalog
+-- Artifact nhị phân nằm trên MinIO; CH giữ catalog
+CREATE TABLE IF NOT EXISTS report.ml_checkpoint (
+    AsOfDate Date,
+    ModelName String,
+    Algorithm LowCardinality(String),
+    MetricsJson String,
+    ArtifactUri String,
+    ArtifactBase64 String
+) ENGINE = ReplacingMergeTree()
+ORDER BY (ModelName, AsOfDate);
+
+CREATE TABLE IF NOT EXISTS report.association_rule (
+    AsOfDate Date,
+    SegmentCode LowCardinality(String),
+    SegmentName String,
+    AntecedentProductIds String,
+    ConsequentProductId String,
+    AntecedentNames String,
+    ConsequentName String,
+    Support Float64,
+    Confidence Float64,
+    Lift Float64,
+    SupportCount Int64,
+    BasketSampleSize Int64
+) ENGINE = ReplacingMergeTree()
+ORDER BY (AsOfDate, SegmentCode, AntecedentProductIds, ConsequentProductId);
+
+CREATE TABLE IF NOT EXISTS report.replenishment_plan (
+    AsOfDate Date,
+    ShopCode String,
+    ShopName String,
+    ProductId String,
+    ProductName String,
+    OnHandQty Float64,
+    ReorderPoint Float64,
+    TargetLevel Float64,
+    SuggestedQty Int64,
+    EstimatedVolumeM3 Float64,
+    EstimatedCost Float64,
+    SolverBackend LowCardinality(String),
+    Reason String
+) ENGINE = ReplacingMergeTree()
+ORDER BY (AsOfDate, ShopCode, ProductId);
+

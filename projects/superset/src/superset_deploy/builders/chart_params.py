@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Callable
 
 from superset_deploy.api.session import datasource_token, sql_metric
@@ -63,8 +64,41 @@ def _kpi(spec, base, metrics, groupby):
     return base
 
 
+def _apply_color(spec: dict[str, Any], base: dict[str, Any]) -> None:
+    """Apply categorical or continuous (gradient) color scheme / Áp màu phân loại hoặc gradient."""
+    if spec.get("color_scheme"):
+        base["color_scheme"] = spec["color_scheme"]
+    if spec.get("linear_color_scheme"):
+        base["linear_color_scheme"] = spec["linear_color_scheme"]
+
+
+def _apply_metric_sort(spec: dict[str, Any], base: dict[str, Any], metrics: list[dict[str, Any]]) -> None:
+    """Sort categorical bars by metric large→small (or reverse) / Sắp xếp bar theo metric lớn→nhỏ."""
+    sort = spec.get("sort")
+    if not sort:
+        return
+    descending = sort == "desc"
+    ascending = not descending
+    metric = metrics[0] if metrics else sql_metric("COUNT(*)")
+    label = metric.get("label") or metric.get("sqlExpression") or "count"
+    # Keys used across Superset 2.1–4.x for categorical X sort / Khóa sort trục phân loại
+    base["order_desc"] = descending
+    base["timeseries_limit_metric"] = metric
+    # Sort the category axis by metric value (not alphabet) / Sort trục category theo metric, không theo ABC
+    base["x_axis_sort"] = label
+    base["x_axis_sort_asc"] = ascending
+    # Also keep series-limit / orderby shapes some builds read / Giữ thêm shape một số bản đọc
+    base["x_axis_sort_series"] = "sum"
+    base["x_axis_sort_series_ascending"] = ascending
+    base["sort_series_type"] = "sum"
+    base["sort_series_ascending"] = ascending
+    base["orderby"] = [[metric, ascending]]
+    base["series_limit"] = int(spec.get("row_limit") or base.get("row_limit") or 100)
+
+
 @register("echarts_timeseries_line")
 @register("echarts_timeseries_bar")
+@register("echarts_area")
 @register("mixed_timeseries")
 def _timeseries(spec, base, metrics, groupby):
     base["metrics"] = metrics or [sql_metric("COUNT(*)")]
@@ -85,8 +119,13 @@ def _timeseries(spec, base, metrics, groupby):
         base["orientation"] = "horizontal"
     if spec.get("row_limit"):
         base["row_limit"] = spec["row_limit"]
-    if spec.get("sort") == "desc":
-        base["order_desc"] = True
+    # Area / stacked contribution looks richer than plain bars / Area/stack nhìn đa dạng hơn bar thuần
+    if spec.get("viz") == "echarts_area" or spec.get("area"):
+        base["seriesType"] = "line"
+        base["opacity"] = spec.get("opacity", 0.7)
+        base["stack"] = spec.get("stack", "Stack")
+    _apply_metric_sort(spec, base, metrics)
+    _apply_color(spec, base)
     return base
 
 
@@ -98,6 +137,13 @@ def _pie(spec, base, metrics, groupby):
     base["show_legend"] = True
     base["legendOrientation"] = "bottom"
     base["label_type"] = spec.get("label_type", "key_value_percent")
+    # Donut + sort by value / Vòng donut + sắp theo giá trị
+    if spec.get("donut", True):
+        base["donut"] = True
+        base["innerRadius"] = spec.get("inner_radius", 40)
+        base["outerRadius"] = spec.get("outer_radius", 70)
+    base["sort_by_metric"] = True
+    _apply_color(spec, base)
     return base
 
 
@@ -106,13 +152,17 @@ def _treemap(spec, base, metrics, groupby):
     base["metric"] = metrics[0] if metrics else sql_metric("COUNT(*)")
     base["groupby"] = groupby
     base["row_limit"] = spec.get("row_limit", 50)
+    base["show_labels"] = True
+    base["show_upper_labels"] = True
+    _apply_color(spec, base)
     return base
 
 
 @register("heatmap_v2")
 def _heatmap(spec, base, metrics, groupby):
-    # heatmap_v2: x_axis = X, groupby = Y (not groupby_columns)
-    # heatmap_v2: x_axis = trục X, groupby = trục Y (không dùng groupby_columns)
+    # Kept for older YAML; cluster UI may not register heatmap_v2 plugin.
+    # Giữ cho YAML cũ; UI cluster có thể không đăng ký plugin heatmap_v2.
+    # Prefer treemap_v2 / bar in new dashboards / Ưu tiên treemap_v2 / bar ở dashboard mới.
     base["metric"] = metrics[0] if metrics else sql_metric("COUNT(*)")
     if spec.get("x"):
         base["x_axis"] = spec["x"]
@@ -125,6 +175,8 @@ def _heatmap(spec, base, metrics, groupby):
     base.setdefault("sort_y_axis", "alpha_asc")
     base.setdefault("bottom_margin", "auto")
     base.setdefault("left_margin", "auto")
+    base["linear_color_scheme"] = spec.get("linear_color_scheme", "schemeYlOrRd")
+    _apply_color(spec, base)
     return base
 
 
@@ -140,11 +192,20 @@ def _table(spec, base, metrics, groupby):
         base["query_mode"] = "aggregate"
     base["row_limit"] = spec.get("page_size", 100)
     base["include_time"] = False
+    # Order table rows by a column / Sắp hàng bảng theo cột
+    if spec.get("order_by"):
+        base["order_by_cols"] = [json_order_by(spec["order_by"], spec.get("sort", "desc") == "desc")]
     if spec.get("filter_sql"):
         base["adhoc_filters"] = [
             {"clause": "WHERE", "expressionType": "SQL", "sqlExpression": spec["filter_sql"]}
         ]
     return base
+
+
+def json_order_by(column: str, descending: bool = True) -> str:
+    """Superset table order_by_cols entry: [col, ascending] / Mục order_by_cols: [cột, tăng dần]."""
+    ascending = not descending
+    return json.dumps([column, ascending], ensure_ascii=False)
 
 
 def build_chart_params(

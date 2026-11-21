@@ -2,3 +2,16 @@ faker>=22.0.0
 psycopg2-binary>=2.9.9
 requests>=2.31.0
 apache-airflow-providers-apache-spark==4.11.0
+# Optional CBC backend for replenishment solver (greedy fallback if missing)
+# Backend CBC tuỳ chọn cho solver bổ sung tồn (fallback greedy nếu thiếu)
+pulp>=2.8.0
+# Customer clustering + cold-start classifier checkpoints
+# Phân cụm khách + phân loại cold-start + checkpoint
+# Keep numpy <2 for Airflow pandas 2.1.x binary compatibility
+# Giữ numpy <2 để tương thích binary với pandas 2.1.x của Airflow
+numpy>=1.26.0,<2
+scikit-learn>=1.3.0,<1.6
+joblib>=1.3.0
+# MinIO model store (S3 API) / Kho model MinIO (API S3)
+boto3>=1.34.0
+botocore>=1.34.0

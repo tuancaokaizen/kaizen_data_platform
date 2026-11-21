@@ -1,0 +1,121 @@
+id: db_replenishment_plan
+title: Kế hoạch bổ sung tồn kho theo cửa hàng và sản phẩm
+dataset: v_ke_hoach_bo_sung_ton
+slug: toi-uu-bo-sung-ton
+description: Đề xuất nhập bổ sung từng mã sản phẩm theo nhu cầu và sức chứa cửa hàng
+color_scheme: modernSunset
+native_filters:
+- column: NgayChot
+  type: filter_time
+  label: Ngày chốt
+  required: true
+  default: Last 7 days
+- column: MaCuaHang
+  type: filter_select
+  label: Cửa hàng
+  multi: true
+  select_all: true
+- column: MaSanPham
+  type: filter_select
+  label: Mã sản phẩm
+  multi: true
+  select_all: true
+layout:
+  row1_kpi:
+  - chart: kpi_lines
+    viz: big_number_total
+    metric: COUNT(*)
+    title: Số dòng đề xuất (cửa hàng × sản phẩm)
+  - chart: kpi_qty
+    viz: big_number_total
+    metric: SUM(SoLuongDeXuat)
+    title: Tổng số lượng đề xuất (đơn vị)
+    format: ',d'
+  - chart: kpi_cost
+    viz: big_number_total
+    metric: SUM(ChiPhiUocTinh)
+    title: Tổng chi phí ước tính (VNĐ)
+
+  row2_portfolio:
+  - chart: treemap_shop
+    viz: treemap_v2
+    groupby:
+    - TenCuaHang
+    metric: SUM(SoLuongDeXuat)
+    title: Quy mô đề xuất theo cửa hàng (treemap)
+    color_scheme: modernSunset
+    row_limit: 40
+    height: 72
+  - chart: donut_method
+    viz: pie
+    groupby:
+    - PhuongPhapToiUu
+    metric: COUNT(*)
+    title: Cơ cấu theo phương pháp tối ưu (donut)
+    donut: true
+    color_scheme: modernSunset
+    time_column: NgayChot
+
+  row3_rank:
+  - chart: bar_shop
+    viz: echarts_timeseries_bar
+    x: TenCuaHang
+    categorical: true
+    metric: SUM(SoLuongDeXuat)
+    title: Top cửa hàng theo số lượng đề xuất (lớn → nhỏ)
+    sort: desc
+    row_limit: 15
+    orientation: horizontal
+    color_scheme: modernSunset
+  - chart: bar_sku
+    viz: echarts_timeseries_bar
+    x: TenSanPham
+    categorical: true
+    metric: SUM(SoLuongDeXuat)
+    title: Top sản phẩm theo số lượng đề xuất (lớn → nhỏ)
+    sort: desc
+    row_limit: 15
+    orientation: horizontal
+    color_scheme: modernSunset
+
+  row4_cost:
+  - chart: treemap_sku_cost
+    viz: treemap_v2
+    groupby:
+    - TenSanPham
+    metric: SUM(ChiPhiUocTinh)
+    title: Chi phí ước tính theo sản phẩm (treemap)
+    color_scheme: modernSunset
+    row_limit: 40
+  - chart: bar_cost_shop
+    viz: echarts_timeseries_bar
+    x: TenCuaHang
+    categorical: true
+    metric: SUM(ChiPhiUocTinh)
+    title: Chi phí ước tính theo cửa hàng (lớn → nhỏ)
+    sort: desc
+    row_limit: 15
+    orientation: horizontal
+    color_scheme: modernSunset
+
+  row5_detail:
+  - chart: table_plan
+    viz: table
+    columns:
+    - NgayChot
+    - MaCuaHang
+    - TenCuaHang
+    - MaSanPham
+    - TenSanPham
+    - TonHienTai
+    - DiemDatHang
+    - MucTieuTon
+    - SoLuongDeXuat
+    - TheTichUocTinh
+    - ChiPhiUocTinh
+    - PhuongPhapToiUu
+    - LyDo
+    order_by: SoLuongDeXuat
+    sort: desc
+    title: Chi tiết kế hoạch bổ sung (sắp theo số lượng đề xuất giảm dần)
+    page_size: 50

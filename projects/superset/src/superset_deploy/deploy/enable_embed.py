@@ -16,8 +16,11 @@ DEFAULT_EMBED_DOMAINS = [
     "http://127.0.0.1:8092",
     "http://localhost:4173",
     "http://127.0.0.1:4173",
-    # Report UI NodePort (prod embed parent) / Origin UI báo cáo trên NodePort
+    # Report UI NodePort on every k3s node + Tailscale / NodePort UI trên mọi node + Tailscale
     "http://192.168.100.172:31090",
+    "http://192.168.100.34:31090",
+    "http://192.168.100.47:31090",
+    "http://100.104.250.97:31090",
 ]
 
 

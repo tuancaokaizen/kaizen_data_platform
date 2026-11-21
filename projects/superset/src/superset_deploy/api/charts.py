@@ -128,11 +128,53 @@ def upsert_chart(
 
 
 def link_charts_to_dashboard(api: SupersetSession, dash_id: int, chart_ids: list[int]) -> None:
+    """Link desired charts and unlink orphans from this dashboard / Gắn chart mới, gỡ chart thừa khỏi dashboard."""
+    desired = {int(cid) for cid in chart_ids if cid is not None and int(cid) > 0}
+    # Current charts still associated with dashboard / Chart đang gắn với dashboard
+    current_ids: set[int] = set()
+    try:
+        resp = api.get(f"/api/v1/dashboard/{dash_id}/charts")
+        if resp.status_code < 400:
+            for row in resp.json().get("result") or []:
+                if row.get("id") is not None:
+                    current_ids.add(int(row["id"]))
+    except Exception as exc:
+        print(f"  ⚠ Could not list dashboard charts: {exc}")
+
+    # Unlink charts no longer in layout (stops stale heatmap etc.) / Gỡ chart không còn trong layout
+    orphan_ids = sorted(current_ids - desired)
+    unlinked = 0
+    for chart_id in orphan_ids:
+        # Read full chart to preserve other dashboards / Đọc chart để giữ dashboard khác
+        detail = api.get(f"/api/v1/chart/{chart_id}")
+        other_dash: list[int] = []
+        if detail.status_code < 400:
+            result = detail.json().get("result") or {}
+            for dash in result.get("dashboards") or []:
+                did = dash.get("id") if isinstance(dash, dict) else dash
+                if did is not None and int(did) != dash_id:
+                    other_dash.append(int(did))
+            viz = result.get("viz_type") or ""
+            # Delete broken heatmap plugin charts entirely / Xóa hẳn chart heatmap plugin lỗi
+            if viz == "heatmap_v2" and not other_dash:
+                del_resp = api.delete(f"/api/v1/chart/{chart_id}")
+                if del_resp.status_code < 400:
+                    print(f"  ✔ Deleted orphan heatmap chart id={chart_id}")
+                    unlinked += 1
+                    continue
+        resp = api.put(f"/api/v1/chart/{chart_id}", json={"dashboards": other_dash})
+        if resp.status_code < 400:
+            unlinked += 1
+        else:
+            print(f"  ⚠ Unlink chart {chart_id}: {resp.status_code} {resp.text[:120]}")
+    if orphan_ids:
+        print(f"  ✔ Unlinked/removed {unlinked}/{len(orphan_ids)} orphan charts from dashboard id={dash_id}")
+
     linked = 0
-    for chart_id in chart_ids:
+    for chart_id in sorted(desired):
         resp = api.put(f"/api/v1/chart/{chart_id}", json={"dashboards": [dash_id]})
         if resp.status_code < 400:
             linked += 1
         else:
             print(f"  ⚠ Link chart {chart_id} → dashboard {dash_id}: {resp.status_code} {resp.text[:120]}")
-    print(f"  ✔ Linked {linked}/{len(chart_ids)} charts to dashboard id={dash_id}")
+    print(f"  ✔ Linked {linked}/{len(desired)} charts to dashboard id={dash_id}")

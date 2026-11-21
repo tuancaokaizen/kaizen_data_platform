@@ -3,7 +3,14 @@ import { App as AntdApp, Layout, Tabs, Typography } from "antd";
 import type { TablePaginationConfig } from "antd/es/table";
 import dayjs from "dayjs";
 import axios from "axios";
-import { fetchReport, fetchFinancialDetailFilterOptions, fetchKdFilterOptions, type ReportFilter } from "./api/reportApi";
+import {
+  fetchReport,
+  fetchFinancialDetailFilterOptions,
+  fetchKdFilterOptions,
+  fetchAnalyticsFilterOptions,
+  fetchSupplyFilterOptions,
+  type ReportFilter
+} from "./api/reportApi";
 import { ReportDetailTab, type FilterFormValues } from "./components/ReportDetailTab";
 import { ReportViewSlicer } from "./components/ReportViewSlicer";
 import { SupersetEmbedTab } from "./components/SupersetEmbedTab";
@@ -16,6 +23,11 @@ import {
   type ReportViewKey
 } from "./config/reportViews";
 import type { ListResponse, ReportRow } from "./types/report";
+import {
+  buildExportFileName,
+  downloadReportExcel,
+  excelColumnsFromTable
+} from "./utils/exportReportExcel";
 import { Form } from "antd";
 
 const { Header, Content } = Layout;
@@ -32,6 +44,7 @@ type ContentTabKey = "detail" | "bi";
 function App() {
   const { message } = AntdApp.useApp();
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [activeViewKey, setActiveViewKey] = useState<ReportViewKey>(DEFAULT_VIEW_KEY);
   const [contentTab, setContentTab] = useState<ContentTabKey>("detail");
   const [reportData, setReportData] = useState<ListResponse<ReportRow>>();
@@ -39,7 +52,8 @@ function App() {
     shops: { shopCode: string; shopName: string }[];
     products: { productId: string; productName: string }[];
     orderStatuses: string[];
-  }>({ shops: [], products: [], orderStatuses: [] });
+    segments: { segmentCode: string; segmentName: string }[];
+  }>({ shops: [], products: [], orderStatuses: [], segments: [] });
   const [page, setPage] = useState(DEFAULT_PAGE);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [form] = Form.useForm<FilterFormValues>();
@@ -49,9 +63,12 @@ function App() {
 
   const isFinancialDetailView = activeViewKey === "financial:detail";
   const isKdView = viewConfig.category === "kd";
+  const isSupplySolverView = activeViewKey === "supply:solver";
+  const useCatalogShops = isFinancialDetailView || isKdView || isSupplySolverView;
+  const useCatalogProducts = isFinancialDetailView || isSupplySolverView;
 
   const shopOptions = useMemo(() => {
-    if (isFinancialDetailView || isKdView) {
+    if (useCatalogShops && detailFilterOptions.shops.length > 0) {
       const dynamic = detailFilterOptions.shops.map((shop) => ({
         label: shop.shopName ? `${shop.shopCode} - ${shop.shopName}` : shop.shopCode,
         value: shop.shopCode
@@ -65,10 +82,10 @@ function App() {
     );
     const dynamic = Array.from(unique).map((code) => ({ label: code, value: code }));
     return [{ label: "Tất cả cửa hàng", value: FILTER_ALL_VALUE }, ...dynamic];
-  }, [isFinancialDetailView, isKdView, detailFilterOptions.shops, reportData?.data]);
+  }, [useCatalogShops, detailFilterOptions.shops, reportData?.data]);
 
   const productOptions = useMemo(() => {
-    if (isFinancialDetailView) {
+    if (useCatalogProducts && detailFilterOptions.products.length > 0) {
       const dynamic = detailFilterOptions.products.map((product) => ({
         label: product.productName
           ? `${product.productId} - ${product.productName}`
@@ -85,7 +102,15 @@ function App() {
     }
     const dynamic = Array.from(unique.entries()).map(([value, label]) => ({ label, value }));
     return [{ label: "Tất cả sản phẩm", value: FILTER_ALL_VALUE }, ...dynamic];
-  }, [isFinancialDetailView, detailFilterOptions.products, reportData?.data]);
+  }, [useCatalogProducts, detailFilterOptions.products, reportData?.data]);
+
+  const segmentOptions = useMemo(() => {
+    const dynamic = detailFilterOptions.segments.map((seg) => ({
+      label: seg.segmentName ? `${seg.segmentCode} - ${seg.segmentName}` : seg.segmentCode,
+      value: seg.segmentCode
+    }));
+    return [{ label: "Tất cả phân khúc", value: FILTER_ALL_VALUE }, ...dynamic];
+  }, [detailFilterOptions.segments]);
 
   const orderStatusOptions = useMemo(() => {
     if (isKdView) {
@@ -152,6 +177,10 @@ function App() {
             : formValues.paymentMethodName,
         carrierId: formValues.carrierId || undefined,
         supplierId: formValues.supplierId || undefined,
+        segmentCode:
+          !formValues.segmentCode || formValues.segmentCode === FILTER_ALL_VALUE
+            ? undefined
+            : formValues.segmentCode,
         page: resolvedPage,
         pageSize: resolvedPageSize
       };
@@ -161,47 +190,72 @@ function App() {
 
   const loadDetailFilterOptions = useCallback(
     async (values?: FilterFormValues, viewKey: ReportViewKey = activeViewKey) => {
-      if (viewKey !== "financial:detail" && viewKey !== "kd:order") {
-        setDetailFilterOptions({ shops: [], products: [], orderStatuses: [] });
-        return;
-      }
+      const cfg = getViewConfig(viewKey);
       const formValues = values ?? form.getFieldsValue();
       const fromDate = (formValues.dateRange?.[0] ?? dayjs().subtract(30, "day")).format(
         "YYYY-MM-DD"
       );
       const toDate = (formValues.dateRange?.[1] ?? dayjs()).format("YYYY-MM-DD");
+
+      const emptyOpts = {
+        shops: [] as { shopCode: string; shopName: string }[],
+        products: [] as { productId: string; productName: string }[],
+        orderStatuses: [] as string[],
+        segments: [] as { segmentCode: string; segmentName: string }[]
+      };
+
       if (viewKey === "financial:detail") {
         const opts = await fetchFinancialDetailFilterOptions(fromDate, toDate);
         setDetailFilterOptions({
+          ...emptyOpts,
           shops: opts.shops ?? [],
-          products: opts.products ?? [],
-          orderStatuses: []
+          products: opts.products ?? []
         });
         return;
       }
-      const opts = await fetchKdFilterOptions(fromDate, toDate);
-      setDetailFilterOptions({
-        shops: opts.shops ?? [],
-        products: [],
-        orderStatuses: opts.orderStatuses ?? []
-      });
-      // Clear stale selections when value not in refreshed options / Xóa lựa chọn không còn hợp lệ
-      const currentShop = form.getFieldValue("shopCode");
-      if (
-        currentShop &&
-        currentShop !== FILTER_ALL_VALUE &&
-        !(opts.shops ?? []).some((s) => s.shopCode === currentShop)
-      ) {
-        form.setFieldValue("shopCode", undefined);
+      if (viewKey === "kd:order") {
+        const opts = await fetchKdFilterOptions(fromDate, toDate);
+        setDetailFilterOptions({
+          ...emptyOpts,
+          shops: opts.shops ?? [],
+          orderStatuses: opts.orderStatuses ?? []
+        });
+        const currentShop = form.getFieldValue("shopCode");
+        if (
+          currentShop &&
+          currentShop !== FILTER_ALL_VALUE &&
+          !(opts.shops ?? []).some((s) => s.shopCode === currentShop)
+        ) {
+          form.setFieldValue("shopCode", undefined);
+        }
+        const currentStatus = form.getFieldValue("orderStatus");
+        if (
+          currentStatus &&
+          currentStatus !== FILTER_ALL_VALUE &&
+          !(opts.orderStatuses ?? []).includes(currentStatus)
+        ) {
+          form.setFieldValue("orderStatus", undefined);
+        }
+        return;
       }
-      const currentStatus = form.getFieldValue("orderStatus");
-      if (
-        currentStatus &&
-        currentStatus !== FILTER_ALL_VALUE &&
-        !(opts.orderStatuses ?? []).includes(currentStatus)
-      ) {
-        form.setFieldValue("orderStatus", undefined);
+      if (viewKey === "supply:solver") {
+        const opts = await fetchSupplyFilterOptions(fromDate, toDate, cfg.view);
+        setDetailFilterOptions({
+          ...emptyOpts,
+          shops: opts.shops ?? [],
+          products: opts.products ?? []
+        });
+        return;
       }
+      if (cfg.category === "analytics") {
+        const opts = await fetchAnalyticsFilterOptions(fromDate, toDate, cfg.view);
+        setDetailFilterOptions({
+          ...emptyOpts,
+          segments: opts.segments ?? []
+        });
+        return;
+      }
+      setDetailFilterOptions(emptyOpts);
     },
     [form, activeViewKey]
   );
@@ -209,11 +263,19 @@ function App() {
   const loadReport = useCallback(
     async (
       values?: FilterFormValues,
-      paging?: { page?: number; pageSize?: number; view?: string; category?: ReportCategory }
+      paging?: {
+        page?: number;
+        pageSize?: number;
+        view?: string;
+        category?: ReportCategory;
+        biOnly?: boolean;
+      }
     ) => {
       const category = paging?.category ?? viewConfig.category;
       const filter = buildFilter(values, paging);
-      const data = await fetchReport(category, filter);
+      const data = await fetchReport(category, filter, {
+        biOnly: paging?.biOnly ?? viewConfig.biOnly
+      });
       setReportData(data);
       if (filter.pageSize === PAGE_SIZE_ALL) {
         setPage(DEFAULT_PAGE);
@@ -239,6 +301,31 @@ function App() {
     }
   };
 
+  // Export filtered rows for the active report (all pages) / Xuất toàn bộ dòng theo bộ lọc báo cáo đang mở
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true);
+      const filter = buildFilter(undefined, { page: DEFAULT_PAGE, pageSize: PAGE_SIZE_ALL });
+      const data = await fetchReport(viewConfig.category, filter, { biOnly: viewConfig.biOnly });
+      const rows = data.data ?? [];
+      if (rows.length === 0) {
+        message.warning("Không có dữ liệu để xuất Excel.");
+        return;
+      }
+      await downloadReportExcel({
+        fileName: buildExportFileName(viewConfig.label, filter.fromDate, filter.toDate),
+        sheetName: viewConfig.label,
+        columns: excelColumnsFromTable(columns),
+        rows
+      });
+      message.success(`Đã xuất ${rows.length.toLocaleString("vi-VN")} dòng.`);
+    } catch (error) {
+      message.error(extractErrorMessage(error));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handlePageChange = async (nextPage: number, nextPageSize: number) => {
     try {
       setLoading(true);
@@ -252,6 +339,8 @@ function App() {
 
   const handleViewChange = (nextKey: ReportViewKey) => {
     setActiveViewKey(nextKey);
+    // Default to detail table; BI tab remains available when slug exists
+    // Mặc định bảng chi tiết; tab BI vẫn có khi có slug
     setContentTab("detail");
     setPage(DEFAULT_PAGE);
     form.resetFields([
@@ -263,22 +352,20 @@ function App() {
       "orderStatus",
       "paymentMethodName",
       "carrierId",
-      "supplierId"
+      "supplierId",
+      "segmentCode"
     ]);
     void (async () => {
       try {
         setLoading(true);
         const cfg = getViewConfig(nextKey);
-        if (nextKey === "financial:detail" || nextKey === "kd:order") {
-          await loadDetailFilterOptions(undefined, nextKey);
-        } else {
-          setDetailFilterOptions({ shops: [], products: [], orderStatuses: [] });
-        }
+        await loadDetailFilterOptions(undefined, nextKey);
         await loadReport(undefined, {
           page: DEFAULT_PAGE,
           pageSize,
           view: cfg.view,
-          category: cfg.category
+          category: cfg.category,
+          biOnly: cfg.biOnly
         });
       } catch (error) {
         message.error(extractErrorMessage(error));
@@ -295,9 +382,7 @@ function App() {
     void (async () => {
       try {
         setLoading(true);
-        if (activeViewKey === "financial:detail" || activeViewKey === "kd:order") {
-          await loadDetailFilterOptions(initial, activeViewKey);
-        }
+        await loadDetailFilterOptions(initial, activeViewKey);
         await loadReport(initial, { page: DEFAULT_PAGE, pageSize: DEFAULT_PAGE_SIZE });
       } catch (error) {
         message.error(extractErrorMessage(error));
@@ -325,7 +410,12 @@ function App() {
       onTimeInFullRate: 0,
       transportCost: 0,
       onTimeRate: 0,
-      receivedAmount: 0
+      receivedAmount: 0,
+      suggestedQty: 0,
+      estimatedCost: 0,
+      customerCount: 0,
+      ruleCount: 0,
+      avgLift: 0
     };
     if (viewConfig.category === "financial") {
       return rows.reduce((acc, row) => {
@@ -356,6 +446,8 @@ function App() {
           acc.transportCost += row.transportCost ?? 0;
           acc.onTimeRate += row.onTimeRate ?? 0;
           acc.receivedAmount += row.receivedAmount ?? 0;
+          acc.suggestedQty += row.suggestedQty ?? 0;
+          acc.estimatedCost += row.estimatedCost ?? 0;
           return acc;
         },
         { ...empty }
@@ -371,12 +463,33 @@ function App() {
         onTimeRate: summed.onTimeRate / n
       };
     }
+    if (viewConfig.category === "analytics") {
+      if (viewConfig.view === "basket") {
+        const summed = rows.reduce(
+          (acc, row) => {
+            acc.ruleCount += 1;
+            acc.avgLift += row.lift ?? 0;
+            return acc;
+          },
+          { ...empty }
+        );
+        return { ...summed, avgLift: summed.avgLift / (rows.length || 1) };
+      }
+      return rows.reduce(
+        (acc, row) => {
+          acc.customerCount += 1;
+          acc.netRevenue += row.netRevenue ?? 0;
+          return acc;
+        },
+        { ...empty }
+      );
+    }
     return rows.reduce((acc, row) => {
       acc.totalReceipts += row.totalReceipts ?? 0;
       acc.netCashFlow += row.netCashFlow ?? 0;
       return acc;
     }, { ...empty });
-  }, [reportData?.data, viewConfig.category]);
+  }, [reportData?.data, viewConfig.category, viewConfig.view]);
 
   const showFilter = (field: FilterField) => viewConfig.filters.includes(field);
 
@@ -421,7 +534,7 @@ function App() {
             destroyInactiveTabPane={false}
             items={[
               {
-                key: "detail",
+                key: "detail" as const,
                 label: "Bảng chi tiết",
                 children: (
                   <ReportDetailTab
@@ -432,8 +545,11 @@ function App() {
                     productOptions={productOptions}
                     paymentOptions={paymentOptions}
                     orderStatusOptions={orderStatusOptions}
+                    segmentOptions={segmentOptions}
                     showFilter={showFilter}
                     onSearch={handleSearch}
+                    onExportExcel={handleExportExcel}
+                    exporting={exporting}
                     summary={summary}
                     columns={columns}
                     reportData={reportData}

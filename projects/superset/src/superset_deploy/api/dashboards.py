@@ -35,8 +35,9 @@ def upsert_dashboard(
     refresh_frequency = int(dash_spec.get("refresh_frequency_seconds", 0))
     json_metadata = {
         "native_filter_configuration": native_filters,
-        "color_scheme": "",
-        "label_colors": {},
+        # Dashboard-wide palette (charts inherit) / Bảng màu chung cho dashboard
+        "color_scheme": dash_spec.get("color_scheme", "supersetColors"),
+        "label_colors": dash_spec.get("label_colors", {}),
         "refresh_frequency": refresh_frequency,
         "timed_refresh_immune_slices": [],
         "expanded_slices": {},

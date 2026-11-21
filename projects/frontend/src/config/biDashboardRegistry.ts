@@ -8,8 +8,10 @@ export type BiDashboardEntry = {
 };
 
 export const BI_DASHBOARDS: BiDashboardEntry[] = [
+  { slug: "gio-hang-luat-ket-hop", reportKey: "analytics:basket", title: "Luật kết hợp sản phẩm theo phân loại khách hàng" },
   { slug: "hieu-suat-nha-cung-cap", reportKey: "supply:supplier", title: "Hiệu suất nhà cung cấp" },
-  { slug: "kinh-doanh-realtime-theo-don", reportKey: "kd:order", title: "Tình hình kinh doanh realtime theo đơn" },
+  { slug: "khach-hang-phan-khuc-rfm", reportKey: "analytics:customer", title: "Phân loại khách hàng theo gần đây, tần suất và doanh thu" },
+  { slug: "kinh-doanh-realtime-theo-don", reportKey: "kd:order", title: "Tình hình kinh doanh thời gian thực theo đơn hàng" },
   { slug: "muc-su-dung-cong-suat-cua-hang", reportKey: "supply:capacity", title: "Mức sử dụng công suất cửa hàng" },
   { slug: "quy-chi-tiet-don-hang", reportKey: "fund:order", title: "Chi tiết quỹ theo đơn hàng" },
   { slug: "quy-pttt-cua-hang", reportKey: "fund:payment", title: "Theo phương thức thanh toán và cửa hàng" },
@@ -20,6 +22,7 @@ export const BI_DASHBOARDS: BiDashboardEntry[] = [
   { slug: "tc-tong-hop-cua-hang", reportKey: "financial:shop", title: "Tổng hợp theo cửa hàng" },
   { slug: "tc-tong-hop-san-pham", reportKey: "financial:product", title: "Tổng hợp theo sản phẩm" },
   { slug: "the-diem-nha-van-chuyen", reportKey: "supply:carrier", title: "Thẻ điểm nhà vận chuyển" },
+  { slug: "toi-uu-bo-sung-ton", reportKey: "supply:solver", title: "Kế hoạch bổ sung tồn kho theo cửa hàng và sản phẩm" },
 ];
 
 const SLUG_BY_REPORT_KEY = new Map<string, string>(

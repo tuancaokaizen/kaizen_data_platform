@@ -61,13 +61,42 @@ def _build_chart_data_payload(chart: dict) -> dict:
         else:
             columns.extend(gb)
     else:
-        columns = params.get("columns") or params.get("groupby") or []
+        columns = list(params.get("columns") or params.get("groupby") or [])
         if viz == "table" and not columns:
-            columns = params.get("all_columns") or []
+            columns = list(params.get("all_columns") or [])
+        # Categorical ECharts bar/line: dimension is x_axis, groupby often empty
+        # Bar/line phân loại: dimension nằm ở x_axis, groupby thường rỗng
+        x_axis = params.get("x_axis")
+        if x_axis and x_axis not in columns and (
+            params.get("x_axis_force_categorical")
+            or viz
+            in {
+                "echarts_timeseries_bar",
+                "echarts_timeseries_line",
+                "echarts_area",
+                "mixed_timeseries",
+            }
+        ):
+            columns = [x_axis, *columns]
 
-    query: dict = {"columns": columns, "metrics": metrics, "row_limit": 1000}
+    row_limit = int(params.get("row_limit") or params.get("series_limit") or 1000)
+    query: dict = {"columns": columns, "metrics": metrics, "row_limit": row_limit}
     if not metrics and not columns:
-        query["metrics"] = [params.get("metric") or {"expressionType": "SQL", "sqlExpression": "COUNT(*)", "label": "COUNT(*)"}]
+        query["metrics"] = [
+            params.get("metric")
+            or {"expressionType": "SQL", "sqlExpression": "COUNT(*)", "label": "COUNT(*)"}
+        ]
+
+    # Preserve metric sort (large→small) for ranking charts / Giữ sort metric lớn→nhỏ
+    if params.get("orderby"):
+        query["orderby"] = params["orderby"]
+    elif params.get("timeseries_limit_metric") is not None and params.get("order_desc") is not None:
+        # orderby second flag = ascending / Cờ thứ 2 = tăng dần
+        query["orderby"] = [[params["timeseries_limit_metric"], not bool(params["order_desc"])]]
+
+    # Categorical ranking is not a time series / Xếp hạng phân loại không phải chuỗi thời gian
+    if params.get("x_axis_force_categorical"):
+        query["is_timeseries"] = False
 
     return {
         "datasource": {"id": ds_id, "type": ds_type},

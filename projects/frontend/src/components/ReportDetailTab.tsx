@@ -42,6 +42,7 @@ export type FilterFormValues = {
   paymentMethodName?: string;
   carrierId?: string;
   supplierId?: string;
+  segmentCode?: string;
 };
 
 type ReportDetailTabProps = {
@@ -52,8 +53,11 @@ type ReportDetailTabProps = {
   productOptions: { label: string; value: string }[];
   paymentOptions: { label: string; value: string }[];
   orderStatusOptions: { label: string; value: string }[];
+  segmentOptions: { label: string; value: string }[];
   showFilter: (field: FilterField) => boolean;
   onSearch: () => void;
+  onExportExcel: () => void;
+  exporting: boolean;
   summary: {
     netRevenue: number;
     grossProfit: number;
@@ -70,6 +74,11 @@ type ReportDetailTabProps = {
     transportCost?: number;
     onTimeRate?: number;
     receivedAmount?: number;
+    suggestedQty?: number;
+    estimatedCost?: number;
+    customerCount?: number;
+    ruleCount?: number;
+    avgLift?: number;
   };
   columns: ColumnsType<ReportRow>;
   reportData?: ListResponse<ReportRow>;
@@ -91,8 +100,11 @@ export function ReportDetailTab({
   productOptions,
   paymentOptions,
   orderStatusOptions,
+  segmentOptions,
   showFilter,
   onSearch,
+  onExportExcel,
+  exporting,
   summary,
   columns,
   reportData,
@@ -213,9 +225,28 @@ export function ReportDetailTab({
                 </Form.Item>
               </Col>
             )}
+            {showFilter("segmentCode") && (
+              <Col xs={24} sm={12} lg={4}>
+                <Form.Item label={FILTER_LABELS.segmentCode} name="segmentCode">
+                  <Select
+                    allowClear
+                    showSearch
+                    options={segmentOptions}
+                    placeholder={FILTER_PLACEHOLDERS.segmentCode}
+                    optionFilterProp="label"
+                    filterOption={filterSelectOption}
+                  />
+                </Form.Item>
+              </Col>
+            )}
             <Col xs={24} sm={12} lg={3} className="search-col">
-              <Button type="primary" onClick={onSearch} loading={loading} block>
+              <Button type="primary" onClick={onSearch} loading={loading} disabled={exporting} block>
                 Áp dụng
+              </Button>
+            </Col>
+            <Col xs={24} sm={12} lg={3} className="search-col">
+              <Button onClick={onExportExcel} loading={exporting} disabled={loading} block>
+                Xuất Excel
               </Button>
             </Col>
           </Row>
@@ -375,6 +406,67 @@ export function ReportDetailTab({
                     <Statistic
                       title="Giá trị nhận (trang hiện tại)"
                       value={summary.receivedAmount ?? 0}
+                      formatter={(v) => formatNumber(v as number)}
+                    />
+                  </Card>
+                </Col>
+              </>
+            )}
+            {viewConfig.view === "solver" && (
+              <>
+                <Col xs={24} sm={12}>
+                  <Card size="small">
+                    <Statistic
+                      title="Số lượng đề xuất (trang hiện tại)"
+                      value={summary.suggestedQty ?? 0}
+                      formatter={(v) => formatNumber(v as number)}
+                    />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={12}>
+                  <Card size="small">
+                    <Statistic
+                      title="Chi phí ước tính (trang hiện tại)"
+                      value={summary.estimatedCost ?? 0}
+                      formatter={(v) => formatNumber(v as number)}
+                    />
+                  </Card>
+                </Col>
+              </>
+            )}
+          </>
+        ) : viewConfig.category === "analytics" ? (
+          <>
+            {viewConfig.view === "customer" && (
+              <>
+                <Col xs={24} sm={12}>
+                  <Card size="small">
+                    <Statistic title="Số khách (trang hiện tại)" value={summary.customerCount ?? 0} />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={12}>
+                  <Card size="small">
+                    <Statistic
+                      title="Doanh thu thuần (trang hiện tại)"
+                      value={summary.netRevenue ?? 0}
+                      formatter={(v) => formatNumber(v as number)}
+                    />
+                  </Card>
+                </Col>
+              </>
+            )}
+            {viewConfig.view === "basket" && (
+              <>
+                <Col xs={24} sm={12}>
+                  <Card size="small">
+                    <Statistic title="Số luật (trang hiện tại)" value={summary.ruleCount ?? 0} />
+                  </Card>
+                </Col>
+                <Col xs={24} sm={12}>
+                  <Card size="small">
+                    <Statistic
+                      title="Hệ số nâng trung bình (trang hiện tại)"
+                      value={summary.avgLift ?? 0}
                       formatter={(v) => formatNumber(v as number)}
                     />
                   </Card>

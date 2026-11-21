@@ -28,6 +28,8 @@ type ReportQuery struct {
 	PaymentMethodName string
 	CarrierId         string
 	SupplierId        string
+	SegmentCode       string
+	ClusterCode       string
 	Page              int
 	PageSize          int
 }
@@ -124,6 +126,7 @@ func (s *ReportService) GetSupplyReport(
 ) ([]repository.ReportRow, int64, error) {
 	filter := repository.SupplyFilter{
 		ShopCode:        query.ShopCode,
+		ProductId:       query.ProductId,
 		ProductLineCode: query.ProductLineCode,
 		CarrierId:       query.CarrierId,
 		SupplierId:      query.SupplierId,
@@ -131,6 +134,37 @@ func (s *ReportService) GetSupplyReport(
 	return s.repo.GetSupplyReport(
 		ctx, query.FromDate, query.ToDate, query.View, filter, query.Page, query.PageSize,
 	)
+}
+
+func (s *ReportService) GetAnalyticsReport(
+	ctx context.Context,
+	query ReportQuery,
+) ([]repository.ReportRow, int64, error) {
+	filter := repository.AnalyticsFilter{
+		SegmentCode: query.SegmentCode,
+		ClusterCode: query.ClusterCode,
+	}
+	return s.repo.GetAnalyticsReport(
+		ctx, query.FromDate, query.ToDate, query.View, filter, query.Page, query.PageSize,
+	)
+}
+
+func (s *ReportService) GetAnalyticsFilterOptions(
+	ctx context.Context,
+	fromDate time.Time,
+	toDate time.Time,
+	view string,
+) (repository.AnalyticsFilterOptions, error) {
+	return s.repo.GetAnalyticsFilterOptions(ctx, fromDate, toDate, view)
+}
+
+func (s *ReportService) GetSupplyFilterOptions(
+	ctx context.Context,
+	fromDate time.Time,
+	toDate time.Time,
+	view string,
+) (repository.SupplyFilterOptions, error) {
+	return s.repo.GetSupplyFilterOptions(ctx, fromDate, toDate, view)
 }
 
 // GetFinancialDetailFilterOptions returns distinct shop/product values for detail view filters
