@@ -17,8 +17,15 @@ def build_native_filters(
     dashboard_slug: str,
     default_time: str = "Last 30 days",
     filter_defaults: dict[str, Any] | None = None,
+    extra_dataset_ids: list[int] | None = None,
 ) -> list[dict[str, Any]]:
     fd = filter_defaults or {}
+    # Apply filter to every dataset used by charts on the dashboard
+    # Áp filter lên mọi dataset mà chart trên dashboard dùng
+    target_dataset_ids: list[int] = []
+    for did in [dataset_id, *(extra_dataset_ids or [])]:
+        if did and did not in target_dataset_ids:
+            target_dataset_ids.append(did)
     configs: list[dict[str, Any]] = []
     for f in filter_specs:
         if f.get("visible") is False:
@@ -28,18 +35,19 @@ def build_native_filters(
         ftype = f.get("type", "filter_select")
         name = f.get("label", col)
 
-        # Empty optional filter = no restriction (avoid IN () → No data)
-        # Filter tùy chọn để trống = không lọc (tránh IN () → No data)
-        allow_empty = not f.get("required", False)
+        # Superset 4.x: control `enableEmptyFilter` label = "Filter value is required"
+        # (Form.Item required=enableEmptyFilter). True = bắt buộc chọn; False = cho trống.
+        # Optional empty = no restriction (avoid IN () → No data) / Tùy chọn trống = không lọc
+        value_required = bool(f.get("required", False))
         entry: dict[str, Any] = {
             "id": stable_filter_id(dashboard_slug, col),
             "name": name,
             "filterType": ftype,
-            "targets": [{"datasetId": dataset_id, "column": {"name": col}}],
+            "targets": [{"datasetId": did, "column": {"name": col}} for did in target_dataset_ids],
             "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
             "cascadeParentIds": [],
             "controlValues": {
-                "enableEmptyFilter": allow_empty,
+                "enableEmptyFilter": value_required,
                 # Do not auto-pick first item (can cause unexpected empty charts)
                 # Không tự chọn phần tử đầu (tránh chart trống ngoài ý muốn)
                 "defaultToFirstItem": False,

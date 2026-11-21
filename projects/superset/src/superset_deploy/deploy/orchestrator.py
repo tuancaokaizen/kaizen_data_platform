@@ -73,12 +73,25 @@ def run_deploy(opts: DeployOptions) -> int:
             continue
 
         print(f"\n--- {title} ({slug}) ---")
+        # Secondary datasets on charts (e.g. RFM stats mart) must share filter targets
+        # Dataset phụ trên chart (vd. mart thống kê RFM) cần cùng target filter
+        layout_dataset_names = {dataset_name}
+        for row_specs in flatten_layout(dash_spec.get("layout", {})):
+            for chart_spec in row_specs:
+                layout_dataset_names.add(chart_spec.get("dataset", dataset_name))
+        extra_dataset_ids = [
+            dataset_ids[name]
+            for name in sorted(layout_dataset_names)
+            if name != dataset_name and name in dataset_ids
+        ]
+
         native_filters = build_native_filters(
             dash_spec.get("native_filters", []),
             dataset_id if dataset_id else 1,
             dashboard_slug=slug,
             default_time=default_time,
             filter_defaults=filter_defaults,
+            extra_dataset_ids=extra_dataset_ids,
         )
 
         chart_grid: list[list[tuple[int, int, int]]] = []

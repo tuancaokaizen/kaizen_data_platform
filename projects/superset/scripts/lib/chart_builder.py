@@ -141,9 +141,10 @@ def build_native_filters(
             "targets": [target],
             "scope": {"rootPath": ["ROOT_ID"], "excluded": []},
             "cascadeParentIds": [],
-            # Empty optional filter = no restriction / Filter trống = không lọc
+            # Superset 4.x: enableEmptyFilter = "Filter value is required" (True = bắt buộc)
+            # Optional empty = no restriction / Tùy chọn trống = không lọc
             "controlValues": {
-                "enableEmptyFilter": not f.get("required", False),
+                "enableEmptyFilter": bool(f.get("required", False)),
                 "defaultToFirstItem": False,
             },
         }
