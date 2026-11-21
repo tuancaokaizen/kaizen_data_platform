@@ -67,8 +67,8 @@ Quản lý schema **hot layer** (`report.*`) và **view hợp nhất hot-cold** 
 
 | Layer | Database ClickHouse | Nguồn dữ liệu | Phạm vi |
 |-------|---------------------|---------------|---------|
-| **Hot** | `report.financial_report`, `report.fund_report` | Spark `PushServingToClickHouseJob` | 30 ngày gần nhất |
-| **Cold** | `serving.financial_report`, `serving.fund_report` | Nessie Iceberg (`nessie.serving.*`) | Lịch sử đầy đủ |
+| **Hot** | `report.financial_report`, `report.fund_report`, … | Spark `PublishReportToClickHouse` | cửa sổ hot (≈ 30 ngày) |
+| **Cold** | `serving.financial_report`, `serving.fund_report`, … | Nessie Iceberg (`nessie.serving.*`) | Lịch sử đầy đủ |
 
 ### View (`schema_clickhouse_views.sql`)
 
@@ -85,7 +85,7 @@ Phân tầng hot/cold thể hiện qua database (`report` / `serving`); view h�
 
 Cột tiếng Việt: `NgayBaoCao`, `MaCuaHang`, `TenCuaHang`, `DoanhThuThuan`, `LoiNhuanGop`, `TongThu`, `DongTienRong`, ...
 
-View được deploy tự động ở cuối DAG `spark_dw_transform_pipeline` (task `create_clickhouse_report_views`).
+View được tạo tự động ở cuối DAG **`kaizen_lakehouse_daily`** (task `report_views`) và cũng chạy trong `kaizen_analytics_pipeline` khi cần refresh DSS views.
 
 ---
 

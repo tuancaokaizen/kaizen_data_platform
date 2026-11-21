@@ -51,7 +51,7 @@ kubectl exec -n "$NAMESPACE" airflow-lab-scheduler-0 -c scheduler -- \
 
 echo ""
 kubectl exec -n "$NAMESPACE" airflow-lab-scheduler-0 -c scheduler -- \
-  airflow dags list 2>&1 | grep -E "postgres_vacuum|kafka_retention|spark_dw_transform" || true
+  airflow dags list 2>&1 | grep -E "kaizen_lakehouse|kaizen_analytics|kaizen_postgres_vacuum|kaizen_supply" || true
 
 echo ""
 echo "=== 5. Verify log mount + PYTHONPATH ==="

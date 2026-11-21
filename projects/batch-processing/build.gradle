@@ -32,11 +32,11 @@ dependencies {
     implementation 'org.apache.iceberg:iceberg-spark-runtime-3.4_2.12:1.4.3'
     implementation 'org.projectnessie.nessie-integrations:nessie-spark-extensions-3.4_2.12:0.67.0'
 
-    // ClickHouse JDBC for PushServingToClickHouseJob / JDBC driver cho push report sang ClickHouse
+    // ClickHouse JDBC for PublishReportToClickHouse / JDBC driver cho push report sang ClickHouse
     implementation 'com.clickhouse:clickhouse-jdbc:0.6.5'
     implementation 'com.clickhouse:clickhouse-http-client:0.6.5'
 
-    // Kafka Admin API for KafkaRetentionJob / API quản trị Kafka cho job dọn retention
+    // Kafka Admin API (topic ops / tooling) / API quản trị Kafka (thao tác topic / tooling)
     implementation 'org.apache.kafka:kafka-clients:3.4.1'
 
     // ScalaTest run through the JUnit 4 runner, Spark on the test classpath
