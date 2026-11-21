@@ -5,7 +5,7 @@
 # Steps:
 #   1) Reconcile ES order-bundles from PG for mismatch days (deterministic _id)
 #   2) Purge orphan fnd.order rows for those days, re-ingest PG → Iceberg/CH fnd
-#   3) Full BackfillRealtimeBusinessColdJob (overwrite cold from fnd) + seedHot + refresh views
+#   3) Full BackfillRealtimeBusinessCold (overwrite cold from fnd) + seedHot + refresh views
 #
 # Usage:
 #   ./dags/scripts/stabilize_realtime_business_consistency.sh
@@ -77,20 +77,20 @@ SELECT '\''after_jul10'\'', count(*) FROM nessie.fnd.order
 "
 '
 
-echo "Trigger transaction ingest DAG for [$FROM_DATE, $TO_DATE)..."
+echo "Trigger kaizen_lakehouse_daily for [$FROM_DATE, $TO_DATE)..."
 kubectl exec -n "$NS_AF" "$SCHED" -c scheduler -- \
-  airflow dags trigger spark_transaction_data_ingest_pipeline \
-    --conf "{\"fromDate\":\"$FROM_DATE\",\"toDate\":\"$TO_DATE\",\"useWatermark\":false}"
+  airflow dags trigger kaizen_lakehouse_daily \
+    --conf "{\"fromDate\":\"$FROM_DATE\",\"toDate\":\"$TO_DATE\"}"
 
-echo "Waiting for ingest DAG to finish (poll 30s)..."
+echo "Waiting for lakehouse DAG to finish (poll 30s)..."
 for i in $(seq 1 80); do
   STATE=$(kubectl exec -n "$NS_AF" "$SCHED" -c scheduler -- \
-    airflow dags list-runs -d spark_transaction_data_ingest_pipeline -o plain 2>/dev/null \
+    airflow dags list-runs -d kaizen_lakehouse_daily -o plain 2>/dev/null \
     | awk 'NR==2 {print $3; exit}')
-  echo "  ingest state=$STATE (poll $i)"
+  echo "  lakehouse state=$STATE (poll $i)"
   case "$STATE" in
     success) break ;;
-    failed|upstream_failed) echo "Ingest DAG failed"; exit 1 ;;
+    failed|upstream_failed) echo "Lakehouse DAG failed"; exit 1 ;;
   esac
   sleep 30
 done

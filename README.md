@@ -13,7 +13,7 @@
 5. [Quick Start — Data platform](#5-quick-start--data-platform)
 6. [Report Dashboard (local UI)](#6-report-dashboard-local-ui)
 7. [Lakehouse DW (Nessie / Iceberg)](#7-lakehouse-dw-nessie--iceberg)
-8. [Bảo trì & partition](#8-bảo-trì--partition)
+8. [Bảo trì Iceberg / Postgres](#8-bảo-trì-iceberg--postgres)
 9. [Flink streaming](#9-flink-streaming)
 10. [Script deploy & tham chiếu](#10-script-deploy--tham-chiếu)
 
@@ -41,31 +41,32 @@ flowchart TD
     class PG_RAW postgres;
 
     subgraph STREAM ["Real-time (Flink)"]
-        OP["OrderProducerJob"]
-        PP["PaymentProducerJob"]
-        KC["KaizenConsumerJob"]
+        OS["OrderSimulationJob"]
+        PS["PaymentSimulationJob"]
+        SW["SalesWriterJob"]
+        OR["OutboxRelayJob"]
+        BR["BusinessRealtimeJob"]
+        SI["SearchIndexJob"]
         T_ORDER{{"order-bundles"}}
         T_PAY{{"payment-bundles"}}
     end
-    class OP,PP,KC flink;
+    class OS,PS,SW,OR,BR,SI flink;
     class T_ORDER,T_PAY kafka;
 
     subgraph ORCH ["Orchestration (Airflow)"]
-        DAG_M["spark_master_data_ingest"]
-        DAG_I["spark_transaction_data_ingest"]
-        DAG_T["spark_dw_transform"]
         DAG_SIL["kaizen_lakehouse_daily"]
-        DAG_MA["spark_dw_maintenance"]
         DAG_AN["kaizen_analytics_pipeline"]
+        DAG_SUP["kaizen_supply_daily_close"]
+        DAG_MA["kaizen_lakehouse_maintenance"]
     end
-    class DAG_M,DAG_I,DAG_T,DAG_SIL,DAG_MA,DAG_AN airflow;
+    class DAG_SIL,DAG_AN,DAG_SUP,DAG_MA airflow;
 
     subgraph BATCH ["Batch (Spark)"]
-        INGEST["GenericIngestJob"]
-        TRANS["ProcessDim* / ProcessFact*"]
-        SRV["ProcessSrv*Report"]
-        PUSH["PushServingToClickHouseJob"]
-        MAINT["IcebergMaintenanceJob"]
+        INGEST["PostgresToBronze / BronzeToSilver"]
+        TRANS["Dim* / Fact*"]
+        SRV["FinancialReport* / FundReport* / supply.*"]
+        PUSH["PublishReportToClickHouse"]
+        MAINT["IcebergExpire / Compact / Orphan"]
     end
     class INGEST,TRANS,SRV,PUSH,MAINT spark;
 
@@ -73,7 +74,7 @@ flowchart TD
         STG[("nessie.stg.*")]
         FND[("nessie.fnd.*")]
         DW[("nessie.dw.*")]
-        SRV_TBL[("nessie.srv.*")]
+        SRV_TBL[("nessie.serving.*")]
     end
     class STG,FND,DW,SRV_TBL nessie;
 
@@ -86,17 +87,20 @@ flowchart TD
     ES[("Elasticsearch")]
     class ES elastic;
 
-    PG_RAW -.-> OP & PP
-    OP --> T_ORDER
-    PP --> T_PAY
-    T_ORDER & T_PAY --> KC
-    KC --> PG_RAW
-    KC --> ES
+    PG_RAW -.-> OS & PS
+    OS --> T_ORDER
+    PS --> T_PAY
+    T_ORDER & T_PAY --> SW
+    SW --> PG_RAW
+    PG_RAW --> OR
+    OR --> BR & SI
+    BR --> CH
+    SI --> ES
 
-    DAG_M & DAG_I --> INGEST
+    DAG_SIL --> INGEST
     PG_RAW --> INGEST
     INGEST --> STG --> FND
-    DAG_T --> TRANS
+    DAG_SIL --> TRANS
     FND --> TRANS --> DW
     TRANS --> SRV --> SRV_TBL
     SRV_TBL --> PUSH --> CH
@@ -104,11 +108,12 @@ flowchart TD
     MAINT --> FND & DW & STG
     DW --> DAG_AN
     DAG_AN --> CH
+    DAG_SUP --> PG_RAW
 
     CH --> UI
 ```
 
-**Luồng báo cáo vận hành:** Spark transform → `nessie.srv.*` → `PushServingToClickHouseJob` → ClickHouse `report.*` → Go API → React UI / Superset.
+**Luồng báo cáo vận hành:** Spark → `nessie.serving.*` → `PublishReportToClickHouse` → ClickHouse `report.*` → Go API → React UI / Superset.
 
 **Luồng DSS (analytics):** `kaizen_analytics_pipeline` đọc DW → RFM + FP-Growth + PuLP bổ sung tồn → ghi `report.customer_segment` / `association_rule` / `replenishment_plan` (+ derived facts `dw.fact_*`).
 
@@ -236,11 +241,13 @@ cd ../../dags
 
 ### Bước 4: Chạy pipeline trên Airflow UI
 
-1. Trigger **`master_data_pipeline`** — sinh master data PostgreSQL.
-2. **`spark_master_data_ingest_pipeline`** — ingest master → `nessie.fnd.*`.
-3. **`spark_transaction_data_ingest_pipeline`** — ingest giao dịch incremental.
-4. **`spark_dw_transform_pipeline`** — transform DW + serving + push ClickHouse.
-5. Hoặc để **`sil_daily_pipeline`** chạy tự động lúc 00:30 (ingest → transform).
+Stack hiện tại dùng các DAG **Kaizen**:
+
+1. **`kaizen_lakehouse_daily`** (schedule ~00:30) — Postgres → Bronze/Silver → DW → serving → ClickHouse `report.*`.
+2. **`kaizen_analytics_pipeline`** (sau lakehouse) — DSS: RFM + FP-Growth + PuLP bổ sung tồn → `report.customer_segment` / `association_rule` / `replenishment_plan`.
+3. **`kaizen_supply_daily_close`** — đóng ngày mô phỏng chuỗi cung ứng (nếu bật sim).
+
+Greenfield / backfill: trigger `kaizen_lakehouse_daily` với conf `{"fromDate":"YYYY-MM-DD","toDate":"YYYY-MM-DD"}` (không gồm `toDate`), hoặc dùng `sim_backfill_pipeline` rồi để lakehouse chạy tiếp.
 
 ### Bước 5: Xem báo cáo
 
@@ -248,7 +255,8 @@ cd ../../dags
 cd projects && ./run_local.sh
 ```
 
-Mở http://localhost:8092 — tab Financial Report & Fund Report.
+Mở http://localhost:8092 — Tài chính, Quỹ, KD realtime, Chuỗi cung ứng, Phân tích khách hàng.  
+BI embed: publish Superset (`./publish_superset.sh --force --embed`).
 
 ---
 
@@ -288,48 +296,44 @@ Hướng dẫn chi tiết: **[projects/README.md](projects/README.md)**
 
 ## 7. Lakehouse DW (Nessie / Iceberg)
 
-### Tầng Foundation (`nessie.fnd.*`)
+DAG **`kaizen_lakehouse_daily`** (một Spark pod / task, `max_active_tasks=1`):
 
-Ingest incremental từ PostgreSQL qua `GenericIngestJob`, watermark `ModifiedDate`/`CreatedDate` hoặc khoảng `[fromDate, toDate)` từ Airflow params.
+### Ingest — Bronze / Silver → Foundation
 
-### Tầng Warehouse (`nessie.dw.*`)
+- `PostgresToBronze` → `nessie.stg.*`
+- `BronzeToSilver` → `nessie.fnd.*`
+- Khoảng ngày: Airflow params `fromDate` / `toDate` (không gồm `toDate`); mặc định D-1 → D.
 
-Transform tuần tự để tránh nghẽn cluster:
+### Warehouse (`nessie.dw.*`)
 
-`Product → Customer → Shop → Employee → Promotion → Voucher → Sales → Returns → Payments → Promotion Cost → COGS`
+Dim rồi Fact tuần tự (rồi derived):
 
-### Tầng Serving (`nessie.srv.*`) + ClickHouse
+`DimDate → … → DimPaymentMethod` → `FactSale* / FactReturn* / FactPayment* / … / FactShipment*` → `FactCustomerMonthly` → `FactEmployeeSalary`
 
-- `ProcessSrvFinancialReport`, `ProcessSrvFundReport` — aggregate serving trên Iceberg.
-- `PushServingToClickHouseJob` — đẩy window 1 tháng sang ClickHouse hot layer (`report` database).
-- DDL: `schema_manager/clickhouse/` — bảng native + views tiếng Việt.
+### Serving (`nessie.serving.*`) + ClickHouse
 
-**Ví dụ filter fact payment (chỉ SUCCESS):**
-
-```scala
-.filter((col("CreatedDate") >= fromTs && col("CreatedDate") < toTs) ||
-        (col("ModifiedDate") >= fromTs && col("ModifiedDate") < toTs))
-```
+- Báo cáo Iceberg: `FinancialReport*` · `FundReport*` · `InventoryHealth` · `ShopCapacityUtilization` · `CarrierScorecard` · `SupplierPerformance`
+- `PublishReportToClickHouse` — đẩy cửa sổ hot sang ClickHouse `report.*`
+- Đăng ký pointer Iceberg `dw.*` / `serving.*` + tạo views VN (`report_views`) trong cùng DAG
+- DDL: `schema_manager/clickhouse/` — bảng native + views tiếng Việt
 
 ---
 
-## 8. Bảo trì & partition
+## 8. Bảo trì Iceberg / Postgres
 
-### Partition realignment (một lần)
+### Daily Iceberg housekeeping (~02:00 UTC)
 
-DAG **`spark_dw_partition_realignment_pipeline`** — partition evolution theo ngày + rewrite data files:
+DAG **`kaizen_lakehouse_maintenance`** (thường pause trên lab):
 
-```sql
-CALL nessie.system.rewrite_data_files(table => 'tên_bảng')
-```
+1. **`IcebergExpireSnapshots`** — hết hạn snapshot cũ
+2. **`IcebergCompactTables`** — gộp file Parquet nhỏ
+3. **`IcebergRemoveOrphanFiles`** — dọn file mồ côi trên object storage
 
-### Daily maintenance (02:00 AM)
+### Postgres vacuum (tuần)
 
-DAG **`spark_dw_maintenance_pipeline`**:
+DAG **`kaizen_postgres_vacuum`** — `VACUUM (ANALYZE)` các bảng streaming trên Postgres.
 
-1. **Compaction** — gộp file Parquet nhỏ (~512MB).
-2. **Expire snapshots** — giữ 5 snapshot (DW/FND), 1 snapshot (`stg.*`).
-3. **Remove orphan files** — dọn file mồ côi trên object storage.
+Realtime KD cold backfill / migrate (manual): `spark_realtime_business_backfill_pipeline`, `spark_realtime_business_cold_migrate_pipeline`.
 
 ---
 
@@ -337,11 +341,13 @@ DAG **`spark_dw_maintenance_pipeline`**:
 
 | Job | Vai trò |
 |-----|---------|
-| `OrderProducerJob` | Giả lập đơn hàng Pareto 80/20 → Kafka `order-bundles` |
-| `PaymentProducerJob` | Giả lập thanh toán → Kafka `payment-bundles` |
-| `KaizenConsumerJob` | Consume → ghi PostgreSQL (JDBC) + Elasticsearch (nested docs) |
-
-**FK integrity:** Consumer bỏ qua payment nếu order chưa tồn tại; simulator sinh lại ở tick sau.
+| `OrderSimulationJob` | Giả lập đơn → Kafka `order-bundles` |
+| `PaymentSimulationJob` | Giả lập thanh toán → Kafka `payment-bundles` |
+| `SalesWriterJob` | Consume bundle → ghi PostgreSQL (JDBC) |
+| `OutboxRelayJob` | Relay outbox / CDC sang topic xử lý |
+| `BusinessRealtimeJob` | KD realtime → ClickHouse serving |
+| `SearchIndexJob` | Index tìm kiếm → Elasticsearch |
+| `SupplyChainRealtimeJob` | Sự kiện chuỗi cung ứng realtime |
 
 Deploy: `projects/stream-processing/deploy_stream.sh {build|upload|stream|stop|clean}`
 
@@ -376,17 +382,12 @@ Deploy: `projects/stream-processing/deploy_stream.sh {build|upload|stream|stop|c
 
 | DAG | Mô tả |
 |-----|--------|
-| `master_data_pipeline` | Sinh master data PG |
-| `incremental_data_pipeline` | Sinh giao dịch incremental |
-| `spark_master_data_ingest_pipeline` | Ingest master → FND |
-| `spark_transaction_data_ingest_pipeline` | Ingest transaction → FND |
-| `spark_dw_transform_pipeline` | DW + serving + push ClickHouse |
-| `kaizen_lakehouse_daily` | Daily lakehouse: Postgres → Bronze/Silver/Gold → serving |
-| `kaizen_supply_daily_close` | Đóng ngày mô phỏng chuỗi cung ứng |
+| `kaizen_lakehouse_daily` | Daily lakehouse: Postgres → Bronze/Silver → DW → serving → ClickHouse |
 | `kaizen_analytics_pipeline` | DSS hàng ngày: RFM + FP-Growth + PuLP bổ sung tồn → ClickHouse |
-| `spark_dw_maintenance_pipeline` | Compaction + snapshot cleanup |
-| `spark_dw_partition_realignment_pipeline` | Partition realignment (once) |
-| `spark_transaction_simulation_pipeline` | Mô phỏng giao dịch batch |
+| `kaizen_supply_daily_close` | Đóng ngày mô phỏng chuỗi cung ứng |
+| `sim_backfill_pipeline` | Backfill sim + kích hoạt lakehouse |
+| `kaizen_lakehouse_maintenance` | Bảo trì Iceberg (thường pause trên lab) |
+| `spark_realtime_business_backfill_pipeline` | Backfill serving KD realtime (cold path) |
 
 Chi tiết analytics: **[dags/jobs/kaizen_analytics/README.md](dags/jobs/kaizen_analytics/README.md)**.
 
