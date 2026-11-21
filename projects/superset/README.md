@@ -182,6 +182,8 @@ cp config/.env.example config/.env
 | Tab BI: **Page not found** (404 Superset) | Bật `EMBEDDED_SUPERSET` trong `superset_config.py` → restart Superset → `enable-embed` |
 | Tab BI: Firefox chặn iframe | Mở UI cùng origin (`localhost:8092`); `enable-embed --domain http://<ip>:8092` |
 | Filter không có "Chọn tất cả" | Trong YAML: `select_all: true` |
+| Filter select đỏ `*` / bắt buộc dù YAML không `required` | Superset 4.x: `enableEmptyFilter` = “value required” — redeploy `--force` sau khi sửa `builders/filters.py` |
+| Tab BI: filter/chart 403 sau khi thêm dataset | `./scripts/grant_guest_embed_permissions.sh` |
 
 ---
 
