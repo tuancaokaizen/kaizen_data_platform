@@ -762,3 +762,106 @@ WHERE s.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(365)
     WHERE r.`NgayBaoCao` >= toDate(now('Asia/Ho_Chi_Minh')) - toIntervalDay(365)
       AND r.`NgayBaoCao` IS NOT NULL
   );
+
+-- ============================================================================
+-- Analytics views (Vietnamese column names for Superset)
+-- ============================================================================
+DROP VIEW IF EXISTS report.v_phan_khuc_khach_hang;
+DROP VIEW IF EXISTS report.v_thong_ke_phan_khuc;
+DROP VIEW IF EXISTS report.v_luat_ket_hop_san_pham;
+DROP VIEW IF EXISTS report.v_ke_hoach_bo_sung_ton;
+
+CREATE VIEW report.v_phan_khuc_khach_hang AS
+SELECT
+    AsOfDate AS `NgayChot`,
+    CustomerId AS `MaKhachHang`,
+    RecencyDays AS `SoNgayGanNhat`,
+    Frequency AS `SoDon`,
+    Monetary AS `DoanhThuThuan`,
+    RecencyScore AS `DiemR`,
+    FrequencyScore AS `DiemF`,
+    MonetaryScore AS `DiemM`,
+    RfmScore AS `DiemRFM`,
+    SegmentCode AS `MaPhanKhuc`,
+    SegmentName AS `TenPhanKhuc`,
+    ClusterId AS `MaCum`,
+    ClusterCode AS `MaCumMoHinh`,
+    ClusterName AS `TenCum`,
+    LabelSource AS `NguonNhan`,
+    Age AS `Tuoi`,
+    Gender AS `GioiTinh`,
+    RecencyLog1p AS `RecencyLog1p`,
+    FrequencyLog1p AS `FrequencyLog1p`,
+    MonetaryLog1p AS `MonetaryLog1p`,
+    GenderCode AS `MaGioiTinh`,
+    SplitSet AS `TapHuanLuyen`
+FROM report.customer_segment;
+
+CREATE VIEW report.v_thong_ke_phan_khuc AS
+SELECT
+    AsOfDate AS `NgayChot`,
+    SegmentCode AS `MaPhanKhuc`,
+    SegmentName AS `TenPhanKhuc`,
+    CustomerCount AS `SoKhach`,
+    AvgRecencyDays AS `NgayGanNhatTB`,
+    AvgFrequency AS `SoDonTB`,
+    AvgMonetary AS `DoanhThuTB`,
+    P50Monetary AS `DoanhThuP50`,
+    SharePct AS `TyTrongPct`,
+    AvgAge AS `TuoiTB`,
+    PctFemale AS `TyLeNuPct`,
+    PctMale AS `TyLeNamPct`,
+    PctOtherGender AS `TyLeKhacPct`
+FROM report.segment_profile;
+
+-- Alias: features now live on customer_segment derived fact
+-- Alias: feature nằm trên derived fact customer_segment
+CREATE VIEW report.v_feature_khach_rfm AS
+SELECT
+    AsOfDate AS `NgayChot`,
+    CustomerId AS `MaKhachHang`,
+    RecencyDays AS `SoNgayGanNhat`,
+    Frequency AS `SoDon`,
+    Monetary AS `DoanhThuThuan`,
+    RecencyLog1p AS `RecencyLog1p`,
+    FrequencyLog1p AS `FrequencyLog1p`,
+    MonetaryLog1p AS `MonetaryLog1p`,
+    Age AS `Tuoi`,
+    Gender AS `GioiTinh`,
+    GenderCode AS `MaGioiTinh`,
+    SplitSet AS `TapHuanLuyen`
+FROM report.customer_segment;
+
+CREATE VIEW report.v_luat_ket_hop_san_pham AS
+SELECT
+    AsOfDate AS `NgayChot`,
+    SegmentCode AS `MaPhanKhuc`,
+    SegmentName AS `TenPhanKhuc`,
+    AntecedentProductIds AS `MaSanPhamTienDe`,
+    ConsequentProductId AS `MaSanPhamHeQua`,
+    AntecedentNames AS `TenSanPhamTienDe`,
+    ConsequentName AS `TenSanPhamHeQua`,
+    Support AS `DoHoTro`,
+    Confidence AS `DoTinCay`,
+    Lift AS `Lift`,
+    SupportCount AS `SoGioCoLuat`,
+    BasketSampleSize AS `SoGioMau`
+FROM report.association_rule;
+
+CREATE VIEW report.v_ke_hoach_bo_sung_ton AS
+SELECT
+    AsOfDate AS `NgayChot`,
+    ShopCode AS `MaCuaHang`,
+    ShopName AS `TenCuaHang`,
+    ProductId AS `MaSanPham`,
+    ProductName AS `TenSanPham`,
+    OnHandQty AS `TonHienTai`,
+    ReorderPoint AS `DiemDatHang`,
+    TargetLevel AS `MucTieuTon`,
+    SuggestedQty AS `SoLuongDeXuat`,
+    EstimatedVolumeM3 AS `TheTichUocTinh`,
+    EstimatedCost AS `ChiPhiUocTinh`,
+    SolverBackend AS `PhuongPhapToiUu`,
+    Reason AS `LyDo`
+FROM report.replenishment_plan;
+
