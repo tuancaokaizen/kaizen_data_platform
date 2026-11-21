@@ -26,6 +26,13 @@ const (
 	SupplyViewCapacity  = "capacity"
 	SupplyViewCarrier   = "carrier"
 	SupplyViewSupplier  = "supplier"
+	SupplyViewSolver    = "solver"
+)
+
+// Analytics view keys map to customer-segment / association views / View phân tích khách hàng
+const (
+	AnalyticsViewCustomer = "customer"
+	AnalyticsViewBasket   = "basket"
 )
 
 type FinancialFilter struct {
@@ -52,9 +59,17 @@ type KdFilter struct {
 
 type SupplyFilter struct {
 	ShopCode        string
+	ProductId       string
 	ProductLineCode string
 	CarrierId       string
 	SupplierId      string
+}
+
+// AnalyticsFilter — segment / cluster filters for RFM + association
+// Bộ lọc phân khúc / nhóm (cụm) cho RFM và luật kết hợp
+type AnalyticsFilter struct {
+	SegmentCode string
+	ClusterCode string
 }
 
 type financialViewSpec struct {
@@ -229,6 +244,14 @@ func supplyViewSpecFor(view string) financialViewSpec {
 				"`TyLeDapUngTrungBinh`, `SoLuongDat`, `SoLuongNhan`, `GiaTriDat`, `GiaTriNhan`",
 			orderBy: "`NgayBaoCao` DESC, `MaNhaCungCap`",
 		}
+	case SupplyViewSolver:
+		// Snapshot uses NgayChot; alias matches v_ke_hoach_bo_sung_ton / Snapshot dùng NgayChot; alias khớp view
+		return financialViewSpec{
+			table: "report.v_ke_hoach_bo_sung_ton",
+			columns: "`NgayChot`, `MaCuaHang`, `TenCuaHang`, `MaSanPham`, `TenSanPham`, `TonHienTai`, " +
+				"`DiemDatHang`, `MucTieuTon`, `SoLuongDeXuat`, `TheTichUocTinh`, `ChiPhiUocTinh`, `PhuongPhapToiUu`, `LyDo`",
+			orderBy: "`NgayChot` DESC, `MaCuaHang`, `MaSanPham`",
+		}
 	default:
 		return financialViewSpec{
 			table: "report.v_bao_cao_suc_khoe_ton_kho_tong_hop",
@@ -240,10 +263,33 @@ func supplyViewSpecFor(view string) financialViewSpec {
 	}
 }
 
+func analyticsViewSpecFor(view string) financialViewSpec {
+	switch view {
+	case AnalyticsViewBasket:
+		return financialViewSpec{
+			table: "report.v_luat_ket_hop_san_pham",
+			columns: "`NgayChot`, `MaPhanKhuc`, `TenPhanKhuc`, `MaSanPhamTienDe`, `MaSanPhamHeQua`, " +
+				"`TenSanPhamTienDe`, `TenSanPhamHeQua`, `DoHoTro`, `DoTinCay`, `Lift`, `SoGioCoLuat`, `SoGioMau`",
+			orderBy: "`NgayChot` DESC, `Lift` DESC, `MaPhanKhuc`",
+		}
+	default:
+		return financialViewSpec{
+			table: "report.v_phan_khuc_khach_hang",
+			columns: "`NgayChot`, `MaKhachHang`, `SoNgayGanNhat`, `SoDon`, `DoanhThuThuan`, `DiemR`, `DiemF`, `DiemM`, " +
+				"`DiemRFM`, `MaPhanKhuc`, `TenPhanKhuc`, `MaCumMoHinh`, `TenCum`, `NguonNhan`, `Tuoi`, `GioiTinh`",
+			orderBy: "`NgayChot` DESC, `DoanhThuThuan` DESC, `MaKhachHang`",
+		}
+	}
+}
+
 func appendSupplyFilters(view string, filter SupplyFilter, where string, args []any) (string, []any) {
-	if filter.ShopCode != "" && (view == SupplyViewInventory || view == SupplyViewCapacity) {
+	if filter.ShopCode != "" && (view == SupplyViewInventory || view == SupplyViewCapacity || view == SupplyViewSolver) {
 		where += " AND `MaCuaHang` = ?"
 		args = append(args, filter.ShopCode)
+	}
+	if filter.ProductId != "" && view == SupplyViewSolver {
+		where += " AND `MaSanPham` = ?"
+		args = append(args, filter.ProductId)
 	}
 	if filter.ProductLineCode != "" && view == SupplyViewInventory {
 		where += " AND `MaNganhHang` = ?"
@@ -256,6 +302,19 @@ func appendSupplyFilters(view string, filter SupplyFilter, where string, args []
 	if filter.SupplierId != "" && view == SupplyViewSupplier {
 		where += " AND `MaNhaCungCap` = ?"
 		args = append(args, filter.SupplierId)
+	}
+	return where, args
+}
+
+func appendAnalyticsFilters(view string, filter AnalyticsFilter, where string, args []any) (string, []any) {
+	if filter.SegmentCode != "" {
+		where += " AND `MaPhanKhuc` = ?"
+		args = append(args, filter.SegmentCode)
+	}
+	// Cluster only exists on customer RFM mart / Nhóm (cụm) chỉ có ở mart RFM khách hàng
+	if filter.ClusterCode != "" && view == AnalyticsViewCustomer {
+		where += " AND `MaCumMoHinh` = ?"
+		args = append(args, filter.ClusterCode)
 	}
 	return where, args
 }

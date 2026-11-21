@@ -8,7 +8,8 @@ type ReportViewSlicerProps = {
 };
 
 function childViewOptions(category: ReportCategory) {
-  return REPORT_VIEWS.filter((v) => v.category === category).map((view) => ({
+  // Skip hidden views (empty marts) / Bỏ view ẩn (mart chưa có dữ liệu)
+  return REPORT_VIEWS.filter((v) => v.category === category && !v.hidden).map((view) => ({
     label: view.label,
     value: view.key
   }));
@@ -84,6 +85,23 @@ export function ReportViewSlicer({ activeKey, onChange }: ReportViewSlicerProps)
           options={childViewOptions("supply")}
           onChange={(key) => onChange(key as ReportViewKey)}
           placeholder="Chọn chiều báo cáo"
+          showSearch
+          optionFilterProp="label"
+        />
+      </section>
+
+      <section
+        className={`report-nav__group${
+          activeCategory === "analytics" ? " report-nav__group--active" : ""
+        }`}
+      >
+        <h2 className="report-nav__category">{MENU_GROUP_LABELS.analytics}</h2>
+        <Select
+          className="report-nav__select"
+          value={activeCategory === "analytics" ? activeKey : undefined}
+          options={childViewOptions("analytics")}
+          onChange={(key) => onChange(key as ReportViewKey)}
+          placeholder="Chọn báo cáo phân tích"
           showSearch
           optionFilterProp="label"
         />

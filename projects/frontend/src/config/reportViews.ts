@@ -1,16 +1,18 @@
 import { supersetSlugForReportKey } from "./biDashboardRegistry";
 
-export type ReportCategory = "financial" | "fund" | "kd" | "supply";
+export type ReportCategory = "financial" | "fund" | "kd" | "supply" | "analytics";
 
 export type FinancialView = "shop" | "detail" | "product" | "order";
 export type FundView = "payment" | "shop" | "order";
 export type KdView = "order";
-export type SupplyView = "inventory" | "capacity" | "carrier" | "supplier";
+export type SupplyView = "inventory" | "capacity" | "carrier" | "supplier" | "solver";
+export type AnalyticsView = "customer" | "basket";
 export type ReportViewKey =
   | `financial:${FinancialView}`
   | `fund:${FundView}`
   | `kd:${KdView}`
-  | `supply:${SupplyView}`;
+  | `supply:${SupplyView}`
+  | `analytics:${AnalyticsView}`;
 
 export type FilterField =
   | "dateRange"
@@ -22,17 +24,22 @@ export type FilterField =
   | "orderStatus"
   | "paymentMethodName"
   | "carrierId"
-  | "supplierId";
+  | "supplierId"
+  | "segmentCode";
 
 export type ReportViewConfig = {
   key: ReportViewKey;
   category: ReportCategory;
-  view: FinancialView | FundView | KdView | SupplyView;
+  view: FinancialView | FundView | KdView | SupplyView | AnalyticsView;
   label: string;
   description: string;
   filters: FilterField[];
   /** Superset dashboard slug — omit when BI dashboard not ready yet / Bỏ qua nếu chưa có dashboard Superset */
   supersetSlug?: string;
+  /** BI-only views skip the native detail table API / View chỉ BI bỏ API bảng chi tiết */
+  biOnly?: boolean;
+  /** Hide from menu when mart has no usable data / Ẩn khỏi menu khi chưa có dữ liệu dùng được */
+  hidden?: boolean;
 };
 
 /** Full Vietnamese labels for filter fields / Nhãn đầy đủ cho bộ lọc */
@@ -46,7 +53,8 @@ export const FILTER_LABELS: Record<FilterField, string> = {
   orderStatus: "Trạng thái đơn hàng",
   paymentMethodName: "Phương thức thanh toán",
   carrierId: "Mã nhà vận chuyển",
-  supplierId: "Mã nhà cung cấp"
+  supplierId: "Mã nhà cung cấp",
+  segmentCode: "Phân khúc khách hàng"
 };
 
 export const FILTER_PLACEHOLDERS: Partial<Record<FilterField, string>> = {
@@ -58,14 +66,16 @@ export const FILTER_PLACEHOLDERS: Partial<Record<FilterField, string>> = {
   orderStatus: "Chọn trạng thái đơn hàng",
   paymentMethodName: "Chọn phương thức thanh toán",
   carrierId: "Nhập mã nhà vận chuyển",
-  supplierId: "Nhập mã nhà cung cấp"
+  supplierId: "Nhập mã nhà cung cấp",
+  segmentCode: "Chọn phân khúc"
 };
 
 export const MENU_GROUP_LABELS: Record<ReportCategory, string> = {
   financial: "Báo Cáo Tài Chính",
   fund: "Báo Cáo Quỹ",
   kd: "Báo Cáo Tình Hình Kinh Doanh Realtime",
-  supply: "Báo Cáo Chuỗi Cung Ứng"
+  supply: "Báo Cáo Chuỗi Cung Ứng",
+  analytics: "Phân Tích Khách Hàng"
 };
 
 /** Product lines in master data / Ngành hàng trong dữ liệu nguồn */
@@ -163,7 +173,7 @@ export const REPORT_VIEWS: ReportViewConfig[] = [
     key: "kd:order",
     category: "kd",
     view: "order",
-    label: "Theo đơn hàng",
+    label: "Tình hình kinh doanh thời gian thực theo đơn hàng",
     description: "Doanh thu, thu chi và dòng tiền theo từng đơn bán hoặc trả hàng",
     filters: ["dateRange", "shopCode", "orderId", "documentType", "orderStatus"],
     supersetSlug: safeSlug("kd:order")
@@ -174,8 +184,9 @@ export const REPORT_VIEWS: ReportViewConfig[] = [
     view: "inventory",
     label: "Sức khỏe tồn kho theo cửa hàng và ngành hàng",
     description:
-      "Tồn kho, tỷ lệ hết hàng, số ngày đủ hàng và tỷ lệ đáp ứng theo cửa hàng × ngành hàng",
+      "Tồn kho, tỷ lệ hết hàng, số ngày đủ hàng và tỷ lệ đáp ứng theo cửa hàng và ngành hàng",
     filters: ["dateRange", "shopCode", "productLineCode"],
+    hidden: true,
     supersetSlug: safeSlug("supply:inventory")
   },
   {
@@ -186,6 +197,7 @@ export const REPORT_VIEWS: ReportViewConfig[] = [
     description:
       "Tỷ lệ sử dụng kho, slot nhận hàng và số mặt hàng vượt sức chứa theo cửa hàng",
     filters: ["dateRange", "shopCode"],
+    hidden: true,
     supersetSlug: safeSlug("supply:capacity")
   },
   {
@@ -204,9 +216,40 @@ export const REPORT_VIEWS: ReportViewConfig[] = [
     view: "supplier",
     label: "Hiệu suất nhà cung cấp",
     description:
-      "Lead time thực tế so với cam kết, tỷ lệ đúng hạn và tỷ lệ đáp ứng theo nhà cung cấp",
+      "Thời gian giao hàng thực tế so với cam kết, tỷ lệ đúng hạn và tỷ lệ đáp ứng theo nhà cung cấp",
     filters: ["dateRange", "supplierId"],
     supersetSlug: safeSlug("supply:supplier")
+  },
+  {
+    key: "supply:solver",
+    category: "supply",
+    view: "solver",
+    label: "Kế hoạch bổ sung tồn kho theo cửa hàng và sản phẩm",
+    description: "Gợi ý nhập bổ sung từng mã sản phẩm theo nhu cầu và sức chứa cửa hàng",
+    filters: ["dateRange", "shopCode", "productId"],
+    biOnly: false,
+    supersetSlug: safeSlug("supply:solver")
+  },
+  {
+    key: "analytics:customer",
+    category: "analytics",
+    view: "customer",
+    label: "Phân loại khách hàng theo gần đây, tần suất và doanh thu",
+    description:
+      "Phân loại theo số ngày mua gần nhất, số đơn và doanh thu thuần; khách mới được dự đoán bằng mô hình học máy",
+    filters: ["dateRange", "segmentCode"],
+    biOnly: false,
+    supersetSlug: safeSlug("analytics:customer")
+  },
+  {
+    key: "analytics:basket",
+    category: "analytics",
+    view: "basket",
+    label: "Luật kết hợp sản phẩm theo phân loại khách hàng",
+    description: "Các cặp sản phẩm thường mua kèm theo từng phân loại khách hàng và toàn bộ khách",
+    filters: ["dateRange", "segmentCode"],
+    biOnly: false,
+    supersetSlug: safeSlug("analytics:basket")
   }
 ];
 

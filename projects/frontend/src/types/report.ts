@@ -81,6 +81,38 @@ export type ReportRow = {
   receivedQuantity?: number;
   orderedAmount?: number;
   receivedAmount?: number;
+  // Analytics / Phân tích khách hàng
+  customerId?: string;
+  recencyDays?: number;
+  frequency?: number;
+  recencyScore?: number;
+  frequencyScore?: number;
+  monetaryScore?: number;
+  rfmScore?: number;
+  segmentCode?: string;
+  segmentName?: string;
+  clusterCode?: string;
+  clusterName?: string;
+  labelSource?: string;
+  age?: number;
+  gender?: string;
+  antecedentProductIds?: string;
+  consequentProductId?: string;
+  antecedentNames?: string;
+  consequentName?: string;
+  support?: number;
+  confidence?: number;
+  lift?: number;
+  supportCount?: number;
+  basketSampleSize?: number;
+  // Replenishment / Bổ sung tồn
+  reorderPoint?: number;
+  targetLevel?: number;
+  suggestedQty?: number;
+  estimatedVolumeM3?: number;
+  estimatedCost?: number;
+  solverBackend?: string;
+  reason?: string;
 };
 
 export type Pagination = {

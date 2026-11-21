@@ -152,6 +152,88 @@ func (h *ReportHandler) GetSupplyReport(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func (h *ReportHandler) GetAnalyticsReport(w http.ResponseWriter, r *http.Request) {
+	query, err := buildReportQuery(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	data, total, err := h.reportService.GetAnalyticsReport(r.Context(), query)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"data": data,
+		"view": query.View,
+		"pagination": map[string]any{
+			"page":     query.Page,
+			"pageSize": query.PageSize,
+			"total":    total,
+		},
+	})
+}
+
+func (h *ReportHandler) GetAnalyticsFilterOptions(w http.ResponseWriter, r *http.Request) {
+	fromDate, err := time.Parse(dateLayout, r.URL.Query().Get("fromDate"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid fromDate")
+		return
+	}
+	toDate, err := time.Parse(dateLayout, r.URL.Query().Get("toDate"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid toDate")
+		return
+	}
+	view := r.URL.Query().Get("view")
+	if view == "" {
+		view = repository.AnalyticsViewCustomer
+	}
+
+	opts, err := h.reportService.GetAnalyticsFilterOptions(r.Context(), fromDate, toDate, view)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"view":     view,
+		"segments": opts.Segments,
+		"clusters": opts.Clusters,
+	})
+}
+
+func (h *ReportHandler) GetSupplyFilterOptions(w http.ResponseWriter, r *http.Request) {
+	fromDate, err := time.Parse(dateLayout, r.URL.Query().Get("fromDate"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid fromDate")
+		return
+	}
+	toDate, err := time.Parse(dateLayout, r.URL.Query().Get("toDate"))
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "invalid toDate")
+		return
+	}
+	view := r.URL.Query().Get("view")
+	if view == "" {
+		view = repository.SupplyViewInventory
+	}
+
+	opts, err := h.reportService.GetSupplyFilterOptions(r.Context(), fromDate, toDate, view)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"view":     view,
+		"shops":    opts.Shops,
+		"products": opts.Products,
+	})
+}
+
 func (h *ReportHandler) GetKdSummary(w http.ResponseWriter, r *http.Request) {
 	query, err := buildReportQuery(r)
 	if err != nil {
@@ -274,6 +356,8 @@ func buildReportQuery(r *http.Request) (service.ReportQuery, error) {
 		PaymentMethodName: r.URL.Query().Get("paymentMethodName"),
 		CarrierId:         r.URL.Query().Get("carrierId"),
 		SupplierId:        r.URL.Query().Get("supplierId"),
+		SegmentCode:       r.URL.Query().Get("segmentCode"),
+		ClusterCode:       r.URL.Query().Get("clusterCode"),
 		Page:              page,
 		PageSize:          pageSize,
 	}, nil
@@ -288,6 +372,9 @@ func defaultViewForPath(path string) string {
 	}
 	if path == "/api/v1/reports/supply" {
 		return "inventory"
+	}
+	if path == "/api/v1/reports/analytics" {
+		return "customer"
 	}
 	return "shop"
 }

@@ -105,6 +105,39 @@ type ReportRow struct {
 	ReceivedQuantity             int64   `json:"receivedQuantity"`
 	OrderedAmount                float64 `json:"orderedAmount"`
 	ReceivedAmount               float64 `json:"receivedAmount"`
+	// Analytics — customer segment / Phân loại khách hàng
+	CustomerId     string  `json:"customerId,omitempty"`
+	RecencyDays    int32   `json:"recencyDays"`
+	Frequency      int32   `json:"frequency"`
+	RecencyScore   int8    `json:"recencyScore"`
+	FrequencyScore int8    `json:"frequencyScore"`
+	MonetaryScore  int8    `json:"monetaryScore"`
+	RfmScore       int16   `json:"rfmScore"`
+	SegmentCode    string  `json:"segmentCode,omitempty"`
+	SegmentName    string  `json:"segmentName,omitempty"`
+	ClusterCode    string  `json:"clusterCode,omitempty"`
+	ClusterName    string  `json:"clusterName,omitempty"`
+	LabelSource    string  `json:"labelSource,omitempty"`
+	Age            int16   `json:"age"`
+	Gender         string  `json:"gender,omitempty"`
+	// Analytics — association rules / Luật kết hợp
+	AntecedentProductIds string  `json:"antecedentProductIds,omitempty"`
+	ConsequentProductId  string  `json:"consequentProductId,omitempty"`
+	AntecedentNames      string  `json:"antecedentNames,omitempty"`
+	ConsequentName       string  `json:"consequentName,omitempty"`
+	Support              float64 `json:"support"`
+	Confidence           float64 `json:"confidence"`
+	Lift                 float64 `json:"lift"`
+	SupportCount         int64   `json:"supportCount"`
+	BasketSampleSize     int64   `json:"basketSampleSize"`
+	// Supply — replenishment plan / Kế hoạch bổ sung tồn
+	ReorderPoint       float64 `json:"reorderPoint"`
+	TargetLevel        float64 `json:"targetLevel"`
+	SuggestedQty       int64   `json:"suggestedQty"`
+	EstimatedVolumeM3  float64 `json:"estimatedVolumeM3"`
+	EstimatedCost      float64 `json:"estimatedCost"`
+	SolverBackend      string  `json:"solverBackend,omitempty"`
+	Reason             string  `json:"reason,omitempty"`
 }
 
 type ReportSummary struct {
@@ -150,11 +183,28 @@ func normalizeKdView(view string) string {
 
 func normalizeSupplyView(view string) string {
 	switch view {
-	case SupplyViewCapacity, SupplyViewCarrier, SupplyViewSupplier:
+	case SupplyViewCapacity, SupplyViewCarrier, SupplyViewSupplier, SupplyViewSolver:
 		return view
 	default:
 		return SupplyViewInventory
 	}
+}
+
+func normalizeAnalyticsView(view string) string {
+	switch view {
+	case AnalyticsViewBasket:
+		return view
+	default:
+		return AnalyticsViewCustomer
+	}
+}
+
+// dateColumnForSpec — snapshot analytics/solver use NgayChot / Analytics và solver dùng NgayChot
+func dateColumnForSpec(view string, category string) string {
+	if category == "analytics" || view == SupplyViewSolver {
+		return "`NgayChot`"
+	}
+	return "`NgayBaoCao`"
 }
 
 func (r *ReportRepository) GetFinancialReport(
@@ -536,7 +586,8 @@ func (r *ReportRepository) GetSupplyReport(
 	queryCtx, cancel := context.WithTimeout(ctx, r.queryTimeout)
 	defer cancel()
 
-	where := "`NgayBaoCao` >= ? AND `NgayBaoCao` <= ?"
+	dateCol := dateColumnForSpec(view, "supply")
+	where := fmt.Sprintf("%s >= ? AND %s <= ?", dateCol, dateCol)
 	args := []any{fromDate, toDate}
 	where, args = appendSupplyFilters(view, filter, where, args)
 
@@ -580,6 +631,66 @@ func (r *ReportRepository) GetSupplyReport(
 	return result, int64(total), nil
 }
 
+func (r *ReportRepository) GetAnalyticsReport(
+	ctx context.Context,
+	fromDate time.Time,
+	toDate time.Time,
+	view string,
+	filter AnalyticsFilter,
+	page int,
+	pageSize int,
+) ([]ReportRow, int64, error) {
+	view = normalizeAnalyticsView(view)
+	spec := analyticsViewSpecFor(view)
+
+	queryCtx, cancel := context.WithTimeout(ctx, r.queryTimeout)
+	defer cancel()
+
+	dateCol := dateColumnForSpec(view, "analytics")
+	where := fmt.Sprintf("%s >= ? AND %s <= ?", dateCol, dateCol)
+	args := []any{fromDate, toDate}
+	where, args = appendAnalyticsFilters(view, filter, where, args)
+
+	countSQL := fmt.Sprintf("SELECT count() FROM %s WHERE %s", spec.table, where)
+	var total uint64
+	if err := r.conn.QueryRow(queryCtx, countSQL, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	dataSQL := fmt.Sprintf(
+		"SELECT %s FROM %s WHERE %s ORDER BY %s",
+		spec.columns, spec.table, where, spec.orderBy,
+	)
+	if pageSize > 0 {
+		offset := (page - 1) * pageSize
+		dataSQL += " LIMIT ? OFFSET ?"
+		args = append(args, pageSize, offset)
+	}
+
+	rows, err := r.conn.Query(queryCtx, dataSQL, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	capacity := pageSize
+	if capacity <= 0 {
+		capacity = int(total)
+		if capacity == 0 {
+			capacity = 64
+		}
+	}
+	result := make([]ReportRow, 0, capacity)
+	for rows.Next() {
+		row, err := scanAnalyticsRow(view, rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		result = append(result, row)
+	}
+	return result, int64(total), nil
+}
+
 func scanSupplyRow(view string, rows driver.Rows) (ReportRow, error) {
 	var row ReportRow
 	var err error
@@ -612,6 +723,14 @@ func scanSupplyRow(view string, rows driver.Rows) (ReportRow, error) {
 		)
 		row.OrderedAmount = float64(orderedAmount)
 		row.ReceivedAmount = float64(receivedAmount)
+	case SupplyViewSolver:
+		var onHandQty float64
+		err = rows.Scan(
+			&row.ReportDate, &row.ShopCode, &row.ShopName, &row.ProductId, &row.ProductName,
+			&onHandQty, &row.ReorderPoint, &row.TargetLevel, &row.SuggestedQty,
+			&row.EstimatedVolumeM3, &row.EstimatedCost, &row.SolverBackend, &row.Reason,
+		)
+		row.OnHandQuantity = int64(onHandQty)
 	default:
 		var onHandValue, lostRevenue int64
 		err = rows.Scan(
@@ -622,6 +741,29 @@ func scanSupplyRow(view string, rows driver.Rows) (ReportRow, error) {
 		)
 		row.OnHandValue = float64(onHandValue)
 		row.LostRevenueEstimate = float64(lostRevenue)
+	}
+	return row, err
+}
+
+func scanAnalyticsRow(view string, rows driver.Rows) (ReportRow, error) {
+	var row ReportRow
+	var err error
+
+	switch view {
+	case AnalyticsViewBasket:
+		err = rows.Scan(
+			&row.ReportDate, &row.SegmentCode, &row.SegmentName,
+			&row.AntecedentProductIds, &row.ConsequentProductId,
+			&row.AntecedentNames, &row.ConsequentName,
+			&row.Support, &row.Confidence, &row.Lift, &row.SupportCount, &row.BasketSampleSize,
+		)
+	default:
+		err = rows.Scan(
+			&row.ReportDate, &row.CustomerId, &row.RecencyDays, &row.Frequency, &row.NetRevenue,
+			&row.RecencyScore, &row.FrequencyScore, &row.MonetaryScore, &row.RfmScore,
+			&row.SegmentCode, &row.SegmentName, &row.ClusterCode, &row.ClusterName,
+			&row.LabelSource, &row.Age, &row.Gender,
+		)
 	}
 	return row, err
 }

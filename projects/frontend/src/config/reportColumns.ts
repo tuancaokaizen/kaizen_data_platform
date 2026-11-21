@@ -393,6 +393,62 @@ export function getColumnsForView(viewKey: ReportViewKey): ColumnsType<ReportRow
         { title: "Giá trị đặt", dataIndex: "orderedAmount", render: numCell, align: "right", width: 120 },
         { title: "Giá trị nhận", dataIndex: "receivedAmount", render: numCell, align: "right", width: 120 }
       ];
+    case "supply:solver":
+      return [
+        { title: "Ngày chốt", dataIndex: "reportDate", render: (v: string) => formatReportDate(v), width: 120 },
+        { title: "Mã cửa hàng", dataIndex: "shopCode", width: 120 },
+        { title: "Tên cửa hàng", dataIndex: "shopName", width: 180 },
+        { title: "Mã sản phẩm", dataIndex: "productId", width: 120 },
+        { title: "Tên sản phẩm", dataIndex: "productName", width: 200 },
+        { title: "Tồn hiện tại (đơn vị)", dataIndex: "onHandQuantity", render: numCell, align: "right", width: 140 },
+        { title: "Điểm đặt hàng (đơn vị)", dataIndex: "reorderPoint", render: numCell, align: "right", width: 140 },
+        { title: "Mức tồn mục tiêu (đơn vị)", dataIndex: "targetLevel", render: numCell, align: "right", width: 160 },
+        { title: "Số lượng đề xuất (đơn vị)", dataIndex: "suggestedQty", render: numCell, align: "right", width: 160 },
+        { title: "Thể tích ước tính (m³)", dataIndex: "estimatedVolumeM3", render: numCell, align: "right", width: 160 },
+        { title: "Chi phí ước tính (VNĐ)", dataIndex: "estimatedCost", render: numCell, align: "right", width: 160 },
+        { title: "Phương pháp tối ưu", dataIndex: "solverBackend", width: 140 },
+        { title: "Lý do", dataIndex: "reason", width: 220 }
+      ];
+    case "analytics:customer":
+      return [
+        { title: "Ngày chốt", dataIndex: "reportDate", render: (v: string) => formatReportDate(v), width: 120 },
+        { title: "Mã khách hàng", dataIndex: "customerId", width: 140 },
+        { title: "Số ngày từ lần mua gần nhất", dataIndex: "recencyDays", render: numCell, align: "right", width: 200 },
+        { title: "Số đơn", dataIndex: "frequency", render: numCell, align: "right", width: 100 },
+        { title: "Doanh thu thuần (VNĐ)", dataIndex: "netRevenue", render: numCell, align: "right", width: 160 },
+        { title: "Điểm gần đây (1–5)", dataIndex: "recencyScore", render: numCell, align: "right", width: 130 },
+        { title: "Điểm tần suất (1–5)", dataIndex: "frequencyScore", render: numCell, align: "right", width: 140 },
+        { title: "Điểm doanh thu (1–5)", dataIndex: "monetaryScore", render: numCell, align: "right", width: 140 },
+        { title: "Tổng điểm phân loại", dataIndex: "rfmScore", render: numCell, align: "right", width: 150 },
+        { title: "Mã phân khúc", dataIndex: "segmentCode", width: 120 },
+        { title: "Tên phân khúc", dataIndex: "segmentName", width: 180 },
+        {
+          title: "Nguồn nhãn",
+          dataIndex: "labelSource",
+          width: 140,
+          render: (v?: string) =>
+            v === "model" || v === "Mô hình RF"
+              ? "Mô hình dự đoán"
+              : v === "rule" || v === "Luật RFM"
+                ? "Luật phân loại"
+                : v ?? "-"
+        },
+        { title: "Tuổi", dataIndex: "age", render: numCell, align: "right", width: 80 },
+        { title: "Giới tính", dataIndex: "gender", width: 100 }
+      ];
+    case "analytics:basket":
+      return [
+        { title: "Ngày chốt", dataIndex: "reportDate", render: (v: string) => formatReportDate(v), width: 120 },
+        { title: "Mã phân khúc", dataIndex: "segmentCode", width: 120 },
+        { title: "Tên phân khúc", dataIndex: "segmentName", width: 180 },
+        { title: "Sản phẩm tiền đề", dataIndex: "antecedentNames", width: 220 },
+        { title: "Sản phẩm hệ quả", dataIndex: "consequentName", width: 180 },
+        { title: "Độ hỗ trợ (0–1)", dataIndex: "support", render: numCell, align: "right", width: 130 },
+        { title: "Độ tin cậy (0–1)", dataIndex: "confidence", render: numCell, align: "right", width: 130 },
+        { title: "Hệ số nâng (lần)", dataIndex: "lift", render: numCell, align: "right", width: 130 },
+        { title: "Số giỏ có luật", dataIndex: "supportCount", render: numCell, align: "right", width: 130 },
+        { title: "Số giỏ mẫu", dataIndex: "basketSampleSize", render: numCell, align: "right", width: 120 }
+      ];
     default:
       return [dateCol, ...shopCols, ...financialMetricColumns];
   }
@@ -409,6 +465,10 @@ export function rowKeyForView(viewKey: ReportViewKey, row: ReportRow, index: num
   if (row.documentType) parts.push(row.documentType);
   if (row.carrierId) parts.push(row.carrierId);
   if (row.supplierId) parts.push(row.supplierId);
+  if (row.customerId) parts.push(row.customerId);
+  if (row.segmentCode) parts.push(row.segmentCode);
+  if (row.consequentProductId) parts.push(row.consequentProductId);
+  if (row.antecedentProductIds) parts.push(row.antecedentProductIds);
   return parts.join("-");
 }
 
