@@ -327,7 +327,7 @@ CALL nessie.system.rewrite_data_files(table => 'tên_bảng')
 
 ### Daily maintenance (02:00 AM)
 
-DAG **`spark_dw_maintenance_pipeline`**:
+DAG **`kaizen_lakehouse_maintenance`** (thường pause trên lab):
 
 1. **Compaction** — gộp file Parquet nhỏ (~512MB).
 2. **Expire snapshots** — giữ 5 snapshot (DW/FND), 1 snapshot (`stg.*`).
