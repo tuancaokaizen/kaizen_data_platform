@@ -2,7 +2,7 @@ id: db_supply_carrier
 title: Thẻ điểm nhà vận chuyển
 dataset: v_bao_cao_the_diem_nha_van_chuyen_tong_hop
 slug: the-diem-nha-van-chuyen
-description: Tỷ lệ OTIF, thời gian trễ và chi phí vận chuyển theo tuần × nhà vận chuyển
+description: Tỷ lệ giao đúng hạn đủ hàng, thời gian trễ và chi phí vận chuyển theo nhà vận chuyển
 native_filters:
 - column: NgayBaoCao
   type: filter_time
@@ -19,7 +19,7 @@ layout:
   - chart: kpi_otif
     viz: big_number_total
     metric: AVG(TyLeOTIF)
-    title: Tỷ lệ OTIF trung bình
+    title: Tỷ lệ giao đúng hạn đủ hàng trung bình (%)
   - chart: kpi_tre
     viz: big_number_total
     metric: AVG(ThoiGianTreTrungBinhPhut)
@@ -27,7 +27,7 @@ layout:
   - chart: kpi_chi_phi
     viz: big_number_total
     metric: SUM(ChiPhiVanChuyen)
-    title: Tổng chi phí vận chuyển
+    title: Tổng chi phí vận chuyển (VNĐ)
   row2_trend:
   - chart: trend_otif
     viz: echarts_timeseries_line
@@ -35,7 +35,7 @@ layout:
     metrics:
     - AVG(TyLeOTIF)
     - AVG(ChiPhiTrenKg)
-    title: Xu hướng OTIF và chi phí trên kg
+    title: Xu hướng tỷ lệ đúng hạn đủ hàng và chi phí trên kg (VNĐ/kg)
     granularity: day
   row3_compare:
   - chart: bar_carrier
@@ -43,7 +43,7 @@ layout:
     x: TenNhaVanChuyen
     categorical: true
     metric: AVG(TyLeOTIF)
-    title: Nhà vận chuyển theo tỷ lệ OTIF
+    title: Nhà vận chuyển theo tỷ lệ giao đúng hạn đủ hàng (%)
     sort: desc
     row_limit: 15
     orientation: horizontal

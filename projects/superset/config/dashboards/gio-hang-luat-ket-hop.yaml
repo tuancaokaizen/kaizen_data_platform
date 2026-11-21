@@ -1,0 +1,111 @@
+id: db_association_rules
+title: Luật kết hợp sản phẩm theo phân loại khách hàng
+dataset: v_luat_ket_hop_san_pham
+slug: gio-hang-luat-ket-hop
+description: Các cặp sản phẩm thường mua kèm theo từng phân khúc khách hàng và toàn bộ khách
+color_scheme: modernSunset
+native_filters:
+- column: NgayChot
+  type: filter_time
+  label: Ngày chốt
+  required: true
+  default: Last 7 days
+- column: TenPhanKhuc
+  type: filter_select
+  label: Phân khúc khách hàng
+  multi: true
+  select_all: true
+layout:
+  row1_kpi:
+  - chart: kpi_rules
+    viz: big_number_total
+    metric: COUNT(*)
+    title: Số luật kết hợp
+  - chart: kpi_lift
+    viz: big_number_total
+    metric: AVG(Lift)
+    title: Hệ số nâng trung bình (lần)
+  - chart: kpi_confidence
+    viz: big_number_total
+    metric: AVG(DoTinCay)
+    title: Độ tin cậy trung bình (0–1)
+
+  row2_portfolio:
+  - chart: treemap_consequence
+    viz: treemap_v2
+    groupby:
+    - TenSanPhamHeQua
+    metric: MAX(Lift)
+    title: Sản phẩm hệ quả nổi bật theo hệ số nâng (treemap)
+    color_scheme: modernSunset
+    row_limit: 30
+    height: 72
+  - chart: donut_by_segment
+    viz: pie
+    groupby:
+    - TenPhanKhuc
+    metric: COUNT(*)
+    title: Tỷ trọng số luật theo phân khúc (donut)
+    donut: true
+    color_scheme: modernSunset
+    time_column: NgayChot
+
+  row3_rank:
+  - chart: bar_top_lift
+    viz: echarts_timeseries_bar
+    x: TenSanPhamHeQua
+    categorical: true
+    metric: MAX(Lift)
+    title: Top sản phẩm hệ quả theo hệ số nâng (lớn → nhỏ)
+    sort: desc
+    row_limit: 15
+    orientation: horizontal
+    color_scheme: modernSunset
+  - chart: bar_top_confidence
+    viz: echarts_timeseries_bar
+    x: TenSanPhamHeQua
+    categorical: true
+    metric: MAX(DoTinCay)
+    title: Top sản phẩm hệ quả theo độ tin cậy (lớn → nhỏ)
+    sort: desc
+    row_limit: 15
+    orientation: horizontal
+    color_scheme: modernSunset
+
+  row4_support:
+  - chart: treemap_antecedent
+    viz: treemap_v2
+    groupby:
+    - TenSanPhamTienDe
+    metric: MAX(DoHoTro)
+    title: Sản phẩm tiền đề theo độ hỗ trợ (treemap)
+    color_scheme: modernSunset
+    row_limit: 30
+  - chart: bar_by_segment
+    viz: echarts_timeseries_bar
+    x: TenPhanKhuc
+    categorical: true
+    metric: COUNT(*)
+    title: Số luật theo phân khúc (lớn → nhỏ)
+    sort: desc
+    row_limit: 15
+    orientation: horizontal
+    color_scheme: modernSunset
+
+  row5_detail:
+  - chart: table_rules
+    viz: table
+    columns:
+    - NgayChot
+    - TenPhanKhuc
+    - TenSanPhamTienDe
+    - TenSanPhamHeQua
+    - DoHoTro
+    - DoTinCay
+    - Lift
+    - SoGioCoLuat
+    - SoGioMau
+    order_by: Lift
+    sort: desc
+    title: Chi tiết luật kết hợp theo phân khúc (sắp theo hệ số nâng giảm dần)
+    page_size: 50

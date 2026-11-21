@@ -7,48 +7,61 @@ dashboards:
   - slug: tc-tong-hop-cua-hang
     report_key: financial:shop
     title: Tổng hợp theo cửa hàng
-    chart_label: TC cửa hàng
+    chart_label: Tổng hợp theo cửa hàng
   - slug: tc-chi-tiet-san-pham-cua-hang
     report_key: financial:detail
     title: Chi tiết theo sản phẩm và cửa hàng
-    chart_label: TC SP×CH
+    chart_label: Chi tiết theo sản phẩm và cửa hàng
   - slug: tc-tong-hop-san-pham
     report_key: financial:product
     title: Tổng hợp theo sản phẩm
-    chart_label: TC sản phẩm
+    chart_label: Tổng hợp theo sản phẩm
   - slug: tc-chi-tiet-don-hang
     report_key: financial:order
     title: Chi tiết theo đơn hàng
-    chart_label: TC đơn hàng
+    chart_label: Chi tiết theo đơn hàng
   - slug: quy-pttt-cua-hang
     report_key: fund:payment
     title: Theo phương thức thanh toán và cửa hàng
-    chart_label: Quỹ PTTT
+    chart_label: Theo phương thức thanh toán và cửa hàng
   - slug: quy-tong-hop-cua-hang
     report_key: fund:shop
     title: Tổng hợp quỹ theo cửa hàng
-    chart_label: Quỹ cửa hàng
+    chart_label: Tổng hợp quỹ theo cửa hàng
   - slug: quy-chi-tiet-don-hang
     report_key: fund:order
     title: Chi tiết quỹ theo đơn hàng
-    chart_label: Quỹ đơn hàng
+    chart_label: Chi tiết quỹ theo đơn hàng
   - slug: kinh-doanh-realtime-theo-don
     report_key: kd:order
-    title: Tình hình kinh doanh realtime theo đơn
-    chart_label: THKD realtime
+    title: Tình hình kinh doanh thời gian thực theo đơn hàng
+    chart_label: Tình hình kinh doanh thời gian thực theo đơn hàng
   - slug: suc-khoe-ton-kho-cua-hang-nganh-hang
     report_key: supply:inventory
     title: Sức khỏe tồn kho theo cửa hàng và ngành hàng
-    chart_label: Tồn kho
+    chart_label: Sức khỏe tồn kho theo cửa hàng và ngành hàng
   - slug: muc-su-dung-cong-suat-cua-hang
     report_key: supply:capacity
     title: Mức sử dụng công suất cửa hàng
-    chart_label: Công suất CH
+    chart_label: Mức sử dụng công suất cửa hàng
   - slug: the-diem-nha-van-chuyen
     report_key: supply:carrier
     title: Thẻ điểm nhà vận chuyển
-    chart_label: Nhà vận chuyển
+    chart_label: Thẻ điểm nhà vận chuyển
   - slug: hieu-suat-nha-cung-cap
     report_key: supply:supplier
     title: Hiệu suất nhà cung cấp
-    chart_label: Nhà cung cấp
+    chart_label: Hiệu suất nhà cung cấp
+  - slug: toi-uu-bo-sung-ton
+    report_key: supply:solver
+    title: Kế hoạch bổ sung tồn kho theo cửa hàng và sản phẩm
+    chart_label: Kế hoạch bổ sung tồn kho theo cửa hàng và sản phẩm
+  # Menu group: Phân tích khách hàng (analytics:*)
+  - slug: khach-hang-phan-khuc-rfm
+    report_key: analytics:customer
+    title: Phân loại khách hàng theo gần đây, tần suất và doanh thu
+    chart_label: Phân loại khách hàng theo gần đây, tần suất và doanh thu
+  - slug: gio-hang-luat-ket-hop
+    report_key: analytics:basket
+    title: Luật kết hợp sản phẩm theo phân loại khách hàng
+    chart_label: Luật kết hợp sản phẩm theo phân loại khách hàng

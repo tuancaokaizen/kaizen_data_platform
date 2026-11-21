@@ -63,3 +63,24 @@ datasets:
     schema: report
     description: "Chuỗi cung ứng — hiệu suất nhà cung cấp"
     main_dttm_col: NgayBaoCao
+
+  # Phân tích khách hàng / Customer analytics
+  - table_name: v_phan_khuc_khach_hang
+    schema: report
+    description: "Phân loại khách hàng RFM + cold-start"
+    main_dttm_col: NgayChot
+
+  - table_name: v_luat_ket_hop_san_pham
+    schema: report
+    description: "Luật kết hợp giỏ hàng theo phân khúc"
+    main_dttm_col: NgayChot
+
+  - table_name: v_ke_hoach_bo_sung_ton
+    schema: report
+    description: "Kế hoạch bổ sung tồn (solver)"
+    main_dttm_col: NgayChot
+
+  - table_name: v_thong_ke_phan_khuc
+    schema: report
+    description: "Thống kê mô tả theo phân loại khách"
+    main_dttm_col: NgayChot
