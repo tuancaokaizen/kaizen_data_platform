@@ -51,14 +51,12 @@ flowchart TD
     class T_ORDER,T_PAY kafka;
 
     subgraph ORCH ["Orchestration (Airflow)"]
-        DAG_M["spark_master_data_ingest"]
-        DAG_I["spark_transaction_data_ingest"]
-        DAG_T["spark_dw_transform"]
         DAG_SIL["kaizen_lakehouse_daily"]
-        DAG_MA["spark_dw_maintenance"]
         DAG_AN["kaizen_analytics_pipeline"]
+        DAG_SUP["kaizen_supply_daily_close"]
+        DAG_MA["kaizen_lakehouse_maintenance"]
     end
-    class DAG_M,DAG_I,DAG_T,DAG_SIL,DAG_MA,DAG_AN airflow;
+    class DAG_SIL,DAG_AN,DAG_SUP,DAG_MA airflow;
 
     subgraph BATCH ["Batch (Spark)"]
         INGEST["GenericIngestJob"]
@@ -93,10 +91,10 @@ flowchart TD
     KC --> PG_RAW
     KC --> ES
 
-    DAG_M & DAG_I --> INGEST
+    DAG_SIL --> INGEST
     PG_RAW --> INGEST
     INGEST --> STG --> FND
-    DAG_T --> TRANS
+    DAG_SIL --> TRANS
     FND --> TRANS --> DW
     TRANS --> SRV --> SRV_TBL
     SRV_TBL --> PUSH --> CH
@@ -104,6 +102,7 @@ flowchart TD
     MAINT --> FND & DW & STG
     DW --> DAG_AN
     DAG_AN --> CH
+    DAG_SUP --> PG_RAW
 
     CH --> UI
 ```
@@ -236,11 +235,13 @@ cd ../../dags
 
 ### Bước 4: Chạy pipeline trên Airflow UI
 
-1. Trigger **`master_data_pipeline`** — sinh master data PostgreSQL.
-2. **`spark_master_data_ingest_pipeline`** — ingest master → `nessie.fnd.*`.
-3. **`spark_transaction_data_ingest_pipeline`** — ingest giao dịch incremental.
-4. **`spark_dw_transform_pipeline`** — transform DW + serving + push ClickHouse.
-5. Hoặc để **`sil_daily_pipeline`** chạy tự động lúc 00:30 (ingest → transform).
+Stack hiện tại dùng các DAG **Kaizen** (các pipeline `sil_daily_*` / `spark_*_ingest_*` cũ đã gỡ):
+
+1. **`kaizen_lakehouse_daily`** (schedule ~00:30) — Postgres → Bronze/Silver → DW → serving → ClickHouse `report.*`.
+2. **`kaizen_analytics_pipeline`** (sau lakehouse) — DSS: RFM + FP-Growth + PuLP bổ sung tồn → `report.customer_segment` / `association_rule` / `replenishment_plan`.
+3. **`kaizen_supply_daily_close`** — đóng ngày mô phỏng chuỗi cung ứng (nếu bật sim).
+
+Greenfield / backfill: trigger `kaizen_lakehouse_daily` với conf `{"fromDate":"YYYY-MM-DD","toDate":"YYYY-MM-DD"}` (không gồm `toDate`), hoặc dùng `sim_backfill_pipeline` rồi để lakehouse chạy tiếp.
 
 ### Bước 5: Xem báo cáo
 
@@ -248,7 +249,8 @@ cd ../../dags
 cd projects && ./run_local.sh
 ```
 
-Mở http://localhost:8092 — tab Financial Report & Fund Report.
+Mở http://localhost:8092 — Tài chính, Quỹ, KD realtime, Chuỗi cung ứng, Phân tích khách hàng.  
+BI embed: publish Superset (`./publish_superset.sh --force --embed`).
 
 ---
 
@@ -376,17 +378,12 @@ Deploy: `projects/stream-processing/deploy_stream.sh {build|upload|stream|stop|c
 
 | DAG | Mô tả |
 |-----|--------|
-| `master_data_pipeline` | Sinh master data PG |
-| `incremental_data_pipeline` | Sinh giao dịch incremental |
-| `spark_master_data_ingest_pipeline` | Ingest master → FND |
-| `spark_transaction_data_ingest_pipeline` | Ingest transaction → FND |
-| `spark_dw_transform_pipeline` | DW + serving + push ClickHouse |
-| `kaizen_lakehouse_daily` | Daily lakehouse: Postgres → Bronze/Silver/Gold → serving |
-| `kaizen_supply_daily_close` | Đóng ngày mô phỏng chuỗi cung ứng |
+| `kaizen_lakehouse_daily` | Daily lakehouse: Postgres → Bronze/Silver → DW → serving → ClickHouse |
 | `kaizen_analytics_pipeline` | DSS hàng ngày: RFM + FP-Growth + PuLP bổ sung tồn → ClickHouse |
-| `spark_dw_maintenance_pipeline` | Compaction + snapshot cleanup |
-| `spark_dw_partition_realignment_pipeline` | Partition realignment (once) |
-| `spark_transaction_simulation_pipeline` | Mô phỏng giao dịch batch |
+| `kaizen_supply_daily_close` | Đóng ngày mô phỏng chuỗi cung ứng |
+| `sim_backfill_pipeline` | Backfill sim + kích hoạt lakehouse |
+| `kaizen_lakehouse_maintenance` | Bảo trì Iceberg (thường pause trên lab) |
+| `spark_realtime_business_backfill_pipeline` | Backfill serving KD realtime (cold path) |
 
 Chi tiết analytics: **[dags/jobs/kaizen_analytics/README.md](dags/jobs/kaizen_analytics/README.md)**.
 
