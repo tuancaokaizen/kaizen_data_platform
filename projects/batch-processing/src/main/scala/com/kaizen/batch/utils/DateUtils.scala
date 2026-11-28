@@ -30,6 +30,11 @@ object DateUtils {
     */
   val LookbackHours: Int = 1
 
+  /** Rows modified this long after toDate 00:00 are still read, so daily_close at ~00:10 ICT is inside the window.
+    * Dòng sửa trong khoảng này sau toDate 00:00 vẫn được đọc, để daily_close ~00:10 ICT nằm trong cửa sổ.
+    */
+  val LookaheadHours: Int = 2
+
   private val TimestampFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
   /** Current business date in Vietnam. / Ngày nghiệp vụ hiện tại ở Việt Nam. */
@@ -58,8 +63,11 @@ object DateUtils {
   def windowStart(fromDate: String): String =
     format(parseDate(fromDate, "fromDate").atStartOfDay().minusHours(LookbackHours.toLong))
 
-  /** End of the load window (excluded): toDate 00:00. / Cuối cửa sổ nạp (không gồm): toDate 00:00. */
-  def windowEnd(toDate: String): String = format(parseDate(toDate, "toDate").atStartOfDay())
+  /** End of the load window (excluded): toDate 00:00 plus lookahead (covers daily_close after midnight).
+    * Cuối cửa sổ nạp (không gồm): toDate 00:00 cộng lookahead (phủ daily_close sau nửa đêm).
+    */
+  def windowEnd(toDate: String): String =
+    format(parseDate(toDate, "toDate").atStartOfDay().plusHours(LookaheadHours.toLong))
 
   /** Postgres timestamptz literal in Vietnam time, e.g. 2026-10-14 23:00:00+07.
     * Literal timestamptz cho Postgres theo giờ Việt Nam.
@@ -72,8 +80,8 @@ object DateUtils {
   def inDateRange(column: Column, fromDate: String, toDate: String): Column =
     column >= lit(fromDate).cast(DateType) && column < lit(toDate).cast(DateType)
 
-  /** The lakehouse timestamp is inside the load window [windowStart, windowEnd), lookback included.
-    * Timestamp lakehouse thuộc cửa sổ nạp [windowStart, windowEnd), có tính lookback.
+  /** The lakehouse timestamp is inside the load window [windowStart, windowEnd), lookback and lookahead included.
+    * Timestamp lakehouse thuộc cửa sổ nạp [windowStart, windowEnd), có lookback và lookahead.
     */
   def inLoadWindow(column: Column, fromDate: String, toDate: String): Column =
     column >= lit(windowStart(fromDate)).cast(TimestampType) && column < lit(windowEnd(toDate)).cast(TimestampType)

@@ -33,8 +33,13 @@ dependencies {
     implementation 'org.projectnessie.nessie-integrations:nessie-spark-extensions-3.4_2.12:0.67.0'
 
     // ClickHouse JDBC for PublishReportToClickHouse / JDBC driver cho push report sang ClickHouse
+    // httpclient5 required at runtime (ClassicHttpRequest); shade must include it or publish fails with CNFE
+    // httpclient5 bắt buộc lúc chạy; shadow jar phải gồm không thì publish lỗi ClassNotFoundException
     implementation 'com.clickhouse:clickhouse-jdbc:0.6.5'
     implementation 'com.clickhouse:clickhouse-http-client:0.6.5'
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.2.3'
+    implementation 'org.apache.httpcomponents.core5:httpcore5:5.2.3'
+    implementation 'org.apache.httpcomponents.core5:httpcore5-h2:5.2.3'
 
     // Kafka Admin API (topic ops / tooling) / API quản trị Kafka (thao tác topic / tooling)
     implementation 'org.apache.kafka:kafka-clients:3.4.1'
