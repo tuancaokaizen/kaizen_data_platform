@@ -6,9 +6,11 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.{current_timestamp, from_utc_timestamp, lit, to_timestamp}
 
 /** Postgres information_system → nessie.stg.<table>: each run replaces the bronze table with the rows read this run.
-  * Full tables are read whole, incremental tables only rows modified in the load window (fromDate 00:00 − 1h, toDate 00:00).
+  * Full tables are read whole, incremental tables only rows modified in the load window
+  * (fromDate 00:00 − 1h, toDate 00:00 + 2h) so daily_close at ~00:10 ICT is included.
   * Postgres information_system → nessie.stg.<bảng>: mỗi lần chạy thay bảng bronze bằng các dòng đọc được lần này.
-  * Bảng full đọc cả bảng, bảng incremental chỉ đọc dòng sửa trong cửa sổ nạp (fromDate 00:00 − 1h, toDate 00:00).
+  * Bảng full đọc cả bảng, bảng incremental chỉ đọc dòng sửa trong cửa sổ nạp
+  * (fromDate 00:00 − 1h, toDate 00:00 + 2h) để daily_close ~00:10 ICT được gồm.
   */
 object PostgresToBronze {
 

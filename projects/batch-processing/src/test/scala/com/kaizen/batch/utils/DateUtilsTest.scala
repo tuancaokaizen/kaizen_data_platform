@@ -9,9 +9,11 @@ import org.scalatestplus.junit.JUnitRunner
 @RunWith(classOf[JUnitRunner])
 class DateUtilsTest extends AnyFunSuite {
 
-  test("load window starts one hour before fromDate and ends at toDate 00:00") {
+  test("load window starts one hour before fromDate and ends two hours after toDate 00:00") {
+    // Lookback catches late previous-run commits; lookahead covers daily_close at ~00:10 ICT
+    // Lookback bắt commit muộn lần trước; lookahead phủ daily_close ~00:10 ICT
     assert(DateUtils.windowStart("2026-10-14") == "2026-10-13 23:00:00")
-    assert(DateUtils.windowEnd("2026-10-15") == "2026-10-15 00:00:00")
+    assert(DateUtils.windowEnd("2026-10-15") == "2026-10-15 02:00:00")
     assert(DateUtils.postgresTimestamp("2026-10-13 23:00:00") == "2026-10-13 23:00:00+07")
   }
 
